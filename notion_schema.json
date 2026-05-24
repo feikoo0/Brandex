@@ -1,0 +1,394 @@
+{
+  "Tareas": {
+    "Proyectos": {
+      "type": "relation"
+    },
+    "Estado": {
+      "type": "status",
+      "options": [
+        "Pendiente",
+        "Aprobado",
+        "En proceso",
+        "Por hacer",
+        "Revision",
+        "Modificar",
+        "Hecho",
+        "Por publicar",
+        "Publicado"
+      ]
+    },
+    "Antigüedad": {
+      "type": "formula"
+    },
+    "Notas Cliente": {
+      "type": "rich_text"
+    },
+    "Horas Calculo": {
+      "type": "formula"
+    },
+    "Etapa Funnel": {
+      "type": "select",
+      "options": [
+        "Atracción Masiva",
+        "Dolor Especifico",
+        "Autoridad",
+        "Filtrado",
+        "Conversion"
+      ]
+    },
+    "Archivos y multimedia": {
+      "type": "files"
+    },
+    "Pilares": {
+      "type": "multi_select",
+      "options": [
+        "Promocional",
+        "Entretenimiento",
+        "Conversacional",
+        "Educativo",
+        "Inspiracional"
+      ]
+    },
+    "Prioridad": {
+      "type": "status",
+      "options": [
+        "Baja",
+        "Media",
+        "Alta",
+        "Urgente"
+      ]
+    },
+    "Esfuerzo": {
+      "type": "status",
+      "options": [
+        "⚡Flash (15 min)",
+        "🔋Corto (30 min)",
+        "🔥Medio (1 h)",
+        "🧠Largo (2 h)",
+        "🚀 +3 h (Maratón)"
+      ]
+    },
+    "Meta": {
+      "type": "multi_select",
+      "options": [
+        "Atracción de Clientes",
+        "Ventas",
+        "Valor",
+        "Reconocimiento",
+        "Interaccion"
+      ]
+    },
+    "Plataformas": {
+      "type": "multi_select",
+      "options": [
+        "WhatsApp",
+        "Facebook",
+        "Instagram",
+        "TikTok"
+      ]
+    },
+    "Temas": {
+      "type": "multi_select",
+      "options": [
+        "Producto",
+        "Servicios",
+        "Marca",
+        "Tips y Herramientas",
+        "Promoción"
+      ]
+    },
+    "⏰ + Sesión": {
+      "type": "button"
+    },
+    "Creado": {
+      "type": "created_time"
+    },
+    "Cliente": {
+      "type": "relation"
+    },
+    "Área": {
+      "type": "status",
+      "options": [
+        "Pendiente",
+        "DISEÑO",
+        "COMMUNITY"
+      ]
+    },
+    "Sin Cliente": {
+      "type": "formula"
+    },
+    "Fecha de Entrega": {
+      "type": "date"
+    },
+    "Contenido": {
+      "type": "rich_text"
+    },
+    "Días limite barra": {
+      "type": "formula"
+    },
+    "Responsable": {
+      "type": "people"
+    },
+    "Número": {
+      "type": "number"
+    },
+    "Segunda Sesion": {
+      "type": "date"
+    },
+    "Costo": {
+      "type": "rich_text"
+    },
+    "Fecha limite": {
+      "type": "button"
+    },
+    "Formato": {
+      "type": "status",
+      "options": [
+        "Logotipo",
+        "🖼️ Post",
+        "🎨 Portada",
+        "🤳 Historia",
+        "📢 Flyer",
+        "🎬 Reel",
+        "📺 Video",
+        "🎠 Carrusel",
+        "📦 Otros"
+      ]
+    },
+    "Copy": {
+      "type": "rich_text"
+    },
+    "Fecha programada": {
+      "type": "date"
+    },
+    "Trabajador": {
+      "type": "relation"
+    },
+    "Nivel Conciencia": {
+      "type": "select",
+      "options": [
+        "No conscientes",
+        "Conscientes de la solución",
+        "Conscientes del producto",
+        "Conscientes del problema",
+        "Totalmente conscientes"
+      ]
+    },
+    "Titulo/Idea": {
+      "type": "title"
+    }
+  },
+  "Clientes": {
+    "Teléfono": {
+      "type": "phone_number"
+    },
+    "Proyectos": {
+      "type": "relation"
+    },
+    "Potencial": {
+      "type": "status",
+      "options": [
+        "Sin empezar",
+        "En curso",
+        "Listo"
+      ]
+    },
+    "Web": {
+      "type": "url"
+    },
+    "Drive Cliente": {
+      "type": "url"
+    },
+    "Tik Tok": {
+      "type": "url"
+    },
+    "Token": {
+      "type": "rich_text"
+    },
+    "WhatsApp Link": {
+      "type": "url"
+    },
+    "Observaciones": {
+      "type": "rich_text"
+    },
+    "Celular": {
+      "type": "phone_number"
+    },
+    "Facebook": {
+      "type": "url"
+    },
+    "Fuente": {
+      "type": "select",
+      "options": [
+        "Facebook",
+        "Instagram",
+        "Otro",
+        "WhatsApp"
+      ]
+    },
+    "Instagram": {
+      "type": "url"
+    },
+    "Nombre": {
+      "type": "title"
+    }
+  },
+  "Proyectos": {
+    "Fórmula": {
+      "type": "formula"
+    },
+    "Ciclo": {
+      "type": "status",
+      "options": [
+        "Proximamente",
+        "Bloqueado",
+        "En proceso",
+        "Hecho"
+      ]
+    },
+    "Objetivos": {
+      "type": "multi_select",
+      "options": []
+    },
+    "Fecha fin del proyecto": {
+      "type": "date"
+    },
+    "Recursos": {
+      "type": "files"
+    },
+    "Cliente": {
+      "type": "relation"
+    },
+    "Fecha Proyecto": {
+      "type": "date"
+    },
+    "Equipo": {
+      "type": "relation"
+    },
+    "Recursos DRIVE": {
+      "type": "url"
+    },
+    "Inspiración": {
+      "type": "url"
+    },
+    "Progreso": {
+      "type": "rollup"
+    },
+    "Costo del Proyecto": {
+      "type": "number"
+    },
+    "Tareas Proyecto": {
+      "type": "relation"
+    },
+    "Descripción proyecto": {
+      "type": "rich_text"
+    },
+    "Estado Proyecto": {
+      "type": "select",
+      "options": [
+        "🧠 Planificacion",
+        "🟢 Activos",
+        "👁️ En Revision",
+        "✅ Completado",
+        "Activo",
+        "Completado"
+      ]
+    },
+    "Nombre": {
+      "type": "title"
+    },
+    "Prioridad": {
+      "type": "status",
+      "options": [
+        "MODERADO",
+        "⚠️IMPORTANTE",
+        "🔥 U R G E N T E 🔥"
+      ]
+    },
+    "Pilares": {
+      "type": "multi_select",
+      "options": [
+        "Promocional",
+        "Entretenimiento",
+        "Conversacional",
+        "Educativo",
+        "Inspiracional"
+      ]
+    },
+    "Área": {
+      "type": "status",
+      "options": [
+        "Pendiente",
+        "DISEÑO",
+        "COMMUNITY"
+      ]
+    },
+    "Estado": {
+      "type": "status",
+      "options": [
+        "Modificar",
+        "Por hacer",
+        "En proceso",
+        "Revision",
+        "Hecho",
+        "Por publicar",
+        "Publicado"
+      ]
+    },
+    "Meta": {
+      "type": "multi_select",
+      "options": [
+        "Atracción de Clientes",
+        "Ventas",
+        "Valor",
+        "Reconocimiento",
+        "Interaccion"
+      ]
+    },
+    "Temas": {
+      "type": "multi_select",
+      "options": [
+        "Producto",
+        "Servicios",
+        "Marca",
+        "Tips y Herramientas",
+        "Promoción"
+      ]
+    },
+    "Formato": {
+      "type": "status",
+      "options": [
+        "🖼️ Post",
+        "🎨 Portada",
+        "🤳 Historia",
+        "📢 Flyer",
+        "🎬 Reel",
+        "📺 Video",
+        "🎠 Carrusel",
+        "📦 Otros"
+      ]
+    },
+    "Esfuerzo": {
+      "type": "status",
+      "options": [
+        "⚡Flash (15 min)",
+        "🔋Corto (30 min)",
+        "🔥Medio (1 h)",
+        "🧠Largo (2 h)",
+        "🚀 +3 h (Maratón)"
+      ]
+    },
+    "Plataformas": {
+      "type": "multi_select",
+      "options": [
+        "WhatsApp",
+        "Facebook",
+        "Instagram",
+        "TikTok"
+      ]
+    },
+    "Por hacer": {
+      "type": "date"
+    }
+  }
+}

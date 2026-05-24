@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brandex | Generador de Prompts Independiente</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg: #05070a;
+            --card-bg: rgba(15, 20, 28, 0.7);
+            --accent: #00f2ff;
+            --accent-glow: rgba(0, 242, 255, 0.3);
+            --text: #e0e6ed;
+            --text-dim: #94a3b8;
+            --border: rgba(255, 255, 255, 0.1);
+            --glass: blur(12px);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg);
+            background-image: 
+                radial-gradient(circle at 20% 20%, rgba(0, 242, 255, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 80% 80%, rgba(124, 58, 237, 0.05) 0%, transparent 40%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        nav {
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: var(--glass);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .logo span {
+            color: var(--accent);
+        }
+
+        main {
+            flex: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1.2fr 0.8fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            main { grid-template-columns: 1fr; }
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            color: #fff;
+        }
+
+        .section-title i { color: var(--accent); }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: var(--glass);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2rem;
+            height: fit-content;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: rgba(0, 242, 255, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        select, input, textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        select:focus, input:focus, textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .multi-select-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .pill-checkbox {
+            position: relative;
+            cursor: pointer;
+        }
+
+        .pill-checkbox input {
+            position: absolute;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .pill-content {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            padding: 0.5rem 0.75rem;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            text-align: center;
+            transition: all 0.2s;
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pill-checkbox input:checked + .pill-content {
+            background: var(--accent);
+            color: #000;
+            font-weight: 600;
+            border-color: var(--accent);
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+
+        #prompt-output {
+            background: #000;
+            color: #10b981;
+            font-family: 'Courier New', Courier, monospace;
+            padding: 1.5rem;
+            border-radius: 15px;
+            font-size: 0.85rem;
+            height: 450px;
+            overflow-y: auto;
+            border: 1px solid #10b98144;
+            white-space: pre-wrap;
+            margin-bottom: 1rem;
+        }
+
+        .btn-generate {
+            background: linear-gradient(135deg, var(--accent) 0%, #00a8ff 100%);
+            color: #000;
+            border: none;
+            padding: 1.2rem;
+            border-radius: 15px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.75rem;
+            box-shadow: 0 10px 20px rgba(0, 242, 255, 0.2);
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .btn-generate:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px rgba(0, 242, 255, 0.4);
+        }
+
+        .btn-copy {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 1px solid var(--border);
+            padding: 0.8rem;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            width: 100%;
+        }
+
+        .btn-copy:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <div class="logo"><i data-lucide="sparkles"></i> BRAND<span>EX</span> GENERATOR</div>
+    </nav>
+
+    <main>
+        <!-- Form Section -->
+        <div class="card">
+            <h2 class="section-title"><i data-lucide="edit-3"></i> Datos del Cliente y Estrategia</h2>
+            
+            <div class="form-group">
+                <label>Nombre del Cliente</label>
+                <input type="text" id="client-name" placeholder="Ej: Café Aroma Real">
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Instagram</label>
+                    <input type="text" id="client-ig" placeholder="@usuario">
+                </div>
+                <div class="form-group">
+                    <label>TikTok</label>
+                    <input type="text" id="client-tt" placeholder="@usuario">
+                </div>
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid var(--border); margin: 1.5rem 0;">
+
+            <div class="form-group">
+                <label>Pilares de Contenido</label>
+                <div class="multi-select-grid" id="pillars-container"></div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Etapa del Funnel</label>
+                    <select id="funnel-select"></select>
+                </div>
+                <div class="form-group">
+                    <label>Nivel de Conciencia</label>
+                    <select id="awareness-select"></select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Metas Mensuales</label>
+                <div class="multi-select-grid" id="goals-container"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Enfoque de Campaña / Observaciones</label>
+                <textarea id="campaign-focus" rows="4" placeholder="Detalles específicos para este mes..."></textarea>
+            </div>
+
+            <button class="btn-generate" onclick="generatePrompt()">
+                <i data-lucide="zap"></i> GENERAR MASTER PROMPT
+            </button>
+        </div>
+
+        <!-- Output Section -->
+        <div class="card">
+            <h2 class="section-title"><i data-lucide="terminal"></i> Prompt Resultante (Salida JSON)</h2>
+            <div id="prompt-output">Configura los datos a la izquierda para generar el prompt...</div>
+            <button class="btn-copy" onclick="copyPrompt()">
+                <i data-lucide="copy"></i> Copiar al Portapapeles
+            </button>
+            <div style="margin-top: 1.5rem; padding: 1rem; border-radius: 12px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2);">
+                <p style="font-size: 0.8rem; color: #10b981; line-height: 1.4;">
+                    <i data-lucide="info" style="width: 14px; height: 14px; vertical-align: middle;"></i> 
+                    Este prompt está diseñado para que la IA responda <b>exclusivamente en formato JSON</b>, facilitando la creación de entregables estructurados.
+                </p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const SCHEMA = {
+            "Pilares": ["Promocional", "Entretenimiento", "Conversacional", "Educativo", "Inspiracional"],
+            "Funnel": ["Atracción Masiva", "Dolor Especifico", "Autoridad", "Filtrado", "Conversion"],
+            "Conciencia": ["No conscientes", "Conscientes de la solución", "Conscientes del producto", "Conscientes del problema", "Totalmente conscientes"],
+            "Metas": ["Atracción de Clientes", "Ventas", "Valor", "Reconocimiento", "Interaccion"],
+            "Formatos": ["Reel", "Post", "Carrusel", "Historia", "Flyer", "Video"]
+        };
+
+        function init() {
+            // Populate Pillars
+            const pillarsCont = document.getElementById('pillars-container');
+            SCHEMA.Pilares.forEach(p => {
+                pillarsCont.innerHTML += `<label class="pill-checkbox"><input type="checkbox" name="pillars" value="${p}"><span class="pill-content">${p}</span></label>`;
+            });
+
+            // Populate Funnel
+            const funnelSelect = document.getElementById('funnel-select');
+            SCHEMA.Funnel.forEach(f => {
+                funnelSelect.innerHTML += `<option value="${f}">${f}</option>`;
+            });
+
+            // Populate Awareness
+            const awarenessSelect = document.getElementById('awareness-select');
+            SCHEMA.Conciencia.forEach(a => {
+                awarenessSelect.innerHTML += `<option value="${a}">${a}</option>`;
+            });
+
+            // Populate Goals
+            const goalsCont = document.getElementById('goals-container');
+            SCHEMA.Metas.forEach(g => {
+                goalsCont.innerHTML += `<label class="pill-checkbox"><input type="checkbox" name="goals" value="${g}"><span class="pill-content">${g}</span></label>`;
+            });
+
+            lucide.createIcons();
+        }
+
+        function generatePrompt() {
+            const name = document.getElementById('client-name').value || "Cliente General";
+            const ig = document.getElementById('client-ig').value;
+            const tt = document.getElementById('client-tt').value;
+            const pillars = Array.from(document.querySelectorAll('input[name="pillars"]:checked')).map(i => i.value);
+            const funnel = document.getElementById('funnel-select').value;
+            const awareness = document.getElementById('awareness-select').value;
+            const goals = Array.from(document.querySelectorAll('input[name="goals"]:checked')).map(i => i.value);
+            const focus = document.getElementById('campaign-focus').value;
+
+            const prompt = `Actúa como un experto Content Strategist y Growth Marketer. Tu objetivo es generar un PLAN DE CONTENIDO COMPLETO.
+
+[DATOS DEL CLIENTE]
+- Nombre: ${name}
+- Instagram: ${ig || 'No provisto'}
+- TikTok: ${tt || 'No provisto'}
+
+[ESTRATEGIA REQUERIDA]
+- Pilares de Contenido: ${pillars.join(', ') || 'Equilibrado'}
+- Etapa del Funnel: ${funnel}
+- Nivel de Conciencia: ${awareness}
+- Metas Principales: ${goals.join(', ') || 'Crecimiento orgánico'}
+- Enfoque del Mes: ${focus || 'Optimización base'}
+
+[REQUERIMIENTOS DEL PLAN]
+Crea un calendario de 12 contenidos (Reels, Carruseles, Historias). Para cada uno define: Título, Objetivo, Hook (Gancho), Copy y CTA.
+
+[FORMATO DE SALIDA - OBLIGATORIO]
+Responde ÚNICAMENTE con un objeto JSON. No añadidas texto adicional antes o después. 
+Estructura del JSON:
+{
+  "cliente": "${name}",
+  "plan_mensual": [
+    { "dia": 1, "tipo": "...", "titulo": "...", "hook": "...", "copy": "...", "objetivo": "..." },
+    ...
+  ],
+  "estrategia_anuncios": "...",
+  "recomendaciones": ["...", "..."]
+}`;
+
+            document.getElementById('prompt-output').textContent = prompt;
+        }
+
+        function copyPrompt() {
+            const text = document.getElementById('prompt-output').textContent;
+            if (text.includes("Configura")) return;
+            navigator.clipboard.writeText(text);
+            const btn = document.querySelector('.btn-copy');
+            btn.textContent = "¡Copiado con éxito!";
+            setTimeout(() => { btn.innerHTML = '<i data-lucide="copy"></i> Copiar al Portapapeles'; lucide.createIcons(); }, 2000);
+        }
+
+        init();
+    </script>
+</body>
+</html>

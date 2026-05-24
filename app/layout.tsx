@@ -1,30 +1,22 @@
-import { Geist, Geist_Mono } from "next/font/google"
+import type { Metadata } from "next";
+import "./globals.css";
+import { Providers } from "./providers";
 
-import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils";
-
-const geist = Geist({subsets:['latin'],variable:'--font-sans'})
-
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
+export const metadata: Metadata = {
+  title: "Braindex OS",
+  description: "Sistema de gestión para agencias creativas",
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", geist.variable)}
-    >
-      <body>
-        <ThemeProvider>{children}</ThemeProvider>
+    <html lang="es" suppressHydrationWarning>
+      <body className="bg-gray-50 dark:bg-[#0a0a0c] text-gray-900 dark:text-white antialiased">
+        <Providers>{children}</Providers>
       </body>
     </html>
-  )
+  );
 }

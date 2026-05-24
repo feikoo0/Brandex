@@ -29,7 +29,16 @@ yarn-error.log*
 pnpm-debug.log*
 
 # env files
+.env
 .env*.local
+
+# temporary / local databases / logs
+server.log
+debug.json
+focus_config.json
+sync_dump.json
+scratch/
+.claude/
 
 # typescript
 *.tsbuildinfo
