@@ -132,6 +132,83 @@ function formatMins(mins: number) {
   return m ? `${h}h ${m}m` : `${h}h`;
 }
 
+// ── Project Aura Theme Details Generator ─────────────────────────────────────
+const getProjectAura = (area?: string) => {
+  const normArea = (area || "").toLowerCase();
+  
+  if (normArea.includes("dise") || normArea.includes("design") || normArea.includes("creat")) {
+    return {
+      theme: "emerald",
+      primaryColor: "#10b981",
+      glowColor: "rgba(16, 185, 129, 0.15)",
+      bgGradient: "from-emerald-500/10 via-transparent to-transparent",
+      accentText: "text-emerald-400",
+      badgeStyle: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      ambientClass: "bg-emerald-500/5",
+      rgb: "16, 185, 129"
+    };
+  }
+  if (normArea.includes("mus") || normArea.includes("audio") || normArea.includes("podcast") || normArea.includes("son")) {
+    return {
+      theme: "teal",
+      primaryColor: "#14b8a6",
+      glowColor: "rgba(20, 184, 166, 0.15)",
+      bgGradient: "from-teal-500/10 via-transparent to-transparent",
+      accentText: "text-teal-400",
+      badgeStyle: "bg-teal-500/10 text-teal-400 border-teal-500/20",
+      ambientClass: "bg-teal-500/5",
+      rgb: "20, 184, 166"
+    };
+  }
+  if (normArea.includes("brand") || normArea.includes("logo") || normArea.includes("ident")) {
+    return {
+      theme: "purple",
+      primaryColor: "#a855f7",
+      glowColor: "rgba(168, 85, 247, 0.15)",
+      bgGradient: "from-purple-500/10 via-transparent to-transparent",
+      accentText: "text-purple-400",
+      badgeStyle: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+      ambientClass: "bg-purple-500/5",
+      rgb: "168, 85, 247"
+    };
+  }
+  if (normArea.includes("dev") || normArea.includes("desarrollo") || normArea.includes("web") || normArea.includes("tech") || normArea.includes("prog") || normArea.includes("code")) {
+    return {
+      theme: "blue",
+      primaryColor: "#3b82f6",
+      glowColor: "rgba(59, 130, 246, 0.15)",
+      bgGradient: "from-blue-500/10 via-transparent to-transparent",
+      accentText: "text-blue-400",
+      badgeStyle: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+      ambientClass: "bg-blue-500/5",
+      rgb: "59, 130, 246"
+    };
+  }
+  if (normArea.includes("market") || normArea.includes("ads") || normArea.includes("creci") || normArea.includes("grow") || normArea.includes("vent")) {
+    return {
+      theme: "orange",
+      primaryColor: "#f97316",
+      glowColor: "rgba(249, 115, 22, 0.15)",
+      bgGradient: "from-orange-500/10 via-transparent to-transparent",
+      accentText: "text-orange-400",
+      badgeStyle: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+      ambientClass: "bg-orange-500/5",
+      rgb: "249, 115, 22"
+    };
+  }
+  
+  return {
+    theme: "slate",
+    primaryColor: "#94a3b8",
+    glowColor: "rgba(148, 163, 184, 0.1)",
+    bgGradient: "from-white/5 via-transparent to-transparent",
+    accentText: "text-white/60",
+    badgeStyle: "bg-white/5 text-white/60 border-white/10",
+    ambientClass: "bg-white/5",
+    rgb: "148, 163, 184"
+  };
+};
+
 export function DailyPlan() {
   const { data } = useData();
   const createProject = useCreateProject();
@@ -201,6 +278,11 @@ export function DailyPlan() {
   const focusedProjectEntry = projectsWithScores[0];
   const focusedProject = focusedProjectEntry?.project;
   const otherProjectsEntries = projectsWithScores.slice(1);
+
+  const aura = useMemo(() => {
+    if (!focusedProject) return getProjectAura();
+    return getProjectAura(focusedProject.area || focusedProject.nombre);
+  }, [focusedProject]);
 
   // Projections calculations for global capacity bar
   const projections = useMemo(() => {
@@ -464,142 +546,77 @@ export function DailyPlan() {
   // ── renderLeftBlock (Left Column: 220px fixed) ──────────────────────────
   const renderLeftBlock = () => {
     return (
-      <div className="flex flex-col gap-5 h-full">
-        {/* Focus Project Hero Card */}
-        {focusedProject && focusedProjectCardData ? (
-          <div 
-            className="bg-gradient-to-br from-[#1b1b22] to-[#121216] border border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.5)] rounded-2xl p-4 relative overflow-hidden group cursor-pointer"
-            onClick={() => pushView({ level: 'project', id: focusedProject.id })}
-          >
-            {/* Glowing decorative background blob */}
-            <div className="absolute -top-12 -right-12 w-24 h-24 bg-[#4ade80]/5 rounded-full blur-2xl pointer-events-none group-hover:bg-[#4ade80]/10 transition-all duration-300" />
-            
-            {/* Header: Title & Pin Override */}
-            <div className="flex items-start justify-between gap-2">
-              <span className="text-[9px] font-black text-[#4ade80] uppercase tracking-widest bg-[#4ade80]/10 border border-[#4ade80]/15 px-2 py-0.5 rounded-md flex items-center gap-1">
-                <Target className="w-2.5 h-2.5" /> En Foco
-              </span>
-              
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePinProject(focusedProject.id);
-                }}
-                className={cn(
-                  "w-6 h-6 rounded-lg flex items-center justify-center border transition-all",
-                  focusedProjectCardData.isPinned 
-                    ? "bg-[#4ade80]/10 border-[#4ade80]/30 text-[#4ade80]" 
-                    : "border-white/5 text-white/30 hover:border-white/20 hover:text-white"
-                )}
-                title={focusedProjectCardData.isPinned ? "Quitar pin manual" : "Fijar foco manualmente"}
-              >
-                <Pin className="w-3 h-3 fill-current" />
-              </button>
-            </div>
+      <div className="flex flex-col gap-4 h-full">
+        {/* Title */}
+        <div className="flex items-center justify-between py-2 border-b border-white/[0.03]">
+          <h4 className="text-[9px] font-black uppercase text-white/30 tracking-widest">
+            Proyectos Activos
+          </h4>
+          <span className="text-[9px] font-black text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
+            {projectsWithScores.length}
+          </span>
+        </div>
 
-            {/* Title & Client */}
-            <div className="mt-3">
-              <h3 className="text-base font-black text-white leading-tight truncate group-hover:text-[#4ade80] transition-colors">
-                {focusedProject.nombre}
-              </h3>
-              <p className="text-[10px] text-white/40 font-bold uppercase tracking-wider mt-1 truncate">
-                💼 {focusedProjectCardData.clientName}
-              </p>
-            </div>
+        {/* List of projects */}
+        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+          {projectsWithScores.length === 0 ? (
+            <p className="text-[10px] text-white/30 italic">No hay proyectos activos.</p>
+          ) : (
+            projectsWithScores.map(entry => {
+              const colorIdx = data.proyectos.findIndex(p => p.id === entry.project.id);
+              const colorClass = colorIdx !== -1 ? PROJECT_COLORS[colorIdx % PROJECT_COLORS.length] : "bg-gray-500";
+              const pTasks = data.tareas.filter(t => t.proyecto_ids?.includes(entry.project.id));
+              const done = pTasks.filter(t => DONE_STATES.has(t.estado)).length;
+              const total = pTasks.length;
+              const isPinned = entry.isPinned;
+              const isFocused = focusedProject?.id === entry.project.id;
 
-            {/* Numeric progress */}
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-[10px] font-black uppercase text-white/50 mb-1">
-                <span>Progreso</span>
-                <span>{focusedProjectCardData.completedTasks}/{focusedProjectCardData.totalTasks} Tareas ({focusedProjectCardData.pct}%)</span>
-              </div>
-              <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                <div className="h-full bg-[#4ade80] rounded-full transition-all duration-500" style={{ width: `${focusedProjectCardData.pct}%` }} />
-              </div>
-            </div>
-
-            {/* Task status chips */}
-            <div className="flex flex-wrap gap-1.5 mt-4">
-              {focusedProjectCardData.urgentPending > 0 && (
-                <span className="text-[8px] font-black uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded-md">
-                  {focusedProjectCardData.urgentPending} Urgentes
-                </span>
-              )}
-              {focusedProjectCardData.highPending > 0 && (
-                <span className="text-[8px] font-black uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md">
-                  {focusedProjectCardData.highPending} Alta
-                </span>
-              )}
-              <span className="text-[8px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-md">
-                {focusedProjectCardData.totalPending} Pendientes
-              </span>
-              {focusedProjectCardData.completedTasks > 0 && (
-                <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                  {focusedProjectCardData.completedTasks} Listas
-                </span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 border-dashed text-center">
-            <p className="text-xs font-bold text-white/50">No hay proyectos activos.</p>
-          </div>
-        )}
-
-        {/* Compact List of Other Active Projects */}
-        <div className="flex flex-col gap-2 flex-1 min-h-0">
-          <h4 className="text-[9px] font-bold text-white/30 tracking-widest uppercase">Otros Proyectos Activos</h4>
-          <div className="flex-1 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-            {otherProjectsEntries.length === 0 ? (
-              <p className="text-[10px] text-white/30 italic">No hay otros proyectos.</p>
-            ) : (
-              otherProjectsEntries.map(entry => {
-                const colorIdx = data.proyectos.findIndex(p => p.id === entry.project.id);
-                const colorClass = colorIdx !== -1 ? PROJECT_COLORS[colorIdx % PROJECT_COLORS.length] : "bg-gray-500";
-                const pTasks = data.tareas.filter(t => t.proyecto_ids?.includes(entry.project.id));
-                const done = pTasks.filter(t => DONE_STATES.has(t.estado)).length;
-                const total = pTasks.length;
-                const isPinned = entry.isPinned;
-
-                return (
-                  <div
-                    key={entry.project.id}
-                    className="flex items-center justify-between p-2 rounded-xl bg-white/[0.01] hover:bg-white/[0.04] border border-transparent hover:border-white/[0.03] transition-all group cursor-pointer"
-                    onClick={() => pushView({ level: 'project', id: entry.project.id })}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", colorClass)} />
-                      <span className="text-[11px] font-bold text-white/60 truncate group-hover:text-white transition-colors">
-                        {entry.project.nombre}
-                      </span>
-                    </div>
-                    
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      <span className="text-[9px] font-black text-white/30 group-hover:text-white/55">
-                        {done}/{total}
-                      </span>
-
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          togglePinProject(entry.project.id);
-                        }}
-                        className={cn(
-                          "w-5 h-5 rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity border",
-                          isPinned 
-                            ? "bg-[#4ade80]/10 border-[#4ade80]/30 text-[#4ade80] opacity-100" 
-                            : "border-white/5 text-white/30 hover:border-white/10 hover:text-white"
-                        )}
-                        title={isPinned ? "Quitar pin" : "Fijar en foco"}
-                      >
-                        <Pin className="w-2.5 h-2.5 fill-current" />
-                      </button>
-                    </div>
+              return (
+                <div
+                  key={entry.project.id}
+                  className={cn(
+                    "flex items-center justify-between p-2.5 rounded-xl transition-all group cursor-pointer border",
+                    isFocused 
+                      ? "bg-white/[0.03] border-white/10 shadow-[inset_0_0_12px_rgba(255,255,255,0.02)]" 
+                      : "bg-transparent border-transparent hover:bg-white/[0.015] hover:border-white/[0.04]"
+                  )}
+                  onClick={() => pushView({ level: 'project', id: entry.project.id })}
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", colorClass)} />
+                    <span className={cn(
+                      "text-[11px] font-bold truncate transition-colors",
+                      isFocused ? "text-white" : "text-white/40 group-hover:text-white/70"
+                    )}>
+                      {entry.project.nombre}
+                    </span>
                   </div>
-                );
-              })
-            )}
-          </div>
+                  
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <span className="text-[9px] font-black text-white/20 group-hover:text-white/40">
+                      {done}/{total}
+                    </span>
+
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePinProject(entry.project.id);
+                      }}
+                      className={cn(
+                        "w-5 h-5 rounded-md flex items-center justify-center transition-all border",
+                        isPinned 
+                          ? "bg-[#4ade80]/10 border-[#4ade80]/20 text-[#4ade80] opacity-100" 
+                          : "border-white/5 text-white/20 opacity-0 group-hover:opacity-100 hover:border-white/15 hover:text-white"
+                      )}
+                      title={isPinned ? "Quitar pin" : "Fijar en foco"}
+                    >
+                      <Pin className="w-2.5 h-2.5 fill-current" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
     );
@@ -607,94 +624,149 @@ export function DailyPlan() {
 
   // ── renderRightBlock (Right Column: 180px fixed) ─────────────────────────
   const renderRightBlock = () => {
+    if (!focusedProject) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full text-center px-2">
+          <Target className="w-8 h-8 text-white/10 mb-2" />
+          <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
+            Sin Selección
+          </p>
+          <p className="text-[9px] text-white/20 mt-1">
+            Elige un proyecto activo para ver sus insights.
+          </p>
+        </div>
+      );
+    }
+
+    const projectTasks = data.tareas.filter(t => t.proyecto_ids?.includes(focusedProject.id));
+    const totalTasksCount = projectTasks.length;
+    const completedTasksCount = projectTasks.filter(t => DONE_STATES.has(t.estado)).length;
+    const completionPercent = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+   
+    const effortTotalMins = projectTasks.reduce((acc, t) => acc + getTaskMins(t.esfuerzo), 0);
+    const effortPendingMins = projectTasks.filter(t => !DONE_STATES.has(t.estado)).reduce((acc, t) => acc + getTaskMins(t.esfuerzo), 0);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const overdueProjectTasks = projectTasks.filter(t => {
+      if (DONE_STATES.has(t.estado) || !t.fechaEntrega) return false;
+      const [y, m, d] = t.fechaEntrega.split('-').map(Number);
+      return new Date(y, m - 1, d) < today;
+    });
+    const overdueCount = overdueProjectTasks.length;
+
+    const blockerTasks = projectTasks.filter(t => 
+      !DONE_STATES.has(t.estado) && (t.prioridad === "Alta" || t.prioridad === "🔥 U R G E N T E 🔥" || t.prioridad === "Urgente")
+    );
+
     return (
       <div className="flex flex-col gap-5 h-full">
-        {/* Two Metric Cards */}
+        {/* Section 1: Progress */}
+        <div className="flex flex-col gap-2.5">
+          <h4 className="text-[9px] font-black text-white/35 tracking-widest uppercase">
+            Progreso Real
+          </h4>
+          <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl">
+            <div className="flex items-end justify-between">
+              <span className="text-2xl font-black text-white">{completionPercent}%</span>
+              <span className="text-[9px] font-black text-white/35 uppercase">
+                {completedTasksCount}/{totalTasksCount} Listas
+              </span>
+            </div>
+            <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden mt-2">
+              <div 
+                className="h-full rounded-full transition-all duration-500" 
+                style={{ width: `${completionPercent}%`, backgroundColor: aura.primaryColor }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Workload & Tiempos */}
         <div className="flex flex-col gap-2">
-          <h4 className="text-[9px] font-bold text-white/30 tracking-widest uppercase flex items-center gap-1.5">
-            <Activity className="w-3 h-3 text-white/30" /> Métricas
+          <h4 className="text-[9px] font-black text-white/35 tracking-widest uppercase">
+            Tiempos Estimados
           </h4>
           <div className="grid grid-cols-2 gap-2">
-            {/* Active Projects */}
             <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl">
-              <span className="text-[8px] font-black text-white/30 uppercase tracking-widest block leading-tight">Activos</span>
-              <span className="text-base font-black text-white mt-1 block">
-                {projectsWithScores.length}
+              <span className="text-[8px] font-black text-white/35 uppercase tracking-widest block leading-tight">Pendiente</span>
+              <span className="text-xs font-black text-white mt-1 block">
+                {formatMins(effortPendingMins)}
               </span>
             </div>
-            
-            {/* Overdue Tasks */}
-            <div className={cn(
-              "p-2.5 rounded-xl border transition-colors",
-              overdueTasksCount > 0 
-                ? "bg-rose-500/[0.03] border-rose-500/10 text-rose-400" 
-                : "bg-white/[0.02] border-white/5 text-white/50"
-            )}>
-              <span className="text-[8px] font-black uppercase tracking-widest block leading-tight text-white/30">Vencidas</span>
-              <span className={cn(
-                "text-base font-black mt-1 block",
-                overdueTasksCount > 0 ? "text-rose-400" : "text-white"
-              )}>
-                {overdueTasksCount}
+            <div className="bg-white/[0.02] border border-white/5 p-2.5 rounded-xl">
+              <span className="text-[8px] font-black text-white/35 uppercase tracking-widest block leading-tight">Total</span>
+              <span className="text-xs font-black text-white/70 mt-1 block">
+                {formatMins(effortTotalMins)}
               </span>
             </div>
           </div>
         </div>
 
-        {/* Upcoming Deliveries in Risk */}
+        {/* Section 3: Risks & Blockers */}
         <div className="flex flex-col gap-2 min-h-0">
-          <h4 className="text-[9px] font-bold text-white/30 tracking-widest uppercase">Entregas en Riesgo</h4>
-          <div className="space-y-1.5 overflow-y-auto max-h-[160px] pr-1 custom-scrollbar">
-            {riskDeliveries.length === 0 ? (
-              <p className="text-[10px] text-white/30 italic">Todo en orden por ahora.</p>
-            ) : (
-              riskDeliveries.map(item => (
+          <h4 className="text-[9px] font-black text-white/35 tracking-widest uppercase">
+            Riesgos & Blockers
+          </h4>
+          <div className="space-y-1.5 overflow-y-auto max-h-[140px] pr-1 custom-scrollbar">
+            {overdueCount > 0 && (
+              <div className="p-2.5 rounded-xl bg-rose-500/[0.03] border border-rose-500/10 text-rose-400">
+                <span className="text-[8px] font-black uppercase tracking-widest block text-rose-500/80">Riesgo de Atraso</span>
+                <p className="text-[10px] font-bold mt-0.5">
+                  {overdueCount} {overdueCount === 1 ? "tarea vencida" : "tareas vencidas"}
+                </p>
+              </div>
+            )}
+            
+            {blockerTasks.length > 0 ? (
+              blockerTasks.map(t => (
                 <div 
-                  key={item.project.id} 
-                  className="flex items-center justify-between p-2 rounded-xl bg-white/[0.01] hover:bg-white/[0.03] transition-all group cursor-pointer"
-                  onClick={() => pushView({ level: 'project', id: item.project.id })}
+                  key={t.id}
+                  className="p-2 rounded-xl bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.03] transition-all cursor-pointer group"
+                  onClick={() => pushView({ level: 'task', id: t.id })}
                 >
-                  <span className="text-[10px] font-bold text-white/70 truncate flex-1 pr-2 group-hover:text-white transition-colors">
-                    {item.project.nombre}
-                  </span>
-                  <span className={cn(
-                    "text-[8px] font-black uppercase px-2 py-0.5 rounded-md flex-shrink-0 tracking-wider",
-                    item.daysLeft < 0 
-                      ? "bg-rose-500/10 text-rose-400 border border-rose-500/15 animate-pulse" 
-                      : item.daysLeft <= 2 
-                        ? "bg-amber-500/10 text-amber-400 border border-amber-500/15" 
-                        : "bg-purple-500/10 text-purple-400 border border-purple-500/15"
-                  )}>
-                    {item.daysLeft < 0 ? `+${Math.abs(item.daysLeft)}d` : item.daysLeft === 0 ? "Hoy" : `${item.daysLeft}d`}
-                  </span>
+                  <span className="text-[8px] font-black uppercase text-amber-500/80 block">Blocker</span>
+                  <p className="text-[10px] font-bold text-white/70 truncate group-hover:text-white mt-0.5">
+                    {t.titulo}
+                  </p>
                 </div>
               ))
-            )}
+            ) : overdueCount === 0 ? (
+              <p className="text-[10px] text-white/30 italic">Sin alertas en este proyecto.</p>
+            ) : null}
           </div>
         </div>
 
-        {/* Insight Card */}
+        {/* Section 4: IA Recommendations */}
         <div className="flex flex-col gap-2 mt-auto">
-          <h4 className="text-[9px] font-bold text-white/30 tracking-widest uppercase flex items-center gap-1.5">
-            <Sparkles className="w-3 h-3 text-[#4ade80]" /> Inteligencia
+          <h4 className="text-[9px] font-black text-white/35 tracking-widest uppercase flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5" style={{ color: aura.primaryColor }} /> Aura Insight
           </h4>
-          <div className="bg-gradient-to-br from-[#1b1b22] to-[#121216] border border-white/[0.05] p-3 rounded-xl relative overflow-hidden">
-            <div className="absolute -top-6 -right-6 w-12 h-12 bg-purple-500/5 rounded-full blur-xl pointer-events-none" />
+          <div className="bg-white/[0.02] border border-white/5 p-3 rounded-xl relative overflow-hidden">
+            <div 
+              className="absolute -top-6 -right-6 w-12 h-12 rounded-full blur-xl pointer-events-none" 
+              style={{ background: `radial-gradient(circle, rgba(${aura.rgb}, 0.08) 0%, transparent 70%)` }}
+            />
             <p className="text-[10px] text-white/60 leading-relaxed font-medium">
-              {overdueTasksCount > 0 ? (
+              {overdueCount > 0 ? (
                 <>
-                  <span className="text-rose-400 font-bold block mb-1">⚠️ TAREAS RETRASADAS</span>
-                  Tienes <strong className="text-white">{overdueTasksCount} tareas vencidas</strong>. Prioriza resolverlas hoy para no generar cuello de botella en los entregables.
+                  <span className="text-rose-400 font-bold block mb-1">ACCIONES REQUERIDAS</span>
+                  Este proyecto tiene <strong className="text-white">{overdueCount} entregas retrasadas</strong>. Concentra esfuerzos en resolver los pendientes antes del próximo sprint.
                 </>
-              ) : globalTotalMins > 480 ? (
+              ) : completionPercent === 100 ? (
                 <>
-                  <span className="text-amber-400 font-bold block mb-1">⚡ CARGA ELEVADA</span>
-                  Hoy tienes proyectados <strong className="text-white">{formatMins(globalTotalMins)}</strong> de trabajo. Considera delegar o reprogramar tareas menos críticas.
+                  <span className="text-emerald-400 font-bold block mb-1">PROYECTO LISTO</span>
+                  ¡Buen trabajo! Todas las tareas se completaron. Puedes cambiar el estado a completado o archivarlo.
+                </>
+              ) : effortPendingMins > 360 ? (
+                <>
+                  <span className="text-amber-400 font-bold block mb-1">DEMANDA ELEVADA</span>
+                  Quedan <strong className="text-white">{formatMins(effortPendingMins)}</strong> de trabajo estimados. Divide las tareas complejas para mantener el ritmo.
                 </>
               ) : (
                 <>
-                  <span className="text-[#4ade80] font-bold block mb-1">✨ CRONOGRAMA SANO</span>
-                  La carga de hoy está balanceada (<strong className="text-white">{formatMins(globalTotalMins)}</strong>). No hay alertas de sobrecarga activas. ¡Buen ritmo!
+                  <span className="text-emerald-400 font-bold block mb-1">RITMO SALUDABLE</span>
+                  El flujo de trabajo es balanceado. Continúa avanzando en los pendientes de esta semana.
                 </>
               )}
             </p>
@@ -955,31 +1027,101 @@ export function DailyPlan() {
     }
 
     return (
-      <div className="flex flex-col h-full gap-5">
+      <div className="flex flex-col h-full gap-5 relative z-10">
+        {/* Aura Backdrop System */}
+        {focusedProject && (
+          <div className="absolute inset-0 pointer-events-none overflow-hidden creative-grid -mx-6 -my-5" style={{ zIndex: -1 }}>
+            <div 
+              className="absolute -top-32 -right-32 w-80 h-80 rounded-full blur-[100px] animate-aura-float"
+              style={{ 
+                background: `radial-gradient(circle, rgba(${aura.rgb}, 0.12) 0%, transparent 70%)`,
+                animationDuration: '24s'
+              }}
+            />
+            <div 
+              className="absolute -bottom-32 -left-32 w-72 h-72 rounded-full blur-[90px] animate-aura-float"
+              style={{ 
+                background: `radial-gradient(circle, rgba(${aura.rgb}, 0.08) 0%, transparent 70%)`,
+                animationDelay: "-6s",
+                animationDuration: '18s'
+              }}
+            />
+          </div>
+        )}
+
         {/* Header with name of the project in focus */}
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-2.5">
-              {focusedProject ? (
-                <>
-                  <Target className="w-6 h-6 text-[#4ade80]" />
-                  {focusedProject.nombre}
-                </>
-              ) : (
-                "Plan Inteligente"
-              )}
-            </h2>
+        <div className="flex items-start justify-between gap-6 pb-4 border-b border-white/[0.04] relative z-10">
+          <div className="flex-1 min-w-0">
             {focusedProject && (
-              <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mt-1">
-                {focusedProject.area || "Proyecto en curso"} · {focusedProject.estadoProyecto || "Activo"}
+              <div className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-white/35">
+                <span>💼 {focusedProjectCardData?.clientName}</span>
+                {focusedProject.area && (
+                  <>
+                    <span>·</span>
+                    <span className={aura.accentText}>{focusedProject.area}</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            <h2 className="text-3xl font-black text-white tracking-tight leading-tight mt-1.5 truncate">
+              {focusedProject ? focusedProject.nombre : "Plan Inteligente"}
+            </h2>
+            
+            {focusedProject ? (
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-white/50">
+                  {focusedProject.estadoProyecto || "Activo"}
+                </span>
+                
+                <span className={cn(
+                  "text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full border",
+                  focusedProject.prioridad === "🔥 U R G E N T E 🔥" 
+                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20" 
+                    : focusedProject.prioridad === "⚠️IMPORTANTE" 
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/20" 
+                      : "bg-white/5 text-white/40 border-white/10"
+                )}>
+                  {focusedProject.prioridad}
+                </span>
+
+                {focusedProject.fechaFin && (
+                  <span className="text-[9px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-white/5 border border-white/5 text-white/40">
+                    📅 {focusedProject.fechaFin}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="text-[10px] text-white/35 mt-1 font-bold uppercase tracking-widest">
+                Workspace Central
               </p>
             )}
           </div>
-          {createActions}
+          
+          {/* Top Actions */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {focusedProject && (
+              <>
+                <button
+                  onClick={() => pushView({ level: 'project', id: focusedProject.id })}
+                  className="px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-[9px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all hover:scale-[1.02] active:scale-95"
+                >
+                  Ver Tablero
+                </button>
+                <button
+                  onClick={() => openCreateMode("project-task")}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all hover:scale-[1.02] active:scale-95 shadow-lg animate-pulse-glow"
+                  style={{ backgroundColor: aura.primaryColor, color: "#000" }}
+                >
+                  <Plus className="w-3.5 h-3.5" /> Nueva Tarea
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Section 1: Active Project Tasks */}
-        <div className="flex flex-col gap-2 min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar">
+        <div className="flex flex-col gap-2 min-h-0 flex-1 overflow-y-auto pr-1 custom-scrollbar relative z-10">
           <h3 className="text-[10px] font-black uppercase text-white/30 tracking-widest mb-1">
             Tareas del Proyecto Focado
           </h3>
@@ -1006,7 +1148,7 @@ export function DailyPlan() {
                   <div 
                     key={t.id}
                     className={cn(
-                      "flex items-center justify-between p-3 rounded-xl bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.03] hover:border-white/[0.06] transition-all group/task cursor-pointer shadow-sm",
+                      "flex items-center justify-between p-3 rounded-xl bg-white/[0.005] hover:bg-white/[0.025] border border-white/[0.02] hover:border-white/[0.05] transition-all group/task cursor-pointer",
                       isDone && "opacity-40"
                     )}
                     onClick={() => pushView({ level: 'task', id: t.id })}
@@ -1080,7 +1222,7 @@ export function DailyPlan() {
               No hay tareas programadas de otros proyectos para hoy.
             </div>
           ) : (
-            <div className="space-y-1.5 opacity-55 hover:opacity-100 transition-opacity duration-300">
+            <div className="space-y-1.5 opacity-50 hover:opacity-100 transition-opacity duration-300">
               {todayTasksOtherProjects.map(t => {
                 const isDone = DONE_STATES.has(t.estado);
                 const dateBadge = getTaskDateBadge(t);
@@ -1091,7 +1233,7 @@ export function DailyPlan() {
                   <div 
                     key={t.id}
                     className={cn(
-                      "flex items-center justify-between p-2.5 rounded-xl bg-white/[0.01] border border-white/[0.02] transition-all group/task cursor-pointer"
+                      "flex items-center justify-between p-2.5 rounded-xl bg-white/[0.005] hover:bg-white/[0.02] border border-white/[0.015] hover:border-white/[0.04] transition-all group/task cursor-pointer"
                     )}
                     onClick={() => pushView({ level: 'task', id: t.id })}
                   >
@@ -1146,7 +1288,7 @@ export function DailyPlan() {
           {/* Add Task Button */}
           <button
             onClick={() => openCreateMode(focusedProject ? "project-task" : "task")}
-            className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/[0.08] bg-white/[0.01] hover:bg-white/[0.04] hover:border-white/20 text-white/50 hover:text-white text-xs font-bold transition-all"
+            className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-xl border border-white/[0.05] bg-white/[0.01] hover:bg-white/[0.03] hover:border-white/15 text-white/40 hover:text-white/80 text-xs font-bold transition-all"
           >
             <Plus className="w-4 h-4" /> Agregar tarea
           </button>
