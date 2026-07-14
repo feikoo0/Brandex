@@ -15,6 +15,7 @@ import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useMemo } from "react";
+import GodMakerToggle from "../spatial/GodMakerToggle";
 
 // Map tabs to icons
 function getIconForTab(tab: string) {
@@ -109,6 +110,8 @@ export function Topbar() {
             );
           })}
         </nav>
+
+        {activeTab === "pulse" && <GodMakerToggle />}
 
         {/* User profile */}
         <div className="flex items-center gap-3 pl-6 border-l border-white/10">

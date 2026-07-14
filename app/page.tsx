@@ -265,6 +265,16 @@ export default function LoginPage() {
                 <span className="text-[9px] font-black uppercase text-white/40">Cliente</span>
               </button>
             </motion.div>
+
+            {/* Brandex v3 Canvas Route */}
+            <motion.button
+              onClick={() => router.push("/brandex-v3")}
+              whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.2)" }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full mt-4 py-4 rounded-2xl border border-white/5 bg-white/[0.02] text-white/60 hover:text-white transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
+            >
+              Lienzo Brandex v3 <ArrowRight className="w-3 h-3 text-white/60" />
+            </motion.button>
           </>
         )}
 

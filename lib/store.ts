@@ -17,6 +17,13 @@ import type { Role, AdminTab, CalView, ModalEntry } from "./types";
 
 export type ViewLevel = 'home' | 'project' | 'task' | 'client' | 'member' | 'admin' | 'all_projects' | 'all_tasks' | 'agent' | 'new_project' | 'new_task';
 
+export interface ScratchpadPin {
+  id: string;
+  projectId: string;
+  content: string;
+  created: string;
+}
+
 export interface ViewEntry {
   level: ViewLevel;
   id?: string;
@@ -112,6 +119,18 @@ interface UIState {
   openCreator:      (type: "task" | "project") => void;
   closeCreator:     () => void;
   toggleSmartMode:  () => void;
+  // Spatial Dashboard State
+  dashboardMode: 'god' | 'maker';
+  toggleDashboardMode: () => void;
+  // Progressive Disclosure
+  expandedProjectId: string | null;
+  expandedChildTaskId: string | null;
+  setExpandedProject: (id: string | null) => void;
+  setExpandedChildTask: (id: string | null) => void;
+  // Scratchpad Pins
+  scratchpadPins: ScratchpadPin[];
+  addPin: (projectId: string, content: string) => void;
+  removePin: (pinId: string) => void;
   // Agent state
   agentMessages: { role: 'user' | 'assistant', content: string, plan?: any[] }[];
   setAgentMessages: (msgs: any[]) => void;
@@ -292,6 +311,27 @@ export const useUIStore = create<UIState>()(
   closeCreator: ()     => set({ creatorPanel: null }),
 
   toggleSmartMode: () => set((s) => ({ isSmartMode: !s.isSmartMode })),
+  dashboardMode: 'god',
+  toggleDashboardMode: () => set((s) => ({ dashboardMode: s.dashboardMode === 'god' ? 'maker' : 'god' })),
+  expandedProjectId: null,
+  expandedChildTaskId: null,
+  setExpandedProject: (id) => set({ expandedProjectId: id }),
+  setExpandedChildTask: (id) => set({ expandedChildTaskId: id }),
+  scratchpadPins: [],
+  addPin: (projectId, content) => set((s) => ({
+    scratchpadPins: [
+      ...s.scratchpadPins,
+      {
+        id: "pin-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+        projectId,
+        content,
+        created: new Date().toISOString(),
+      }
+    ]
+  })),
+  removePin: (pinId) => set((s) => ({
+    scratchpadPins: s.scratchpadPins.filter(p => p.id !== pinId)
+  })),
     }),
     { name: "braindex-ui" }
   )

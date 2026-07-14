@@ -1,0 +1,2448 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brandex OS - CEO Dashboard Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['"Google Sans"', 'sans-serif'], },
+                    colors: {
+                        brand: { 
+                            500: 'var(--brand-oklch)', 
+                            600: 'var(--brand-oklch-hover)', 
+                        },
+                        dark: { 
+                            bg: 'var(--color-bg-base)', 
+                            card: 'var(--color-bg-card)', 
+                            border: 'var(--color-border-card)', 
+                            hover: 'oklch(0.18 0 0)' 
+                        },
+                        semantic: {
+                            danger: 'var(--color-danger)',
+                            warning: 'var(--color-warning)',
+                            success: 'var(--color-success)',
+                            info: 'var(--color-info)'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @font-face {
+            font-family: 'Google Sans';
+            src: url('./GoogleSans-VariableFont_GRAD,opsz,wght.ttf') format('truetype');
+            font-weight: 100 900;
+            font-style: normal;
+        }
+
+        :root {
+            /* Palette using OKLCH - uniform light perception */
+            --brand-oklch: oklch(0.68 0.16 182); /* Bright Teal */
+            --brand-oklch-hover: oklch(0.60 0.15 182);
+            
+            --color-bg-base: oklch(0.08 0 0);    /* Base Canvas - z-0 */
+            --color-bg-card: oklch(0.12 0 0);    /* Bento Card - z-10 */
+            --color-bg-drawer: oklch(0.16 0 0);  /* Side sheets / Modals - z-50 */
+            
+            --color-border-card: oklch(0.18 0 0);
+            --color-border-drawer: oklch(0.24 0 0);
+            
+            --color-text-primary: oklch(0.95 0 0);
+            --color-text-secondary: oklch(0.70 0 0);
+            --color-text-muted: oklch(0.50 0 0);
+            
+            /* Semantic signaling in OKLCH (aligned lightness) */
+            --color-danger: oklch(0.60 0.18 25);     /* Red */
+            --color-warning: oklch(0.75 0.15 75);    /* Amber/Yellow */
+            --color-success: oklch(0.65 0.15 140);   /* Green */
+            --color-info: oklch(0.65 0.15 220);      /* Blue */
+        }
+
+        body { 
+            background-color: var(--color-bg-base); 
+            color: var(--color-text-primary); 
+            overflow: hidden; 
+            font-family: "Google Sans", sans-serif;
+            font-size: 14px;
+        }
+        
+        .app-canvas {
+            background-color: var(--color-bg-base);
+            border: 1px solid var(--color-border-card);
+            box-shadow: 0 8px 64px rgba(0,0,0,0.95);
+        }
+
+        /* Bento panels - elevated z-10 background with premium subtle gradient */
+        .bento-panel { 
+            background: linear-gradient(135deg, oklch(0.13 0.005 180) 0%, oklch(0.10 0 0) 100%); 
+            border: 1px solid rgba(255, 255, 255, 0.05); 
+            border-radius: 16px; 
+            position: relative; 
+            overflow: hidden; 
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1); 
+        }
+        .bento-panel:hover { 
+            border-color: rgba(20, 184, 166, 0.25);
+            box-shadow: 0 0 24px rgba(20, 184, 166, 0.05);
+            transform: translateY(-0.5px);
+        }
+
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--color-border-card); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: oklch(0.26 0 0); }
+
+        .progress-bar-bg { background-color: oklch(0.10 0 0); border-radius: 9999px; overflow: hidden; height: 4px; }
+        .progress-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+        
+        .fade-in { animation: fadeIn 0.25s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+        .sortable-ghost { opacity: 0.2; background-color: var(--color-bg-base); border: 1px dashed oklch(0.26 0 0); }
+        
+        .drawer { transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
+        .drawer-open { transform: translateX(0%); }
+        .drawer-closed { transform: translateX(100%); }
+        
+        .overlay { transition: opacity 0.22s ease; }
+        .overlay-open { opacity: 1; pointer-events: auto; }
+        .overlay-closed { opacity: 0; pointer-events: none; }
+        
+        .nav-active { 
+            background-color: rgba(255, 255, 255, 0.04); 
+            border-color: oklch(0.26 0 0); 
+            color: #ffffff !important; 
+        }
+        .nav-active i { color: var(--brand-oklch) !important; }
+
+        .pulse-dot {
+            animation: pulse-animation 2s infinite;
+        }
+        @keyframes pulse-animation {
+            0% { transform: scale(0.9); opacity: 0.7; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.7; }
+        }
+
+        .custom-tooltip {
+            position: absolute;
+            z-index: 50;
+            background-color: var(--color-bg-drawer);
+            border: 1px solid var(--color-border-drawer);
+            color: #ffffff;
+            font-size: 11px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+            display: none;
+        }
+
+        /* Typography Scale & Metrics - Upscaled for premium feel and high readability */
+        .type-metric {
+            font-size: 40px;
+            font-weight: 500;
+            letter-spacing: -0.03em;
+            line-height: 1.10;
+        }
+        .type-section-title {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.25;
+        }
+        .type-card-title {
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: -0.015em;
+            line-height: 1.30;
+        }
+        .type-body {
+            font-size: 14px;
+            font-weight: 400;
+            letter-spacing: 0.00em;
+            line-height: 1.60;
+        }
+        .type-metadata {
+            font-size: 13px;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            line-height: 1.45;
+        }
+
+        /* macOS Soft Glass material effect */
+        .soft-glass {
+            backdrop-filter: blur(16px) saturate(140%);
+            -webkit-backdrop-filter: blur(16px) saturate(140%);
+            background-color: rgba(16, 16, 16, 0.72) !important;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Micro-Cinematic Interactive State Machine */
+        .interactive-action {
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            cursor: pointer;
+        }
+        .interactive-action:hover:not(:disabled) {
+            filter: brightness(1.12);
+            transform: translateY(-0.5px);
+        }
+        .interactive-action:active:not(:disabled) {
+            transform: scale(0.96) translateY(0);
+            filter: brightness(0.90);
+        }
+        .interactive-action:disabled {
+            opacity: 0.30;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+
+        /* Infinite Shimmer Loader for Skeleton screens */
+        @keyframes shimmer-move {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .shimmer-loader {
+            background: linear-gradient(90deg, oklch(0.10 0 0) 25%, oklch(0.16 0 0) 50%, oklch(0.10 0 0) 75%);
+            background-size: 200% 100%;
+            animation: shimmer-move 1.6s infinite linear;
+        }
+
+        /* Keyboard Navigation Outline */
+        *:focus-visible {
+            outline: none !important;
+            box-shadow: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--brand-oklch) !important;
+        }
+    </style>
+</head>
+<body class="flex h-screen overflow-hidden antialiased bg-black selection:bg-brand-500/30">
+
+    <!-- GLOBAL CUSTOM TOOLTIP -->
+    <div id="tooltip" class="custom-tooltip"></div>
+
+    <!-- Drawer System (Dimmed Background closes, breadcrumbs at top, max 1 drawer) -->
+    <div id="drawer-overlay" class="fixed inset-0 z-45 bg-black/40 overlay-closed transition-all duration-300" onclick="closeDrawer()"></div>
+    
+    <div id="system-drawer" class="drawer drawer-closed fixed inset-y-0 right-0 z-50 w-[480px] soft-glass flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.95)]">
+        <!-- Breadcrumbs at top -->
+        <div class="px-6 pt-5 pb-3 border-b border-white/5 bg-black/40 sticky top-0 backdrop-blur-md z-10 flex justify-between items-center">
+            <div class="flex items-center gap-2 text-[11px] text-neutral-500 font-bold uppercase tracking-wider" id="drawer-breadcrumbs"></div>
+            <button onclick="closeDrawer()" class="text-neutral-600 hover:text-white text-[10px] uppercase font-bold tracking-wider transition-colors interactive-action">Cerrar (Esc)</button>
+        </div>
+        
+        <!-- Skeleton Loader Screen -->
+        <div id="drawer-skeleton" class="hidden p-6 space-y-6">
+            <div class="h-4 shimmer-loader rounded w-1/4"></div>
+            <div class="h-8 shimmer-loader rounded w-3/4"></div>
+            <div class="space-y-3 pt-4">
+                <div class="h-12 shimmer-loader rounded"></div>
+                <div class="h-12 shimmer-loader rounded"></div>
+                <div class="h-12 shimmer-loader rounded"></div>
+            </div>
+        </div>
+
+        <!-- Dynamic Content Area -->
+        <div class="flex-1 overflow-y-auto p-6" id="drawer-content"></div>
+    </div>
+
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-[260px] flex-shrink-0 flex flex-col bg-dark-bg/60 backdrop-blur-md p-5 border-r border-dark-border h-screen justify-between z-20">
+        <div class="space-y-6">
+            <!-- User Info Card -->
+            <div class="flex items-center gap-3">
+                <!-- User Avatar Rounded Square -->
+                <div class="relative group cursor-pointer interactive-action" onclick="cycleAvatarColor()">
+                    <div id="user-avatar" class="w-10 h-10 rounded-xl bg-brand-500/10 border border-brand-500/30 flex items-center justify-center font-bold text-brand-500 text-sm">
+                        DL
+                    </div>
+                    <!-- Tiny color dot indicator on hover -->
+                    <div class="absolute -bottom-1 -right-1 w-3 h-3 bg-dark-bg border border-dark-border rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+                    </div>
+                </div>
+                <!-- Name, Email and Role -->
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1.5">
+                        <span class="type-card-title text-white truncate">Diego Lema</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 border border-brand-500/20 font-bold tracking-wide uppercase">Admin</span>
+                    </div>
+                    <p class="type-metadata text-neutral-500 truncate mt-1">diego@brandex.mo</p>
+                </div>
+            </div>
+
+            <!-- Separator Line -->
+            <div class="border-t border-dark-border my-4"></div>
+
+            <!-- Navigation Links -->
+            <nav class="space-y-1">
+                <button onclick="switchPage('home')" id="nav-home" class="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer type-card-title nav-active border border-transparent bg-transparent text-left interactive-action">
+                    <i data-lucide="home" class="w-4 h-4"></i>
+                    <span>Home</span>
+                </button>
+                <button onclick="switchPage('analisis')" id="nav-analisis" class="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer type-card-title border border-transparent bg-transparent text-left interactive-action">
+                    <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
+                    <span>Análisis</span>
+                </button>
+                <button onclick="switchPage('usuarios')" id="nav-usuarios" class="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer type-card-title border border-transparent bg-transparent text-left interactive-action">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    <span>Usuarios</span>
+                </button>
+                
+                <!-- Guion/Separador Line -->
+                <div class="border-t border-dark-border my-3"></div>
+
+                <button onclick="switchPage('clientes')" id="nav-clientes" class="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer type-card-title border border-transparent bg-transparent text-left interactive-action">
+                    <i data-lucide="briefcase" class="w-4 h-4"></i>
+                    <span>Clientes</span>
+                </button>
+                <button onclick="switchPage('finanzas')" id="nav-finanzas" class="w-full flex items-center gap-3 px-3 py-2 text-neutral-400 hover:text-white rounded-lg transition-colors cursor-pointer type-card-title border border-transparent bg-transparent text-left interactive-action">
+                    <i data-lucide="dollar-sign" class="w-4 h-4"></i>
+                    <span>Finanzas</span>
+                </button>
+            </nav>
+        </div>
+
+        <!-- System Version Info -->
+        <div class="text-[10px] text-neutral-500 font-bold uppercase tracking-wider pl-3">
+            v2.1.0 — Control
+        </div>
+    </aside>
+
+    <!-- APP CANVAS (Full height, rounded window) -->
+    <main class="flex-1 flex flex-col h-[calc(100vh-24px)] my-3 mr-3 overflow-hidden relative app-canvas rounded-[20px] z-10">
+        
+        <!-- Zone A — Topbar (Fixed height 44px) -->
+        <header class="h-[44px] flex-shrink-0 flex items-center justify-between px-6 border-b border-dark-border bg-dark-bg/60 backdrop-blur-md z-10">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-brand-500 pulse-dot"></span>
+                <span class="type-card-title text-white">Brandex OS</span>
+                <span class="type-metadata text-neutral-500 ml-2">Semana 25</span>
+            </div>
+            
+            <div class="flex items-center gap-4">
+                <!-- Global Search Trigger (Cmd+K) -->
+                <button onclick="openSearchModal()" class="flex items-center gap-2 px-3 py-1 bg-dark-card/50 hover:bg-dark-card text-neutral-400 border border-dark-border hover:border-neutral-700 rounded-lg type-metadata transition-colors interactive-action">
+                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                    <span>Buscar...</span>
+                    <kbd class="text-[9px] bg-dark-bg border border-dark-border px-1.5 py-0.5 rounded text-neutral-500">Cmd+K</kbd>
+                </button>
+
+                <!-- Omni button with Dropdown -->
+                <div class="relative">
+                    <button id="omni-new-btn" onclick="toggleOmniDropdown(event)" class="px-3 py-1 bg-brand-500 hover:bg-brand-600 text-black type-metadata font-bold rounded-full transition-colors flex items-center gap-1 interactive-action">
+                        <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+                        <span>Nuevo</span>
+                    </button>
+                    <!-- Dropdown menu -->
+                    <div id="omni-dropdown" class="hidden absolute right-0 mt-2 w-48 bg-dark-card border border-dark-border rounded-xl shadow-2xl py-1 z-50">
+                        <button onclick="triggerCreationFlow('proyecto')" class="w-full text-left px-4 py-2 hover:bg-white/[0.02] type-metadata flex items-center gap-2 text-neutral-200 border-none bg-transparent interactive-action">
+                            <i data-lucide="folder-plus" class="w-3.5 h-3.5 text-neutral-400"></i> Nuevo Proyecto
+                        </button>
+                        <button onclick="triggerCreationFlow('tarea')" class="w-full text-left px-4 py-2 hover:bg-white/[0.02] type-metadata flex items-center gap-2 text-neutral-200 border-none bg-transparent interactive-action">
+                            <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-neutral-400"></i> Nueva Tarea
+                        </button>
+                        <button onclick="triggerCreationFlow('cliente')" class="w-full text-left px-4 py-2 hover:bg-white/[0.02] type-metadata flex items-center gap-2 text-neutral-200 border-none bg-transparent interactive-action">
+                            <i data-lucide="user-plus" class="w-3.5 h-3.5 text-neutral-400"></i> Nuevo Cliente
+                        </button>
+                        <div class="border-t border-dark-border my-1"></div>
+                        <button onclick="triggerCreationFlow('plantilla')" class="w-full text-left px-4 py-2 hover:bg-white/[0.02] type-metadata flex items-center gap-2 text-brand-500 font-bold border-none bg-transparent interactive-action">
+                            <i data-lucide="file-spreadsheet" class="w-3.5 h-3.5 text-brand-500"></i> Usar Plantilla
+                        </button>
+                    </div>
+                </div>
+
+                <div class="w-px h-3 bg-dark-border"></div>
+
+                <div class="flex items-center gap-3 type-metadata text-neutral-500">
+                    <span class="flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-teal-500" id="sync-dot"></span>
+                        <span id="sync-text">Sync hace 23s</span>
+                    </span>
+                    <div class="w-px h-3 bg-dark-border"></div>
+                    <!-- User initials -->
+                    <div class="w-6 h-6 rounded-full bg-brand-500/10 text-brand-500 border border-brand-500/20 flex items-center justify-center font-bold text-[10px] interactive-action" onclick="cycleAvatarColor()">
+                        DL
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- DASHBOARD CONTAINER (Scrollable) -->
+        <div class="flex-1 overflow-hidden relative flex flex-col">
+            
+            <!-- Page: Home -->
+            <div id="page-home" class="page-container h-[calc(100vh-56px)] overflow-hidden flex flex-col p-4 space-y-3 relative">
+                <!-- Ambient Glow Orbs -->
+                <div class="absolute top-[-100px] left-[10%] w-[350px] h-[350px] rounded-full bg-brand-500/5 blur-[120px] pointer-events-none z-0"></div>
+                <div class="absolute bottom-[100px] right-[5%] w-[400px] h-[400px] rounded-full bg-purple-500/5 blur-[150px] pointer-events-none z-0"></div>
+                <!-- Greeting & Project Focus (Flat Header, no bento-panel container) -->
+                <div class="space-y-4 pb-6 border-b border-dark-border/40 relative z-10">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                        <div class="space-y-1">
+                            <h1 class="text-[36px] font-bold text-white tracking-tight" id="dashboard-greeting">
+                                <!-- Dynamic Greeting -->
+                            </h1>
+                            <p class="text-[15px] text-neutral-400 font-normal leading-relaxed" id="dashboard-sub-greeting">
+                                <!-- Dynamic Sub-greeting -->
+                            </p>
+                        </div>
+                        <!-- Project Selector Tabs (Flat pills style) -->
+                        <div class="flex flex-wrap gap-1.5" id="project-selector-tabs">
+                            <!-- Rendered dynamically -->
+                        </div>
+                    </div>
+                    
+                    <!-- Focus Project Details (Flat layout) -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-1" id="project-focus-content">
+                        <!-- Rendered dynamically -->
+                    </div>
+                </div>
+
+                <!-- Zone B — Metrics Row (5 equal-width cards in grid) -->
+                <div class="grid grid-cols-5 gap-2 relative z-10">
+                    <!-- Card 1: MRR Activo -->
+                    <div onclick="openMetricDrawer('mrr')" class="bento-panel p-4 cursor-pointer interactive-action">
+                        <p class="type-metadata text-neutral-500">MRR activo</p>
+                        <h3 class="type-metric text-white mt-1">$11,550</h3>
+                        <p class="type-metadata text-emerald-400 mt-1 flex items-center gap-1"><i data-lucide="trending-up" class="w-3 h-3"></i> 8.2% este mes</p>
+                    </div>
+                    <!-- Card 2: Clientes Activos -->
+                    <div onclick="openMetricDrawer('clientes')" class="bento-panel p-4 cursor-pointer interactive-action">
+                        <p class="type-metadata text-neutral-500">Clientes activos</p>
+                        <h3 class="type-metric text-white mt-1">8</h3>
+                        <p class="type-metadata text-neutral-500 mt-1">Sin variaciones</p>
+                    </div>
+                    <!-- Card 3: Proyectos Abiertos -->
+                    <div onclick="openMetricDrawer('proyectos')" class="bento-panel p-4 cursor-pointer interactive-action">
+                        <p class="type-metadata text-neutral-500">Proyectos abiertos</p>
+                        <h3 class="type-metric text-white mt-1">12</h3>
+                        <p class="type-metadata text-rose-400 mt-1 flex items-center gap-1"><i data-lucide="trending-down" class="w-3 h-3"></i> 1 cerrado hoy</p>
+                    </div>
+                    <!-- Card 4: Entregas esta Semana -->
+                    <div onclick="openMetricDrawer('entregas')" class="bento-panel p-4 cursor-pointer interactive-action">
+                        <p class="type-metadata text-neutral-500">Entregas de la semana</p>
+                        <h3 class="type-metric text-white mt-1">9</h3>
+                        <p class="type-metadata text-emerald-400 mt-1">4 completadas</p>
+                    </div>
+                    <!-- Card 5: Capacidad Equipo -->
+                    <div onclick="openMetricDrawer('capacidad')" class="bento-panel p-4 cursor-pointer interactive-action">
+                        <p class="type-metadata text-neutral-500">Capacidad de equipo</p>
+                        <h3 class="type-metric text-white mt-1">74%</h3>
+                        <p class="type-metadata text-amber-400 mt-1 flex items-center gap-1"><i data-lucide="trending-up" class="w-3 h-3"></i> Edwin 82%</p>
+                    </div>
+                </div>
+
+                <!-- Zone C — Main Grid (Left 62%, Right 38%, gap 12px) -->
+                <div class="flex-1 min-h-0 flex flex-col lg:flex-row gap-3 w-full relative z-10 pb-1">
+                    
+                    <!-- Left Column (62% width): Timeline -> Tareas críticas -> Entregas semana -->
+                    <div class="w-full lg:w-[62%] h-full min-h-0 flex flex-col gap-2.5">
+                        
+                        <!-- C1a Timeline (GanttRow) -->
+                        <div class="bento-panel p-3.5 flex flex-col flex-1 min-h-0">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-2.5">
+                                <i data-lucide="calendar" class="w-4 h-4 text-neutral-500"></i> Timeline de proyectos
+                            </h3>
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1" id="timeline-rows-container">
+                                <!-- Injected dynamically by mock data -->
+                            </div>
+                        </div>
+
+                        <!-- C1b Tareas Críticas -->
+                        <div class="bento-panel flex-1 min-h-0 flex flex-col">
+                            <div class="p-3 border-b border-dark-border flex justify-between items-center">
+                                <h3 class="type-section-title text-neutral-300 flex items-center gap-2">
+                                    <i data-lucide="check-square" class="w-4 h-4 text-brand-500"></i> Tareas críticas
+                                </h3>
+                                <span class="type-metadata text-neutral-500">Ordenable</span>
+                            </div>
+                            <div class="flex-1 min-h-0 overflow-y-auto p-3 space-y-2 pr-1" id="sortable-tasks">
+                                <!-- Injected dynamically by mock data -->
+                            </div>
+                        </div>
+
+                        <!-- C1c Entregas de la Semana -->
+                        <div class="bento-panel p-3 h-[140px] flex flex-col min-h-[140px]">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-2">
+                                <i data-lucide="archive" class="w-4 h-4 text-neutral-500"></i> Entregas de la semana
+                            </h3>
+                            <div class="flex-1 overflow-y-auto space-y-1.5 pr-1" id="week-deliveries-container">
+                                <!-- Injected dynamically by mock data -->
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Right Column (38% width): Alertas -> Clientes -> Capacidad equipo -> Finanzas rápidas -->
+                    <div class="w-full lg:w-[38%] h-full min-h-0 flex flex-col gap-2.5">
+                        
+                        <!-- C2a Alertas (Generated by Alert Engine) -->
+                        <div class="bento-panel p-3.5 flex flex-col flex-1 min-h-0">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-2">
+                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i> Alertas activas
+                            </h3>
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1" id="alerts-container">
+                                <!-- Injected dynamically by Alert Engine -->
+                            </div>
+                        </div>
+
+                        <!-- C2b Clientes -->
+                        <div class="bento-panel p-3.5 flex flex-col flex-1 min-h-0">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-2">
+                                <i data-lucide="briefcase" class="w-4 h-4 text-neutral-500"></i> Clientes
+                            </h3>
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1" id="clients-list-container">
+                                <!-- Injected dynamically by mock data -->
+                            </div>
+                        </div>
+
+                        <!-- C2c Capacidad equipo -->
+                        <div class="bento-panel p-3.5 flex flex-col flex-1 min-h-0">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-2">
+                                <i data-lucide="activity" class="w-4 h-4 text-neutral-500"></i> Carga del equipo
+                            </h3>
+                            <div class="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1" id="team-capacity-container">
+                                <!-- Injected dynamically by mock data -->
+                            </div>
+                        </div>
+
+                        <!-- C2d Finanzas rápidas -->
+                        <div onclick="openFinanceDrawer()" class="bento-panel p-3 h-[110px] min-h-[110px] cursor-pointer flex flex-col justify-between interactive-action">
+                            <h3 class="type-section-title text-neutral-300 flex items-center gap-2 pb-1.5">
+                                <i data-lucide="dollar-sign" class="w-4 h-4 text-emerald-500"></i> Finanzas rápidas
+                            </h3>
+                            <div class="space-y-1.5" 
+                                 onmouseenter="showTooltip(event, 'Necesitas $1,250 más — equivale a 1 cliente Impulso o completar el proyecto Vidagro')" 
+                                 onmouseleave="hideTooltip()">
+                                <div class="flex justify-between type-metadata font-bold">
+                                    <span>Meta del mes ($10k)</span>
+                                    <span class="text-white">$8,750</span>
+                                </div>
+                                <div class="progress-bar-bg"><div class="progress-bar-fill bg-emerald-500" style="width: 87.5%;"></div></div>
+                            </div>
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+            <!-- Page: Análisis -->
+            <div id="page-analisis" class="page-container flex-1 overflow-y-auto p-6 space-y-6 hidden">
+                <div>
+                    <span class="type-metadata text-neutral-500 uppercase">Sala de Control — Análisis</span>
+                    <h2 class="type-metric text-white mt-1 uppercase">Rendimiento Operativo</h2>
+                    <p class="type-body text-neutral-500 mt-1">Comparativa de carga, entregables y rentabilidad por equipo.</p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <!-- Column 1: Rentabilidad -->
+                    <div class="bento-panel p-4 space-y-4">
+                        <h3 class="type-card-title text-neutral-200 uppercase">Margen por Cliente</h3>
+                        <div class="space-y-3 pt-2">
+                            <div class="flex justify-between type-body"><span>ZooPizza</span><span class="text-emerald-400 font-bold">82%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-emerald-500" style="width: 82%;"></div></div>
+                            <div class="flex justify-between type-body"><span>LEGION LV</span><span class="text-emerald-400 font-bold">75%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-emerald-500" style="width: 75%;"></div></div>
+                            <div class="flex justify-between type-body"><span>Vidagro</span><span class="text-amber-400 font-bold">60%</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-amber-500" style="width: 60%;"></div></div>
+                        </div>
+                    </div>
+                    <!-- Column 2: Tareas Resueltas -->
+                    <div class="bento-panel p-4 space-y-4">
+                        <h3 class="type-card-title text-neutral-200 uppercase">Eficiencia de Tareas</h3>
+                        <div class="space-y-3 pt-2">
+                            <div class="flex justify-between type-body"><span>Completadas</span><span class="text-white">124</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-brand-500" style="width: 78%;"></div></div>
+                            <div class="flex justify-between type-body"><span>Vencidas</span><span class="text-rose-400 font-bold">12</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-rose-500" style="width: 10%;"></div></div>
+                            <div class="flex justify-between type-body"><span>Bloqueadas</span><span class="text-amber-400 font-bold">8</span></div>
+                            <div class="progress-bar-bg"><div class="progress-bar-fill bg-amber-500" style="width: 6%;"></div></div>
+                        </div>
+                    </div>
+                    <!-- Column 3: Histórico MRR -->
+                    <div class="bento-panel p-4 space-y-4">
+                        <h3 class="type-card-title text-neutral-200 uppercase">Crecimiento Mensual</h3>
+                        <div class="space-y-3 pt-2">
+                            <div class="flex justify-between type-body"><span>Abril</span><span class="text-neutral-400">$9,200</span></div>
+                            <div class="flex justify-between type-body"><span>Mayo</span><span class="text-neutral-400">$10,400</span></div>
+                            <div class="flex justify-between type-body"><span>Junio</span><span class="text-white font-bold">$11,550</span></div>
+                            <div class="h-10 flex items-end gap-1.5 pt-1">
+                                <div class="w-full bg-dark-border h-6 rounded-sm"></div>
+                                <div class="w-full bg-white/10 h-8 rounded-sm"></div>
+                                <div class="w-full bg-brand-500 h-10 rounded-sm"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Usuarios -->
+            <div id="page-usuarios" class="page-container flex-1 overflow-y-auto p-6 space-y-4 hidden">
+                <div class="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                    <div class="w-12 h-12 rounded-full border border-dark-border flex items-center justify-center text-neutral-500"><i data-lucide="users" class="w-6 h-6"></i></div>
+                    <div>
+                        <h3 class="type-section-title text-neutral-200 uppercase">Módulos de Equipo</h3>
+                        <p class="type-body text-neutral-500 mt-1">Administración de colaboradores, roles y permisos de Notion.</p>
+                    </div>
+                    <div class="bg-dark-card border border-dark-border rounded-xl p-4 w-full max-w-md text-left type-body space-y-3">
+                        <div class="type-metadata text-neutral-500 uppercase">Colaboradores Activos</div>
+                        <div class="flex justify-between items-center py-1 border-b border-dark-border">
+                            <span>Andrés (Líder Diseño)</span><span class="text-[10px] px-1.5 py-0.5 bg-brand-500/10 text-brand-500 border border-brand-500/20 rounded font-bold uppercase">ADMIN</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1 border-b border-dark-border">
+                            <span>Edwin (Líder Dev)</span><span class="text-[10px] px-1.5 py-0.5 bg-brand-500/10 text-brand-500 border border-brand-500/20 rounded font-bold uppercase">LÍDER</span>
+                        </div>
+                        <div class="flex justify-between items-center py-1">
+                            <span>Yordy (Creative Designer)</span><span class="text-[10px] px-1.5 py-0.5 bg-white/5 border border-white/10 rounded text-neutral-400 font-bold uppercase">CREATIVE</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Clientes -->
+            <div id="page-clientes" class="page-container flex-1 overflow-y-auto p-6 space-y-4 hidden">
+                <div class="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                    <div class="w-12 h-12 rounded-full border border-dark-border flex items-center justify-center text-neutral-500"><i data-lucide="briefcase" class="w-6 h-6"></i></div>
+                    <div>
+                        <h3 class="type-section-title text-neutral-200 uppercase">Directorio de Clientes</h3>
+                        <p class="type-body text-neutral-500 mt-1">Contratos, renovaciones y balances de facturación.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Finanzas -->
+            <div id="page-finanzas" class="page-container flex-1 overflow-y-auto p-6 space-y-4 hidden">
+                <div class="flex flex-col items-center justify-center py-20 text-center space-y-4">
+                    <div class="w-12 h-12 rounded-full border border-dark-border flex items-center justify-center text-neutral-500"><i data-lucide="dollar-sign" class="w-6 h-6"></i></div>
+                    <div>
+                        <h3 class="type-section-title text-neutral-200 uppercase">Historial Financiero</h3>
+                        <p class="type-body text-neutral-500 mt-1">Facturas pendientes, ingresos proyectados y sincronización bancaria.</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Fricción Deliberada / Creation Flow Modal -->
+    <div id="creation-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm hidden">
+        <div class="bg-dark-card border border-dark-border soft-glass rounded-2xl w-full max-w-lg p-6 shadow-2xl relative">
+            <button onclick="closeCreateModal()" class="absolute top-4 right-4 text-neutral-500 hover:text-white type-metadata uppercase font-bold tracking-wider cursor-pointer interactive-action">Cerrar</button>
+            <div id="modal-flow-content"></div>
+        </div>
+    </div>
+
+    <!-- Global Search Modal (Cmd+K) -->
+    <div id="search-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm hidden" onclick="closeSearchModal()">
+        <div class="bg-dark-card border border-dark-border soft-glass rounded-2xl w-full max-w-xl p-4 shadow-2xl relative flex flex-col h-[400px]" onclick="event.stopPropagation()">
+            <!-- Search Header -->
+            <div class="flex items-center gap-3 border-b border-dark-border pb-3">
+                <i data-lucide="search" class="w-4 h-4 text-neutral-500"></i>
+                <input type="text" id="search-input" placeholder="Buscar proyectos, clientes, tareas, miembros..." class="bg-transparent text-white border-0 outline-none w-full text-xs placeholder-neutral-600" oninput="handleSearchQuery(this.value)">
+                <kbd class="text-[9px] bg-dark-bg border border-dark-border px-1.5 py-0.5 rounded text-neutral-500">ESC</kbd>
+            </div>
+            <!-- Results Area -->
+            <div class="flex-1 overflow-y-auto pt-3 space-y-3" id="search-results">
+                <!-- Grouped search results will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification (Rollback indicator) -->
+    <div id="toast" class="fixed bottom-6 right-6 soft-glass text-neutral-200 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 opacity-0 pointer-events-none transition-all duration-300 z-50">
+        <i data-lucide="x-circle" class="w-5 h-5 text-rose-400"></i>
+        <div>
+            <p class="type-card-title text-neutral-200">Notion Sync</p>
+            <p class="type-metadata text-neutral-400">Error de conexión. Restaurando estado...</p>
+        </div>
+    </div>
+
+    <!-- Floating Brandex Copilot Trigger -->
+    <button onclick="toggleCopilot()" class="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-brand-500 hover:bg-brand-600 text-black flex items-center justify-center shadow-2xl transition-all hover:scale-105 active:scale-95 group focus-visible:ring-2 focus-visible:ring-brand-500">
+        <i data-lucide="sparkles" class="w-5 h-5 group-hover:rotate-12 transition-transform"></i>
+        <span class="absolute -top-1 -right-1 flex h-3 w-3">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-3 w-3 bg-teal-500"></span>
+        </span>
+    </button>
+
+    <!-- Copilot AI Drawer -->
+    <div id="copilot-drawer" class="drawer drawer-closed fixed inset-y-0 right-0 z-50 w-[420px] soft-glass flex flex-col shadow-[0_0_50px_rgba(0,0,0,0.95)]">
+        <!-- Header -->
+        <div class="px-6 pt-5 pb-3 border-b border-white/5 flex justify-between items-center bg-black/40">
+            <div class="flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4 text-brand-500"></i>
+                <span class="type-section-title text-white uppercase">Brandex Copilot</span>
+            </div>
+            <button onclick="closeCopilot()" class="text-neutral-500 hover:text-white text-[10px] uppercase font-bold tracking-wider transition-colors cursor-pointer interactive-action">Cerrar</button>
+        </div>
+        
+        <!-- Chat history and outputs -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-4" id="copilot-chat-history">
+            <!-- Initial welcome message -->
+            <div class="space-y-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-brand-500"></span>
+                    <span class="type-metadata text-neutral-400 uppercase">Copilot</span>
+                </div>
+                <p class="type-body text-neutral-200">
+                    Hola Diego. Estoy conectado a tus bases de datos de Notion (Proyectos, Clientes y Tareas). ¿Qué acción u optimización deseas realizar hoy?
+                </p>
+            </div>
+            
+            <!-- AI Research Loader (hidden by default) -->
+            <div id="copilot-loader" class="hidden p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+                <div class="flex justify-between items-center">
+                    <span class="type-metadata text-brand-500 uppercase tracking-widest font-black">Deep Research Agent</span>
+                    <div class="w-3 h-3 border-2 border-brand-500/20 border-t-brand-500 rounded-full animate-spin"></div>
+                </div>
+                <div class="space-y-2 text-[11px]" id="copilot-loader-steps">
+                    <!-- Steps injected here dynamically -->
+                </div>
+            </div>
+
+            <!-- AI Response container (hidden by default) -->
+            <div id="copilot-response-container" class="hidden space-y-3">
+                <div class="flex justify-between items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-brand-500"></span>
+                        <span class="type-metadata text-neutral-400 uppercase">Respuesta</span>
+                    </div>
+                    <!-- Confidence Meter -->
+                    <div class="flex items-center gap-1.5 bg-brand-500/10 border border-brand-500/20 px-2 py-0.5 rounded-full" id="copilot-confidence">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+                        <span class="text-[9px] text-brand-500 font-bold uppercase tracking-wider">94% Confianza</span>
+                    </div>
+                </div>
+                <!-- Response Text and Caret -->
+                <p class="type-body text-white bg-white/[0.01] border border-white/5 p-3 rounded-xl leading-relaxed whitespace-pre-wrap" id="copilot-response-text"></p>
+            </div>
+        </div>
+        
+        <!-- Prompt Box Area -->
+        <div class="p-4 border-t border-white/10 bg-black/40 space-y-3">
+            <div class="relative bg-neutral-900 border border-white/10 rounded-xl overflow-hidden focus-within:border-brand-500/50 transition-colors">
+                <textarea id="copilot-prompt-input" rows="1" placeholder="Ej. 'Optimizar edwin' o 'Proyectar MRR'..." 
+                          class="w-full bg-transparent text-white border-0 outline-none resize-none p-3 pr-10 text-xs placeholder-neutral-600 block min-h-[40px] max-h-[160px]"
+                          oninput="autoGrowPrompt(this)"
+                          onkeydown="handleCopilotSubmit(event)"></textarea>
+                <button onclick="submitCopilotPrompt()" class="absolute right-2.5 bottom-2.5 text-neutral-500 hover:text-white transition-colors cursor-pointer interactive-action">
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                </button>
+            </div>
+            
+            <!-- Context tools footer -->
+            <div class="flex justify-between items-center text-[10px] text-neutral-500">
+                <div class="flex items-center gap-2">
+                    <span class="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded-full cursor-pointer hover:bg-white/10 type-metadata">
+                        <i data-lucide="database" class="w-2.5 h-2.5"></i>
+                        <span>Notion Live</span>
+                    </span>
+                    <span class="flex items-center gap-1 bg-white/5 border border-white/5 px-2 py-0.5 rounded-full cursor-pointer hover:bg-white/10 type-metadata">
+                        <i data-lucide="sliders" class="w-2.5 h-2.5"></i>
+                        <span>Claude-3.5-Sonnet</span>
+                    </span>
+                </div>
+                <div id="copilot-char-count" class="type-metadata">0/1000</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MOCK DATA SEED & LOGIC -->
+    <script>
+        // --- Seed Data from Specification ---
+        const seedData = {
+            clients: [
+                { id: "c1", nombre: "ZooPizza", mrr: 2500, pack: "Crecimiento" },
+                { id: "c2", nombre: "Código Distinto", mrr: 1250, pack: "Impulso" },
+                { id: "c3", nombre: "LEGION LV", mrr: 3800, pack: "Proyecto" },
+                { id: "c4", nombre: "Grupo Sie7ek", mrr: 1250, pack: "Impulso", renewalDays: 14 },
+                { id: "c5", nombre: "Vidagro", mrr: 2200, pack: "Proyecto" },
+                { id: "c6", nombre: "Casa D'Sofi", mrr: 2500, pack: "Crecimiento" },
+                { id: "c7", nombre: "Proyecto Stivi", mrr: 1800, pack: "Proyecto" },
+                { id: "c8", nombre: "Rubén Torres", mrr: 1250, pack: "Impulso" }
+            ],
+            projects: [
+                { id: "p1", clientId: "c1", nombre: "ZooPizza Campaign", status: "on-track", startDate: "2026-06-01", deadline: "2026-06-25", completedPct: 75, ownerId: "w1" },
+                { id: "p2", clientId: "c2", nombre: "Código Distinto Web", status: "on-track", startDate: "2026-06-05", deadline: "2026-06-28", completedPct: 50, ownerId: "w2" },
+                { id: "p3", clientId: "c3", nombre: "LEGION Launch", status: "late", startDate: "2026-05-15", deadline: "2026-06-15", completedPct: 90, ownerId: "w3" },
+                { id: "p4", clientId: "c4", nombre: "Sie7ek Branding", status: "at-risk", startDate: "2026-06-01", deadline: "2026-06-19", completedPct: 35, ownerId: "w4" },
+                { id: "p5", clientId: "c5", nombre: "Vidagro E-Commerce", status: "at-risk", startDate: "2026-06-02", deadline: "2026-06-17", completedPct: 20, ownerId: "w3" },
+                { id: "p6", clientId: "c6", nombre: "Casa D'Sofi Social", status: "new", startDate: "2026-06-10", deadline: "2026-06-30", completedPct: 5, ownerId: "w5" },
+                { id: "p7", clientId: "c7", nombre: "Proyecto Stivi App", status: "on-track", startDate: "2026-06-01", deadline: "2026-06-29", completedPct: 60, ownerId: "w1" },
+                { id: "p8", clientId: "c8", nombre: "Rubén Torres Brand", status: "on-track", startDate: "2026-06-05", deadline: "2026-06-25", completedPct: 40, ownerId: "w2" },
+                { id: "p9", clientId: "c1", nombre: "ZooPizza Reels", status: "on-track", startDate: "2026-06-08", deadline: "2026-06-22", completedPct: 15, ownerId: "w4" },
+                { id: "p10", clientId: "c3", nombre: "LEGION SEO", status: "on-track", startDate: "2026-06-01", deadline: "2026-06-30", completedPct: 10, ownerId: "w5" },
+                { id: "p11", clientId: "c6", nombre: "Casa D'Sofi Ads", status: "on-track", startDate: "2026-06-01", deadline: "2026-06-26", completedPct: 80, ownerId: "w2" },
+                { id: "p12", clientId: "c5", nombre: "Vidagro Packaging", status: "late", startDate: "2026-05-10", deadline: "2026-06-12", completedPct: 95, ownerId: "w3" }
+            ],
+            tasks: [
+                { id: "t1", projectId: "p5", nombre: "Lanzar E-Commerce Vidagro", status: "todo", ownerId: "w3", dueDate: "2026-06-17", hours: 2.5, desc: "Desplegar cambios finales del carrito y pasarela de pago en el staging de Vercel." },
+                { id: "t2", projectId: "p4", nombre: "Revisar Propuesta de Sie7ek", status: "todo", ownerId: "w4", dueDate: "2026-06-19", hours: 1.5, desc: "Alinear propuesta cromática con el manual de identidad corporativa de Sie7ek." },
+                { id: "t3", projectId: "p3", nombre: "Entrega Final LEGION", status: "todo", ownerId: "w3", dueDate: "2026-06-15", hours: 2.0, desc: "Enviar entregable final con el reporte SEO y configuraciones de producción." },
+                { id: "t4", projectId: "p1", nombre: "Reunión de Feedback ZooPizza", status: "done", ownerId: "w1", dueDate: "2026-06-12", hours: 1.0, desc: "Alinear cambios solicitados por el cliente sobre el reel publicitario Q3." },
+                { id: "t5", projectId: "p2", nombre: "Ajustar Layout Código Distinto", status: "in-progress", ownerId: "w2", dueDate: "2026-06-20", hours: 3.0, desc: "Refactorizar layouts responsivos de la landing page." },
+                { id: "t6", projectId: "p12", nombre: "Revisar Dummies Vidagro", status: "blocked", ownerId: "w3", dueDate: "2026-06-12", hours: 1.0, desc: "Esperando confirmación del cliente sobre el material impreso final." }
+            ],
+            team: [
+                { id: "w1", nombre: "Andrés", capacity: 90 },
+                { id: "w2", nombre: "Sin", capacity: 75 },
+                { id: "w3", nombre: "Edwin", capacity: 80 },
+                { id: "w4", nombre: "Yordy", capacity: 60 },
+                { id: "w5", nombre: "Maria", capacity: 65 }
+            ]
+        };
+
+        // --- Alert Engine logic ---
+        function generateAlerts() {
+            const alerts = [];
+            const today = new Date();
+            today.setHours(0,0,0,0);
+
+            // 1. Projects Deadlines
+            seedData.projects.forEach(p => {
+                if (p.completedPct < 100) {
+                    const [y, m, d] = p.deadline.split('-').map(Number);
+                    const dlDate = new Date(y, m-1, d);
+                    const diffDays = Math.ceil((dlDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays <= 3) {
+                        alerts.push({
+                            id: `a-proj-danger-${p.id}`,
+                            type: 'danger',
+                            title: `Entrega crítica en ${diffDays} días: ${p.nombre}`,
+                            subtitle: 'Falta validación de entregable final.',
+                            ctaLabel: 'Notificar cliente',
+                            ctaAction: `resolveAlert('a-proj-danger-${p.id}', 'Cliente notificado')`
+                        });
+                    } else if (diffDays <= 7) {
+                        alerts.push({
+                            id: `a-proj-warn-${p.id}`,
+                            type: 'warning',
+                            title: `Entrega cercana (${diffDays} días): ${p.nombre}`,
+                            subtitle: 'Tareas pendientes por asignar.',
+                            ctaLabel: 'Ver Proyecto',
+                            ctaAction: `openProjectDrawer('${p.nombre}')`
+                        });
+                    }
+                }
+            });
+
+            // 2. Team capacity warning
+            seedData.team.forEach(t => {
+                if (t.capacity > 85) {
+                    alerts.push({
+                        id: `a-team-warn-${t.id}`,
+                        type: 'warning',
+                        title: `Capacidad crítica: ${t.nombre} al ${t.capacity}%`,
+                        subtitle: 'Riesgo de sobrecarga en entregas esta semana.',
+                        ctaLabel: 'Redistribuir carga',
+                        ctaAction: `openCapacityDrawer('${t.nombre}')`
+                    });
+                }
+            });
+
+            // 3. Client Contract renewal
+            seedData.clients.forEach(c => {
+                if (c.renewalDays && c.renewalDays <= 14) {
+                    alerts.push({
+                        id: `a-client-info-${c.id}`,
+                        type: 'info',
+                        title: `Renovación de Contrato: ${c.nombre}`,
+                        subtitle: `El paquete ${c.pack} vence en 14 días.`,
+                        ctaLabel: 'Enviar propuesta',
+                        ctaAction: `resolveAlert('a-client-info-${c.id}', 'Propuesta de renovación enviada')`
+                    });
+                }
+            });
+
+            return alerts;
+        }
+
+        // --- State for Ongoing Projects Bento Card ---
+        let currentActiveProjectId = 'p5'; // Default: Vidagro E-Commerce
+        let expandedTaskId = null;        // Expanded task details
+
+        function changeActiveProject(projectId) {
+            currentActiveProjectId = projectId;
+            expandedTaskId = null;
+            renderDashboard();
+        }
+
+        function toggleTaskExpansion(taskId) {
+            expandedTaskId = (expandedTaskId === taskId) ? null : taskId;
+            renderDashboard();
+        }
+
+        function toggleProjectTaskComplete(event, taskId) {
+            event.stopPropagation();
+            const task = seedData.tasks.find(t => t.id === taskId);
+            if (task) {
+                task.status = (task.status === 'done') ? 'todo' : 'done';
+                
+                // Recalculate project completion percentage
+                const proj = seedData.projects.find(p => p.id === task.projectId);
+                if (proj) {
+                    const projTasks = seedData.tasks.filter(t => t.projectId === proj.id);
+                    const completedTasks = projTasks.filter(t => t.status === 'done').length;
+                    proj.completedPct = projTasks.length > 0 ? Math.round((completedTasks / projTasks.length) * 100) : proj.completedPct;
+                }
+                
+                const verb = (task.status === 'done') ? 'completada' : 'marcada como pendiente';
+                showToastNotification(`${proj ? proj.nombre : 'Proyecto'}: Tarea "${task.nombre}" ${verb} (Notion Sync)`);
+                
+                renderDashboard();
+            }
+        }
+
+        // --- Render functions ---
+        function renderDashboard() {
+            // Generate Dynamic Greeting
+            const greetingEl = document.getElementById('dashboard-greeting');
+            const subGreetingEl = document.getElementById('dashboard-sub-greeting');
+            if (greetingEl) {
+                const now = new Date();
+                const hour = now.getHours();
+                let greetingWord = 'Buenos días';
+                
+                if (hour >= 6 && hour < 12) {
+                    greetingWord = 'Buenos días';
+                } else if (hour >= 12 && hour < 19) {
+                    greetingWord = 'Buenas tardes';
+                } else {
+                    greetingWord = 'Buenas noches';
+                }
+                
+                greetingEl.innerText = `${greetingWord}, Andrés`;
+                
+                // Dynamic sub-greeting based on open items
+                const activeProjCount = seedData.projects.filter(p => p.status !== 'done').length;
+                const pendingTasksCount = seedData.tasks.filter(t => t.status !== 'done').length;
+                if (subGreetingEl) {
+                    subGreetingEl.innerText = `Hoy tienes ${activeProjCount} proyectos en curso y ${pendingTasksCount} tareas críticas pendientes de Notion.`;
+                }
+            }
+
+            // Render C1a Timeline
+            const timelineContainer = document.getElementById('timeline-rows-container');
+            timelineContainer.innerHTML = '';
+            seedData.projects.slice(0, 4).forEach(p => {
+                const client = seedData.clients.find(c => c.id === p.clientId);
+                const owner = seedData.team.find(t => t.id === p.ownerId);
+                const statusColor = p.status === 'late' ? 'bg-red-500' : p.status === 'at-risk' ? 'bg-amber-500' : 'bg-emerald-500';
+                
+                timelineContainer.innerHTML += `
+                    <div class="space-y-1">
+                        <div class="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider text-neutral-400">
+                            <div class="flex items-center gap-1.5 cursor-pointer hover:text-white" onclick="openProjectDrawer('${p.nombre}')">
+                                <span class="w-1.5 h-1.5 rounded-full ${statusColor} ${p.status === 'late' ? 'pulse-dot' : ''}"></span>
+                                <span class="text-[12px] font-semibold text-white/90">${p.nombre}</span>
+                            </div>
+                            <span>${p.completedPct}%</span>
+                        </div>
+                        <div class="relative h-6 bg-black border border-[#262626] rounded-lg overflow-hidden cursor-pointer"
+                             onmouseenter="showGanttTooltip(event, '${p.nombre}', '${owner.nombre}', '${p.completedPct}%', 'Límite: ${p.deadline}', '${p.status}')"
+                             onmouseleave="hideGanttTooltip()"
+                             onclick="openProjectDrawer('${p.nombre}')">
+                            <div class="progress-bar-fill bg-brand-500/20 border-r border-brand-500/50" style="width: ${p.completedPct}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Render C1b_new Proyectos en Curso
+            const projectTabsContainer = document.getElementById('project-selector-tabs');
+            const projectFocusContainer = document.getElementById('project-focus-content');
+            
+            if (projectTabsContainer && projectFocusContainer) {
+                // Get all projects that have at least one task
+                const activeProjects = seedData.projects.filter(p => 
+                    seedData.tasks.some(t => t.projectId === p.id)
+                );
+                
+                // Clear tabs
+                projectTabsContainer.innerHTML = '';
+                
+                activeProjects.forEach(p => {
+                    const isActive = p.id === currentActiveProjectId;
+                    const activeClass = isActive 
+                        ? 'bg-brand-500/20 text-brand-500 border-brand-500/50' 
+                        : 'bg-white/5 text-neutral-400 border-transparent hover:text-white hover:bg-white/10';
+                    const displayName = p.nombre.replace(' Campaign', '').replace(' E-Commerce', '').replace(' Launch', '').replace(' Web', '').replace(' Branding', '').replace(' Packaging', '');
+                    projectTabsContainer.innerHTML += `
+                        <button onclick="changeActiveProject('${p.id}')" class="px-3 py-1 rounded-full text-[13px] font-bold border transition-all cursor-pointer ${activeClass}">
+                            ${displayName}
+                        </button>
+                    `;
+                });
+                
+                // Find current project
+                const proj = seedData.projects.find(p => p.id === currentActiveProjectId) || seedData.projects[0];
+                const client = seedData.clients.find(c => c.id === proj.clientId);
+                const owner = seedData.team.find(t => t.id === proj.ownerId);
+                const projTasks = seedData.tasks.filter(t => t.projectId === proj.id);
+                
+                // Calculate completion
+                const totalTasks = projTasks.length;
+                const completedTasks = projTasks.filter(t => t.status === 'done').length;
+                const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : proj.completedPct;
+                
+                // Status colors
+                const statusColorText = proj.status === 'late' ? 'text-rose-400' : proj.status === 'at-risk' ? 'text-amber-400' : 'text-emerald-400';
+                const statusBg = proj.status === 'late' ? 'bg-rose-500' : proj.status === 'at-risk' ? 'bg-amber-500' : 'bg-emerald-500';
+                
+                // AI Insights
+                let aiInsight = '';
+                if (proj.id === 'p5') {
+                    aiInsight = `${owner.nombre} requiere validación final de pasarela de pago para evitar retraso del 15% en el lanzamiento.`;
+                } else if (proj.id === 'p4') {
+                    aiInsight = `Alineación de propuesta cromática pendiente de aprobación por el director de Sie7ek.`;
+                } else if (proj.id === 'p3') {
+                    aiInsight = `Entrega crítica hoy. Edwin está consolidando el reporte final SEO.`;
+                } else if (proj.id === 'p1') {
+                    aiInsight = `ZooPizza Campaign está al día. Feedback de Q3 incorporado correctamente.`;
+                } else if (proj.id === 'p2') {
+                    aiInsight = `Sin reporta demoras menores en el responsive; sin riesgo de entrega para el 28.`;
+                } else {
+                    aiInsight = `Proyecto bajo revisión de prioridades de entrega semanales.`;
+                }
+                
+                // Left Column (Properties & Insights)
+                let leftHtml = `
+                    <div class="md:col-span-5 space-y-4 pr-0 md:pr-4 border-r border-dark-border/0 md:border-r border-dark-border">
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center text-[14px]">
+                                <span class="text-neutral-500 font-medium">Cliente</span>
+                                <span class="text-white font-semibold">${client.nombre}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-[14px]">
+                                <span class="text-neutral-500 font-medium">Líder</span>
+                                <div class="flex items-center gap-1.5 cursor-pointer hover:text-white" onclick="openCapacityDrawer('${owner.nombre}')">
+                                    <div class="w-5 h-5 rounded-full overflow-hidden border border-neutral-800">
+                                        <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${owner.nombre}" class="w-full h-full object-cover">
+                                    </div>
+                                    <span class="text-brand-500 hover:underline font-semibold">${owner.nombre}</span>
+                                </div>
+                            </div>
+                            <div class="flex justify-between items-center text-[14px]">
+                                <span class="text-neutral-500 font-medium">Contrato (MRR)</span>
+                                <span class="text-white font-semibold">$${client.mrr}/mes</span>
+                            </div>
+                            <div class="flex justify-between items-center text-[14px]">
+                                <span class="text-neutral-500 font-medium">Límite</span>
+                                <span class="text-white font-semibold">${proj.deadline}</span>
+                            </div>
+                            <div class="flex justify-between items-center text-[14px]">
+                                <span class="text-neutral-500 font-medium">Estado</span>
+                                <span class="${statusColorText} font-bold uppercase text-[12px] tracking-wider">${proj.status.toUpperCase()}</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5 pt-1">
+                            <div class="flex justify-between text-[13px] font-bold text-neutral-400 uppercase tracking-wider">
+                                <span>Progreso Tareas</span>
+                                <span>${completedTasks}/${totalTasks} (${progressPct}%)</span>
+                            </div>
+                            <div class="progress-bar-bg h-1.5"><div class="progress-bar-fill ${statusBg}" style="width: ${progressPct}%;"></div></div>
+                        </div>
+
+                        <div class="p-3.5 rounded-xl bg-brand-500/5 border border-brand-500/10 space-y-1">
+                            <div class="flex items-center gap-1.5 text-[12px] font-black uppercase text-brand-500 tracking-wider">
+                                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                                <span>AI Insight</span>
+                            </div>
+                            <p class="text-[14px] text-neutral-300 leading-relaxed font-normal">${aiInsight}</p>
+                        </div>
+                    </div>
+                `;
+                
+                // Right Column (Tasks Checklist)
+                let rightHtml = `
+                    <div class="md:col-span-7 space-y-3">
+                        <div class="flex justify-between items-center pb-1">
+                            <span class="text-[13px] font-bold text-neutral-400 uppercase tracking-wider">Checklist de Tareas</span>
+                            <span class="text-[13px] text-neutral-500">${completedTasks}/${totalTasks} completas</span>
+                        </div>
+                        <div class="space-y-2 max-h-[320px] overflow-y-auto pr-1 project-task-list" id="project-task-list-${proj.id}">
+                `;
+                
+                if (projTasks.length === 0) {
+                    rightHtml += `
+                        <div class="p-4 text-center text-neutral-500 text-[14px] border border-dashed border-dark-border rounded-xl">
+                            No hay tareas pendientes en este proyecto.
+                        </div>
+                    `;
+                } else {
+                    projTasks.forEach(t => {
+                        const isDone = t.status === 'done';
+                        const isExpanded = t.id === expandedTaskId;
+                        
+                        rightHtml += `
+                            <div class="group flex flex-col p-3 rounded-xl bg-black border border-[#262626] hover:border-[#404040] transition-all relative" data-task-id="${t.id}">
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                                        <button onclick="toggleProjectTaskComplete(event, '${t.id}')" class="w-4 h-4 rounded border border-[#262626] flex items-center justify-center hover:border-brand-500 transition-colors relative overflow-hidden ${isDone ? 'bg-brand-500/20 border-brand-500' : ''} cursor-pointer">
+                                            <div class="w-2.5 h-2.5 bg-brand-500 rounded-sm ${isDone ? '' : 'hidden'}"></div>
+                                        </button>
+                                        <span onclick="toggleTaskExpansion('${t.id}')" class="text-[14px] font-normal text-neutral-200 truncate cursor-pointer hover:text-white select-none ${isDone ? 'line-through text-neutral-500' : ''}">${t.nombre}</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5">
+                                        <button onclick="toggleTaskExpansion('${t.id}')" class="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white transition-colors cursor-pointer">
+                                            <i data-lucide="${isExpanded ? 'chevron-up' : 'chevron-down'}" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <div class="mt-2.5 pt-2.5 border-t border-dark-border/50 text-[14px] space-y-2.5 ${isExpanded ? 'block' : 'hidden'}">
+                                    <p class="text-neutral-400 leading-relaxed font-normal">${t.desc || 'Sin descripción detallada.'}</p>
+                                    <div class="grid grid-cols-2 gap-2.5 text-[13px] pt-1">
+                                        <div class="flex justify-between border-b border-dark-border/30 pb-1 pr-2">
+                                            <span class="text-neutral-500">Límite:</span>
+                                            <span class="text-neutral-300 font-semibold">${t.dueDate}</span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-dark-border/30 pb-1">
+                                            <span class="text-neutral-500">Esfuerzo:</span>
+                                            <span class="text-neutral-300 font-semibold">${t.hours || 0}h hoy</span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-dark-border/30 pb-1 pr-2">
+                                            <span class="text-neutral-500">Origen DB:</span>
+                                            <span class="text-neutral-400 font-mono text-[11px]">Notion/Tareas</span>
+                                        </div>
+                                        <div class="flex justify-between border-b border-dark-border/30 pb-1">
+                                            <span class="text-neutral-500">Líder:</span>
+                                            <span class="text-neutral-300 font-semibold">${owner.nombre}</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-end gap-2 pt-1.5">
+                                        <button onclick="toggleProjectTaskComplete(event, '${t.id}')" class="px-2.5 py-1 ${isDone ? 'border border-neutral-700 bg-transparent text-neutral-300 hover:bg-neutral-800' : 'bg-brand-500 text-black hover:bg-brand-600'} rounded-lg text-[13px] font-bold transition-all cursor-pointer">
+                                            ${isDone ? 'Marcar pendiente' : 'Marcar completada'}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+                
+                rightHtml += `
+                        </div>
+                    </div>
+                `;
+                
+                projectFocusContainer.innerHTML = leftHtml + rightHtml;
+            }
+
+            // Render C1b Tareas críticas
+            const tasksContainer = document.getElementById('sortable-tasks');
+            tasksContainer.innerHTML = '';
+            seedData.tasks.forEach(t => {
+                const owner = seedData.team.find(tm => tm.id === t.ownerId);
+                const isDone = t.status === 'done';
+                tasksContainer.innerHTML += `
+                    <div class="group flex items-center justify-between p-3 rounded-xl bg-black border border-[#262626] hover:border-[#404040] transition-all cursor-grab relative" data-task-id="${t.id}">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <div class="text-neutral-700 cursor-move"><i data-lucide="grip-vertical" class="w-3.5 h-3.5"></i></div>
+                            <button onclick="completeTask(this, '${t.id}')" class="w-4 h-4 rounded border border-[#262626] flex items-center justify-center hover:border-brand-500 transition-colors relative overflow-hidden ${isDone ? 'bg-brand-500/20 border-brand-500' : ''} cursor-pointer">
+                                <div class="w-2.5 h-2.5 bg-brand-500 rounded-sm ${isDone ? '' : 'hidden'}" id="check-icon-${t.id}"></div>
+                            </button>
+                            <span onclick="openTaskDrawer('${t.nombre}', '${t.id}')" class="text-[12px] font-normal text-neutral-200 truncate cursor-pointer hover:text-white select-none task-title ${isDone ? 'line-through text-neutral-500' : ''}">${t.nombre}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <!-- Floating hover actions -->
+                            <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 relative">
+                                <button onclick="toggleTaskMenu(event, '${t.id}')" class="p-1 hover:bg-neutral-800 rounded text-neutral-400 hover:text-white transition-colors cursor-pointer">
+                                    <i data-lucide="more-horizontal" class="w-3.5 h-3.5"></i>
+                                </button>
+                                <!-- Floating Task Menu -->
+                                <div id="task-menu-${t.id}" class="hidden absolute right-0 top-6 w-32 bg-black border border-[#262626] rounded-lg shadow-2xl py-1 z-30">
+                                    <button onclick="actionTask(event, '${t.id}', 'Reasignado')" class="w-full text-left px-3 py-1.5 hover:bg-neutral-900 text-[10px] text-neutral-200 uppercase font-bold tracking-wider border-none bg-transparent cursor-pointer">Reasignar</button>
+                                    <button onclick="actionTask(event, '${t.id}', 'Fecha pospuesta')" class="w-full text-left px-3 py-1.5 hover:bg-neutral-900 text-[10px] text-neutral-200 uppercase font-bold tracking-wider border-none bg-transparent cursor-pointer">Mover fecha</button>
+                                    <button onclick="deleteTask(event, '${t.id}')" class="w-full text-left px-3 py-1.5 hover:bg-neutral-900 text-[10px] text-rose-500 uppercase font-bold tracking-wider border-none bg-transparent cursor-pointer">Eliminar</button>
+                                </div>
+                            </div>
+                            <button onclick="openCapacityDrawer('${owner.nombre}')" class="w-6 h-6 rounded-full overflow-hidden border border-[#262626] hover:border-brand-500 transition-all cursor-pointer">
+                                <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=${owner.nombre}" class="w-full h-full object-cover">
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Render C1c Entregas semana
+            const deliveriesContainer = document.getElementById('week-deliveries-container');
+            deliveriesContainer.innerHTML = '';
+            seedData.projects.slice(0, 3).forEach(p => {
+                deliveriesContainer.innerHTML += `
+                    <div onclick="openProjectDrawer('${p.nombre}')" class="flex justify-between items-center p-3 rounded-xl bg-black border border-[#262626] hover:border-[#404040] transition-colors cursor-pointer text-[12px]">
+                        <span class="font-semibold text-white/90">${p.nombre}</span>
+                        <span class="text-[11px] text-neutral-500 font-semibold uppercase tracking-wider">${p.deadline}</span>
+                    </div>
+                `;
+            });
+
+            // Render C2a Alertas
+            const alertsContainer = document.getElementById('alerts-container');
+            alertsContainer.innerHTML = '';
+            const alerts = generateAlerts();
+            alerts.forEach(a => {
+                const colorTheme = a.type === 'danger' ? 'border-red-900 bg-red-950/10' : a.type === 'warning' ? 'border-amber-900 bg-amber-950/10' : 'border-blue-900 bg-blue-950/10';
+                const dotColor = a.type === 'danger' ? 'bg-red-500' : a.type === 'warning' ? 'bg-amber-500' : 'bg-blue-500';
+                
+                alertsContainer.innerHTML += `
+                    <div class="group relative flex justify-between items-center p-3 rounded-xl bg-black border ${colorTheme} transition-all" id="${a.id}">
+                        <div class="flex items-start gap-3">
+                            <div class="w-1.5 h-1.5 rounded-full ${dotColor} mt-1.5 ${a.type === 'danger' ? 'pulse-dot' : ''}"></div>
+                            <div>
+                                <p class="text-[12px] font-medium text-white">${a.title}</p>
+                                <p class="text-[11px] text-neutral-500">${a.subtitle}</p>
+                            </div>
+                        </div>
+                        <button onclick="${a.ctaAction}" class="opacity-0 group-hover:opacity-100 transition-opacity px-2.5 py-1 bg-[#262626] hover:bg-[#333333] border border-[#404040] text-white rounded-full text-[10px] font-medium uppercase tracking-wider cursor-pointer">
+                            ${a.ctaLabel}
+                        </button>
+                    </div>
+                `;
+            });
+
+            // Render C2b Clientes
+            const clientsContainer = document.getElementById('clients-list-container');
+            clientsContainer.innerHTML = '';
+            seedData.clients.slice(0, 4).forEach(c => {
+                clientsContainer.innerHTML += `
+                    <div onclick="openMetricDrawer('clientes')" class="flex justify-between items-center p-2.5 rounded-xl bg-black border border-[#262626] hover:border-[#404040] transition-colors cursor-pointer">
+                        <div>
+                            <p class="text-[12px] font-semibold text-white/90">${c.nombre}</p>
+                            <p class="text-[11px] text-neutral-500">${c.pack}</p>
+                        </div>
+                        <span class="text-white font-bold text-[12px]">$${c.mrr}/mes</span>
+                    </div>
+                `;
+            });
+
+            // Render C2c Capacidad equipo (Threshold colors)
+            const capacityContainer = document.getElementById('team-capacity-container');
+            capacityContainer.innerHTML = '';
+            seedData.team.forEach(t => {
+                const thresholdColor = t.capacity < 70 ? 'bg-emerald-500' : t.capacity <= 85 ? 'bg-amber-500' : 'bg-red-500';
+                const labelColor = t.capacity < 70 ? 'text-emerald-400' : t.capacity <= 85 ? 'text-amber-400' : 'text-red-400';
+                const statusText = t.capacity < 70 ? 'Óptima' : t.capacity <= 85 ? 'Saturación' : 'Crítica';
+                
+                capacityContainer.innerHTML += `
+                    <div onclick="openCapacityDrawer('${t.nombre}')" class="space-y-1 cursor-pointer hover:opacity-85 transition-opacity">
+                        <div class="flex justify-between text-[11px] font-bold uppercase tracking-wider">
+                            <span class="text-[12px] font-semibold text-white/90">${t.nombre}</span>
+                            <span class="${labelColor} font-bold">${t.capacity}% (${statusText})</span>
+                        </div>
+                        <div class="progress-bar-bg"><div class="progress-bar-fill ${thresholdColor}" style="width: ${t.capacity}%;"></div></div>
+                    </div>
+                `;
+            });
+
+            lucide.createIcons();
+            
+            // Initialize SortableJS
+            new Sortable(tasksContainer, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                handle: '.cursor-move',
+                onEnd: function (evt) {
+                    showToastNotification("Prioridad de tareas reordenada y guardada.");
+                }
+            });
+
+            const projTaskList = document.querySelector('.project-task-list');
+            if (projTaskList) {
+                new Sortable(projTaskList, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost',
+                    onEnd: function (evt) {
+                        showToastNotification("Prioridad de tareas del proyecto actualizada.");
+                    }
+                });
+            }
+        }
+
+        // --- Alert Resolver ---
+        function resolveAlert(alertId, successMsg) {
+            const el = document.getElementById(alertId);
+            if (el) {
+                el.style.transform = 'scale(0.95)';
+                el.style.opacity = '0';
+                setTimeout(() => {
+                    el.remove();
+                    showToastNotification(`${successMsg} (Notion Sync completado)`);
+                }, 200);
+            }
+        }
+
+        // --- Task Toggle Done (Optimistic UI update) ---
+        function completeTask(button, taskId) {
+            const task = seedData.tasks.find(t => t.id === taskId);
+            if (task) {
+                task.status = (task.status === 'done') ? 'todo' : 'done';
+                
+                // Recalculate project completion percentage
+                const proj = seedData.projects.find(p => p.id === task.projectId);
+                if (proj) {
+                    const projTasks = seedData.tasks.filter(t => t.projectId === proj.id);
+                    const completedTasks = projTasks.filter(t => t.status === 'done').length;
+                    proj.completedPct = projTasks.length > 0 ? Math.round((completedTasks / projTasks.length) * 100) : proj.completedPct;
+                }
+                
+                const verb = (task.status === 'done') ? 'completada' : 'marcada como pendiente';
+                showToastNotification(`Tarea "${task.nombre}" ${verb} (Sincronizado con Notion)`);
+                renderDashboard();
+            }
+        }
+
+        // --- Toast Notification Helper ---
+        function showToastNotification(msg) {
+            const toast = document.getElementById('toast');
+            toast.querySelector('p.text-[10px]').innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+
+        // --- Topbar Sync Counter ---
+        let syncSeconds = 0;
+        setInterval(() => {
+            syncSeconds++;
+            if (syncSeconds >= 60) {
+                syncSeconds = 0;
+                document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse";
+                document.getElementById('sync-text').innerText = "Actualizando...";
+                setTimeout(() => {
+                    document.getElementById('sync-dot').className = "w-1.5 h-1.5 rounded-full bg-teal-500";
+                    document.getElementById('sync-text').innerText = "Sync hace 0s";
+                }, 1200);
+            } else {
+                document.getElementById('sync-text').innerText = `Sync hace ${syncSeconds}s`;
+            }
+        }, 1000);
+
+        // --- Drawer Stack System ---
+        let drawerStack = [];
+
+        function showSkeleton() {
+            document.getElementById('drawer-skeleton').classList.remove('hidden');
+            document.getElementById('drawer-content').classList.add('hidden');
+        }
+
+        function hideSkeleton() {
+            document.getElementById('drawer-skeleton').classList.add('hidden');
+            document.getElementById('drawer-content').classList.remove('hidden');
+        }
+
+        function updateBreadcrumbs() {
+            const container = document.getElementById('drawer-breadcrumbs');
+            container.innerHTML = '';
+            drawerStack.forEach((crumb, index) => {
+                if (index > 0) {
+                    const arrow = document.createElement('span');
+                    arrow.innerText = '>';
+                    arrow.className = 'text-neutral-700';
+                    container.appendChild(arrow);
+                }
+                const btn = document.createElement('button');
+                btn.className = `hover:underline cursor-pointer border-none bg-transparent text-[10px] font-bold ${index === drawerStack.length - 1 ? 'text-white' : 'text-neutral-500'}`;
+                btn.innerText = crumb.name;
+                btn.onclick = () => {
+                    drawerStack = drawerStack.slice(0, index + 1);
+                    loadDrawerState(crumb.type, crumb.id, crumb.name);
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        function openDrawer(type, id, name) {
+            drawerStack = [{ type, id, name }];
+            document.getElementById('system-drawer').classList.remove('drawer-closed');
+            document.getElementById('system-drawer').classList.add('drawer-open');
+            document.getElementById('drawer-overlay').classList.remove('overlay-closed');
+            document.getElementById('drawer-overlay').classList.add('overlay-open');
+            loadDrawerState(type, id, name);
+        }
+
+        function pushDrawerState(type, id, name) {
+            if (drawerStack.length >= 3) return; // Spec limit: max 3 levels deep
+            drawerStack.push({ type, id, name });
+            loadDrawerState(type, id, name);
+        }
+
+        function loadDrawerState(type, id, name) {
+            showSkeleton();
+            updateBreadcrumbs();
+            
+            setTimeout(() => {
+                const container = document.getElementById('drawer-content');
+                let html = '';
+                
+                if (type === 'proyecto') {
+                    const proj = seedData.projects.find(p => p.nombre === name || p.id === id);
+                    const client = seedData.clients.find(c => c.id === proj.clientId);
+                    const owner = seedData.team.find(t => t.id === proj.ownerId);
+                    
+                    html = `
+                        <div class="space-y-6">
+                            <div>
+                                <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Capa 1 — Detalle del Proyecto</span>
+                                <h2 class="text-[14px] font-bold text-white mt-1 uppercase tracking-tight">${proj.nombre}</h2>
+                                <p class="text-[11px] text-neutral-500 uppercase tracking-wider mt-1">${client.nombre} — ${client.pack}</p>
+                            </div>
+                            
+                            <div class="bg-black border border-[#262626] p-4 rounded-xl space-y-3 text-[11px]">
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Líder de Proyecto</span>
+                                    <button onclick="pushDrawerState('miembro', '${owner.id}', '${owner.nombre}')" class="text-brand-500 hover:underline font-bold border-none bg-transparent cursor-pointer">${owner.nombre}</button>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Límite</span>
+                                    <span class="text-white">${proj.deadline}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Estado</span>
+                                    <span class="text-emerald-400 font-bold uppercase tracking-wider">${proj.status}</span>
+                                </div>
+                            </div>
+
+                            <div class="space-y-3 bg-black border border-[#262626] p-4 rounded-xl">
+                                <h4 class="text-[11px] font-bold text-white/40 uppercase tracking-widest">Tareas del Proyecto</h4>
+                                <div class="space-y-2">
+                                    ${seedData.tasks.filter(t => t.projectId === proj.id).map(t => `
+                                        <div onclick="pushDrawerState('tarea', '${t.id}', '${t.nombre}')" class="flex justify-between items-center p-2.5 rounded-lg bg-black border border-[#262626] hover:border-[#404040] cursor-pointer transition-colors">
+                                            <span class="text-[11px] font-bold text-neutral-200">${t.nombre}</span>
+                                            <span class="text-[9px] px-1.5 py-0.5 rounded ${t.status === 'done' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'} font-bold uppercase">${t.status}</span>
+                                        </div>
+                                    `).join('') || '<p class="text-[11px] text-neutral-500">Sin tareas asociadas.</p>'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'tarea') {
+                    const task = seedData.tasks.find(t => t.nombre === name || t.id === id);
+                    const proj = task ? seedData.projects.find(p => p.id === task.projectId) : null;
+                    const owner = task ? seedData.team.find(tm => tm.id === task.ownerId) : null;
+                    const taskName = task ? task.nombre : name;
+                    const ownerName = owner ? owner.nombre : "Sin asignar";
+                    const dueDate = task ? task.dueDate : "Hoy, 18:00";
+                    
+                    html = `
+                        <div class="space-y-6">
+                            <div>
+                                <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Capa 1 — Detalle de Tarea</span>
+                                <h2 class="text-sm font-bold text-white mt-1 uppercase tracking-tight">${taskName}</h2>
+                                ${proj ? `<p class="text-[11px] text-neutral-500 uppercase tracking-wider mt-1">Proyecto: <button onclick="pushDrawerState('proyecto', '${proj.id}', '${proj.nombre}')" class="text-brand-500 hover:underline border-none bg-transparent cursor-pointer">${proj.nombre}</button></p>` : ''}
+                            </div>
+                            <div class="bg-black p-4 rounded-xl border border-[#262626] space-y-4 text-[11px]">
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Responsable</span>
+                                    ${owner ? `<button onclick="pushDrawerState('miembro', '${owner.id}', '${owner.nombre}')" class="text-brand-500 hover:underline font-bold border-none bg-transparent cursor-pointer">${ownerName}</button>` : `<span class="text-neutral-400 font-bold">${ownerName}</span>`}
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Fecha de entrega</span>
+                                    <span class="text-white">${dueDate}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-neutral-500">Estado</span>
+                                    <span class="text-white font-bold uppercase">${task ? task.status : 'todo'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'miembro') {
+                    const tMember = seedData.team.find(t => t.nombre === name || t.id === id);
+                    const memberProjects = seedData.projects.filter(p => p.ownerId === tMember.id);
+                    const projListHtml = memberProjects.map(p => `
+                        <div onclick="pushDrawerState('proyecto', '${p.id}', '${p.nombre}')" class="p-3 bg-black hover:bg-white/[0.02] border border-[#262626] rounded-xl cursor-pointer">
+                            <div class="flex justify-between items-center">
+                                <span class="text-[11px] font-bold text-white">${p.nombre}</span>
+                                <span class="text-[9px] font-black uppercase ${p.status === 'late' ? 'text-red-500' : p.status === 'at-risk' ? 'text-amber-500' : 'text-emerald-500'}">${p.status}</span>
+                            </div>
+                        </div>
+                    `).join('');
+                    
+                    html = `
+                        <div class="space-y-6">
+                            <div>
+                                <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Capa 1 — Capacidad del Equipo</span>
+                                <h2 class="text-sm font-bold text-white mt-1 uppercase tracking-tight">${tMember.nombre}</h2>
+                                <p class="text-[11px] text-neutral-500 font-semibold uppercase tracking-wider mt-1">Capacidad: ${tMember.capacity}%</p>
+                            </div>
+                            <div class="space-y-3">
+                                <h4 class="text-[9px] font-black text-white/40 uppercase tracking-widest">Proyectos Asignados (${memberProjects.length})</h4>
+                                <div class="space-y-2">
+                                    ${projListHtml || '<p class="text-[11px] text-neutral-600">Sin proyectos asignados.</p>'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'finanzas') {
+                    const totalMRR = seedData.clients.reduce((acc, c) => acc + c.mrr, 0);
+                    const totalGoal = 15000;
+                    const pctGoal = Math.round((totalMRR / totalGoal) * 100);
+                    
+                    html = `
+                        <div class="space-y-6">
+                            <div>
+                                <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Capa 1 — Detalle Financiero</span>
+                                <h2 class="text-sm font-bold text-white mt-1 uppercase tracking-tight">Finanzas de la Agencia</h2>
+                                <p class="text-[11px] text-neutral-500 uppercase tracking-wider mt-1">Progreso hacia la meta de facturación mensual</p>
+                            </div>
+                            
+                            <div class="bg-black border border-[#262626] p-4 rounded-xl space-y-4 text-[11px]">
+                                <div class="space-y-1">
+                                    <div class="flex justify-between font-bold">
+                                        <span>Facturación (MRR Actual)</span>
+                                        <span class="text-brand-500">$${totalMRR}</span>
+                                    </div>
+                                    <div class="flex justify-between text-neutral-500">
+                                        <span>Meta mensual</span>
+                                        <span>$${totalGoal}</span>
+                                    </div>
+                                    <div class="progress-bar-bg mt-1"><div class="progress-bar-fill bg-brand-500" style="width: ${pctGoal}%;"></div></div>
+                                </div>
+                                
+                                <div class="border-t border-[#262626] pt-3 space-y-2">
+                                    <h4 class="text-[10px] uppercase font-bold text-neutral-500 tracking-wider">Desglose de MRR por Cliente</h4>
+                                    ${seedData.clients.map(c => `
+                                        <div class="flex justify-between py-1 border-b border-[#141414]">
+                                            <span class="text-neutral-300">${c.nombre} (${c.pack})</span>
+                                            <span class="text-white font-semibold">$${c.mrr}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (type === 'list') {
+                    let itemsHtml = '';
+                    if (id === 'projects') {
+                        itemsHtml = seedData.projects.map(p => `
+                            <div onclick="pushDrawerState('proyecto', '${p.id}', '${p.nombre}')" class="p-3 bg-black hover:bg-white/[0.02] border border-[#262626] rounded-xl cursor-pointer text-[11px] flex justify-between">
+                                <span class="font-bold text-white">${p.nombre}</span>
+                                <span class="font-black uppercase text-[9px] tracking-wider ${p.status === 'late' ? 'text-red-500' : p.status === 'at-risk' ? 'text-amber-500' : 'text-emerald-500'}">${p.status}</span>
+                            </div>
+                        `).join('');
+                    } else if (id === 'clients') {
+                        itemsHtml = seedData.clients.map(c => `
+                            <div class="p-3 bg-black border border-[#262626] rounded-xl text-[11px] flex justify-between items-center">
+                                <div>
+                                    <span class="font-bold text-white">${c.nombre}</span>
+                                    <p class="text-[10px] text-neutral-500">${c.pack}</p>
+                                </div>
+                                <span class="font-bold text-brand-500">$${c.mrr}/mes</span>
+                            </div>
+                        `).join('');
+                    } else if (id === 'tasks') {
+                        itemsHtml = seedData.tasks.map(t => `
+                            <div onclick="pushDrawerState('tarea', '${t.id}', '${t.nombre}')" class="p-3 bg-black hover:bg-white/[0.02] border border-[#262626] rounded-xl cursor-pointer text-[11px] flex justify-between">
+                                <span class="font-bold text-white">${t.nombre}</span>
+                                <span class="text-[10px] text-neutral-500">${t.dueDate}</span>
+                            </div>
+                        `).join('');
+                    } else if (id === 'deliveries') {
+                        itemsHtml = seedData.projects.map(p => `
+                            <div onclick="pushDrawerState('proyecto', '${p.id}', '${p.nombre}')" class="p-3 bg-black hover:bg-white/[0.02] border border-[#262626] rounded-xl cursor-pointer text-[11px] flex justify-between">
+                                <span class="font-bold text-white">${p.nombre}</span>
+                                <span class="text-[10px] text-neutral-500">${p.deadline}</span>
+                            </div>
+                        `).join('');
+                    }
+                    
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-sm font-bold text-white uppercase tracking-tight">${name}</h2>
+                            <div class="space-y-2">
+                                ${itemsHtml}
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                container.innerHTML = html;
+                hideSkeleton();
+                lucide.createIcons();
+            }, 300);
+        }
+
+        function closeDrawer() {
+            document.getElementById('system-drawer').classList.add('drawer-closed');
+            document.getElementById('system-drawer').classList.remove('drawer-open');
+            document.getElementById('drawer-overlay').classList.add('overlay-closed');
+            document.getElementById('drawer-overlay').classList.remove('overlay-open');
+        }
+
+        function openProjectDrawer(projName) { openDrawer('proyecto', projName.toLowerCase(), projName); }
+        function openTaskDrawer(taskName, taskId) { openDrawer('tarea', taskId || 'taskId', taskName); }
+        function openCapacityDrawer(memberName) { openDrawer('miembro', memberName.toLowerCase(), memberName); }
+        function openFinanceDrawer() { openDrawer('finanzas', 'finances', 'Finanzas'); }
+        
+        function openMetricDrawer(metricType) {
+            if (metricType === 'tareas') openDrawer('list', 'tasks', 'Desglose de Tareas');
+            if (metricType === 'proyectos') openDrawer('list', 'projects', 'Desglose de Proyectos');
+            if (metricType === 'clientes') openDrawer('list', 'clients', 'Lista de Clientes');
+            if (metricType === 'alertas') openDrawer('list', 'alerts', 'Alertas Activas');
+            if (metricType === 'entregas') openDrawer('list', 'deliveries', 'Entregas de la Semana');
+            if (metricType === 'mrr') openDrawer('finanzas', 'finances', 'Finanzas / MRR');
+            if (metricType === 'capacidad') openDrawer('list', 'projects', 'Capacidad / Proyectos');
+        }
+
+        // --- Tooltip engine ---
+        const tooltip = document.getElementById('tooltip');
+        function showTooltip(event, text) {
+            tooltip.innerText = text;
+            tooltip.style.display = 'block';
+            moveTooltip(event);
+        }
+        function moveTooltip(event) {
+            tooltip.style.left = (event.clientX + 10) + 'px';
+            tooltip.style.top = (event.clientY + 10) + 'px';
+        }
+        function hideTooltip() { tooltip.style.display = 'none'; }
+
+        function showGanttTooltip(event, projName, owner, progress, desc, statusColor) {
+            tooltip.innerHTML = `
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center gap-4">
+                        <span class="font-bold text-white text-[12px]">${projName}</span>
+                        <span class="text-[9px] px-1 bg-white/10 rounded text-neutral-300">${progress}</span>
+                    </div>
+                    <p class="text-neutral-500 text-[10px]">Líder: ${owner}</p>
+                    <p class="text-[9px] text-neutral-300 border-t border-[#262626] pt-1 mt-1">${desc}</p>
+                </div>
+            `;
+            tooltip.style.display = 'block';
+            moveTooltip(event);
+        }
+        function hideGanttTooltip() { tooltip.style.display = 'none'; }
+
+        document.addEventListener('mousemove', function(e) {
+            if (tooltip.style.display === 'block') {
+                tooltip.style.left = (e.clientX + 10) + 'px';
+                tooltip.style.top = (e.clientY + 10) + 'px';
+            }
+        });
+
+        // --- Omni dropdown logic ---
+        function toggleOmniDropdown(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('omni-dropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        // --- Search Modal engine ---
+        function openSearchModal() {
+            const modal = document.getElementById('search-modal');
+            modal.classList.remove('hidden');
+            const input = document.getElementById('search-input');
+            input.value = '';
+            input.focus();
+            handleSearchQuery('');
+        }
+        function closeSearchModal() {
+            document.getElementById('search-modal').classList.add('hidden');
+        }
+
+        function handleSearchQuery(q) {
+            const query = q.toLowerCase().trim();
+            const resultsContainer = document.getElementById('search-results');
+            resultsContainer.innerHTML = '';
+            
+            if (query === '') {
+                resultsContainer.innerHTML = `
+                    <div class="text-[10px] text-neutral-600 uppercase font-black tracking-widest px-2 mb-2">Sugerencias Recientes</div>
+                    <div class="space-y-1">
+                        <div onclick="selectSearchResult('proyecto', 'p1', 'ZooPizza Campaign')" class="flex justify-between items-center p-2.5 rounded-xl bg-black hover:bg-neutral-900 border border-transparent hover:border-[#262626] cursor-pointer text-xs">
+                            <span class="text-neutral-200 flex items-center gap-2"><i data-lucide="folder" class="w-3.5 h-3.5 text-neutral-500"></i> ZooPizza Campaign</span>
+                            <span class="text-[10px] text-neutral-600">Proyecto</span>
+                        </div>
+                        <div onclick="selectSearchResult('miembro', 'w3', 'Edwin')" class="flex justify-between items-center p-2.5 rounded-xl bg-black hover:bg-neutral-900 border border-transparent hover:border-[#262626] cursor-pointer text-xs">
+                            <span class="text-neutral-200 flex items-center gap-2"><i data-lucide="user" class="w-3.5 h-3.5 text-neutral-500"></i> Edwin</span>
+                            <span class="text-[10px] text-neutral-600">Equipo</span>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+            
+            const matches = {
+                projects: seedData.projects.filter(p => p.nombre.toLowerCase().includes(query)),
+                clients: seedData.clients.filter(c => c.nombre.toLowerCase().includes(query)),
+                tasks: seedData.tasks.filter(t => t.nombre.toLowerCase().includes(query)),
+                team: seedData.team.filter(tm => tm.nombre.toLowerCase().includes(query))
+            };
+            
+            let html = '';
+            
+            if (matches.projects.length > 0) {
+                html += `<div class="text-[10px] text-neutral-600 uppercase font-black tracking-widest px-2 mb-1">Proyectos</div>`;
+                matches.projects.forEach(p => {
+                    html += `
+                        <div onclick="selectSearchResult('proyecto', '${p.id}', '${p.nombre}')" class="flex justify-between items-center p-2 rounded-xl bg-black hover:bg-neutral-900 border border-[#262626] cursor-pointer text-xs">
+                            <span class="text-white font-medium flex items-center gap-2"><i data-lucide="folder" class="w-3.5 h-3.5 text-neutral-500"></i> ${p.nombre}</span>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded bg-brand-500/10 text-brand-500 font-bold uppercase">${p.status}</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            if (matches.clients.length > 0) {
+                html += `<div class="text-[10px] text-neutral-600 uppercase font-black tracking-widest px-2 mt-3 mb-1">Clientes</div>`;
+                matches.clients.forEach(c => {
+                    html += `
+                        <div onclick="selectSearchResult('list', 'clients', 'Lista de Clientes')" class="flex justify-between items-center p-2 rounded-xl bg-black hover:bg-neutral-900 border border-[#262626] cursor-pointer text-xs">
+                            <span class="text-white font-medium flex items-center gap-2"><i data-lucide="briefcase" class="w-3.5 h-3.5 text-neutral-500"></i> ${c.nombre}</span>
+                            <span class="text-[10px] text-neutral-500">${c.pack}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            if (matches.tasks.length > 0) {
+                html += `<div class="text-[10px] text-neutral-600 uppercase font-black tracking-widest px-2 mt-3 mb-1">Tareas</div>`;
+                matches.tasks.forEach(t => {
+                    html += `
+                        <div onclick="selectSearchResult('tarea', '${t.id}', '${t.nombre}')" class="flex justify-between items-center p-2 rounded-xl bg-black hover:bg-neutral-900 border border-[#262626] cursor-pointer text-xs">
+                            <span class="text-white font-medium flex items-center gap-2"><i data-lucide="check-square" class="w-3.5 h-3.5 text-neutral-500"></i> ${t.nombre}</span>
+                            <span class="text-[10px] text-neutral-500">Límite: ${t.dueDate}</span>
+                        </div>
+                    `;
+                });
+            }
+
+            if (matches.team.length > 0) {
+                html += `<div class="text-[10px] text-neutral-600 uppercase font-black tracking-widest px-2 mt-3 mb-1">Miembros</div>`;
+                matches.team.forEach(tm => {
+                    html += `
+                        <div onclick="selectSearchResult('miembro', '${tm.id}', '${tm.nombre}')" class="flex justify-between items-center p-2 rounded-xl bg-black hover:bg-neutral-900 border border-[#262626] cursor-pointer text-xs">
+                            <span class="text-white font-medium flex items-center gap-2"><i data-lucide="user" class="w-3.5 h-3.5 text-neutral-500"></i> ${tm.nombre}</span>
+                            <span class="text-[10px] text-neutral-500">${tm.capacity}% carga</span>
+                        </div>
+                    `;
+                });
+            }
+            
+            if (html === '') {
+                html = `<div class="text-center text-neutral-600 text-xs py-8">Ningún resultado para "${q}"</div>`;
+            }
+            
+            resultsContainer.innerHTML = html;
+            lucide.createIcons();
+        }
+        
+        function selectSearchResult(type, id, name) {
+            closeSearchModal();
+            openDrawer(type, id, name);
+        }
+
+        // --- Creation flows logic ---
+        function closeCreateModal() {
+            document.getElementById('creation-modal').classList.add('hidden');
+        }
+        
+        function triggerCreationFlow(type) {
+            document.getElementById('omni-dropdown').classList.add('hidden');
+            const modal = document.getElementById('creation-modal');
+            modal.classList.remove('hidden');
+            
+            const content = document.getElementById('modal-flow-content');
+            
+            if (type === 'proyecto') {
+                renderCreateProjectStep1(content);
+            } else if (type === 'tarea') {
+                renderCreateTaskStep1(content);
+            } else if (type === 'cliente') {
+                renderCreateClientStep1(content);
+            } else if (type === 'plantilla') {
+                renderCreateTemplateStep1(content);
+            }
+        }
+        
+        // PROJECT CREATION FLOW
+        function renderCreateProjectStep1(container) {
+            let clientOptions = seedData.clients.map(c => `<option value="${c.id}">${c.nombre}</option>`).join('');
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Crear Proyecto — Paso 1 de 2</span>
+                        <h3 class="text-sm font-bold text-white mt-1">Seleccionar Cliente Operativo</h3>
+                        <p class="text-[11px] text-neutral-500 mt-0.5">El proyecto heredará las reglas de facturación y contrato del cliente.</p>
+                    </div>
+                    
+                    <div class="space-y-3 pt-2">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Cliente</label>
+                            <select id="new-proj-client" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                                ${clientOptions}
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Nombre del Proyecto</label>
+                            <input type="text" id="new-proj-name" placeholder="Ej. Campaña Redes Q3" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2 pt-4 border-t border-[#262626]">
+                        <button onclick="closeCreateModal()" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-[#262626] text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Cancelar</button>
+                        <button onclick="processProjectStep1()" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-black text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Siguiente</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function processProjectStep1() {
+            const clientId = document.getElementById('new-proj-client').value;
+            const name = document.getElementById('new-proj-name').value.trim();
+            
+            if (!name) {
+                alert("Por favor ingresa un nombre para el proyecto.");
+                return;
+            }
+            
+            const client = seedData.clients.find(c => c.id === clientId);
+            renderCreateProjectStep2(document.getElementById('modal-flow-content'), client, name);
+        }
+
+        function renderCreateProjectStep2(container, client, projectName) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Crear Proyecto — Paso 2 de 2</span>
+                        <h3 class="text-sm font-bold text-white mt-1">Elegir Plantilla de Entregables</h3>
+                        <p class="text-[11px] text-neutral-500 mt-0.5">Vincular un set de tareas preconfiguradas para acelerar la ejecución.</p>
+                    </div>
+                    
+                    <div class="space-y-3 pt-2">
+                        <div class="p-3 bg-neutral-950 border border-neutral-900 rounded-xl">
+                            <p class="text-[10px] text-neutral-500 font-bold uppercase">Resumen de Contrato</p>
+                            <div class="flex justify-between mt-1 text-xs">
+                                <span class="text-white">${client.nombre}</span>
+                                <span class="text-brand-500 font-bold">${client.pack} (${client.mrr}/mes)</span>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Plantilla Operativa</label>
+                            <select id="new-proj-template" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                                <option value="growth">Plantilla: Pack Crecimiento (10 tareas de redes/reels)</option>
+                                <option value="impulse">Plantilla: Pack Impulso (5 tareas básicas)</option>
+                                <option value="project">Plantilla: Proyecto Web Completo (15 tareas desarrollo)</option>
+                                <option value="none">Sin Plantilla (Contenedor vacío)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2 pt-4 border-t border-[#262626]">
+                        <button onclick="triggerCreationFlow('proyecto')" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-[#262626] text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Atrás</button>
+                        <button onclick="submitNewProject('${client.id}', '${projectName}')" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-black text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Crear Proyecto</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function submitNewProject(clientId, name) {
+            const template = document.getElementById('new-proj-template').value;
+            const container = document.getElementById('modal-flow-content');
+            
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 space-y-4">
+                    <div class="w-10 h-10 border-4 border-[#262626] border-t-brand-500 rounded-full animate-spin"></div>
+                    <div class="text-center">
+                        <p class="text-xs font-bold text-white uppercase tracking-wider">Sincronizando con Notion...</p>
+                        <p class="text-[10px] text-neutral-500 mt-1">Creando base de datos del proyecto y cargando plantilla de tareas.</p>
+                    </div>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const newProjId = 'p' + (seedData.projects.length + 1);
+                const newProj = {
+                    id: newProjId,
+                    clientId: clientId,
+                    nombre: name,
+                    status: "new",
+                    startDate: new Date().toISOString().split('T')[0],
+                    deadline: new Date(Date.now() + 15*24*60*60*1000).toISOString().split('T')[0],
+                    completedPct: 0,
+                    ownerId: "w1"
+                };
+                seedData.projects.push(newProj);
+                
+                if (template !== 'none') {
+                    const taskName = template === 'growth' ? "Configurar feed y Reels" : template === 'impulse' ? "Ajuste de propuesta de Foco" : "Definición de requerimientos del backend";
+                    seedData.tasks.push({
+                        id: 't' + (seedData.tasks.length + 1),
+                        projectId: newProjId,
+                        nombre: taskName,
+                        status: "todo",
+                        ownerId: "w1",
+                        dueDate: newProj.deadline
+                    });
+                }
+                
+                closeCreateModal();
+                renderDashboard();
+                showToastNotification(`Proyecto "${name}" creado exitosamente y sincronizado con Notion.`);
+            }, 1500);
+        }
+
+        // TASK CREATION FLOW
+        function renderCreateTaskStep1(container) {
+            let projectOptions = seedData.projects.map(p => `<option value="${p.id}">${p.nombre}</option>`).join('');
+            let teamOptions = seedData.team.map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Nueva Tarea</span>
+                        <h3 class="text-sm font-bold text-white mt-1">Detalles de Tarea</h3>
+                    </div>
+                    
+                    <div class="space-y-3 pt-2">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Nombre de Tarea</label>
+                            <input type="text" id="new-task-name" placeholder="Ej. Diseñar mockups del layout" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Proyecto</label>
+                            <select id="new-task-project" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                                ${projectOptions}
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Asignar A</label>
+                            <select id="new-task-owner" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                                ${teamOptions}
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2 pt-4 border-t border-[#262626]">
+                        <button onclick="closeCreateModal()" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-[#262626] text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Cancelar</button>
+                        <button onclick="submitNewTask()" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-black text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Crear Tarea</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function submitNewTask() {
+            const name = document.getElementById('new-task-name').value.trim();
+            const projectId = document.getElementById('new-task-project').value;
+            const ownerId = document.getElementById('new-task-owner').value;
+            
+            if (!name) {
+                alert("Por favor ingresa un nombre para la tarea.");
+                return;
+            }
+            
+            const container = document.getElementById('modal-flow-content');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 space-y-4">
+                    <div class="w-10 h-10 border-4 border-[#262626] border-t-brand-500 rounded-full animate-spin"></div>
+                    <div class="text-center">
+                        <p class="text-xs font-bold text-white uppercase tracking-wider">Sincronizando con Notion...</p>
+                    </div>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const newTask = {
+                    id: 't' + (seedData.tasks.length + 1),
+                    projectId: projectId,
+                    nombre: name,
+                    status: "todo",
+                    ownerId: ownerId,
+                    dueDate: new Date(Date.now() + 3*24*60*60*1000).toISOString().split('T')[0]
+                };
+                seedData.tasks.push(newTask);
+                
+                const member = seedData.team.find(t => t.id === ownerId);
+                if (member) {
+                    member.capacity = Math.min(100, member.capacity + 5);
+                }
+                
+                closeCreateModal();
+                renderDashboard();
+                showToastNotification(`Tarea "${name}" creada y vinculada con Notion.`);
+            }, 1200);
+        }
+
+        // CLIENT CREATION FLOW
+        function renderCreateClientStep1(container) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Nuevo Cliente</span>
+                        <h3 class="text-sm font-bold text-white mt-1">Registrar Cliente y Plan</h3>
+                    </div>
+                    
+                    <div class="space-y-3 pt-2">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Nombre de la Empresa</label>
+                            <input type="text" id="new-client-name" placeholder="Ej. Pepsi Latam" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] text-neutral-500 font-bold uppercase">Paquete de Servicio</label>
+                            <select id="new-client-pack" class="bg-black border border-[#262626] text-white p-2.5 rounded-lg text-xs outline-none focus:border-brand-500">
+                                <option value="Crecimiento">Plan Crecimiento ($2,500/mes)</option>
+                                <option value="Impulso">Plan Impulso ($1,250/mes)</option>
+                                <option value="Proyecto">Plan Proyecto ($3,500/mes)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end gap-2 pt-4 border-t border-[#262626]">
+                        <button onclick="closeCreateModal()" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-[#262626] text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Cancelar</button>
+                        <button onclick="submitNewClient()" class="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-black text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Registrar Cliente</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function submitNewClient() {
+            const name = document.getElementById('new-client-name').value.trim();
+            const pack = document.getElementById('new-client-pack').value;
+            
+            if (!name) {
+                alert("Por favor ingresa un nombre para el cliente.");
+                return;
+            }
+            
+            let mrr = 1250;
+            if (pack === 'Crecimiento') mrr = 2500;
+            if (pack === 'Proyecto') mrr = 3500;
+            
+            const container = document.getElementById('modal-flow-content');
+            container.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-12 space-y-4">
+                    <div class="w-10 h-10 border-4 border-[#262626] border-t-brand-500 rounded-full animate-spin"></div>
+                    <div class="text-center">
+                        <p class="text-xs font-bold text-white uppercase tracking-wider">Generando contrato en Notion...</p>
+                    </div>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const newClient = {
+                    id: 'c' + (seedData.clients.length + 1),
+                    nombre: name,
+                    mrr: mrr,
+                    pack: pack,
+                    renewalDays: 30
+                };
+                seedData.clients.push(newClient);
+                
+                closeCreateModal();
+                renderDashboard();
+                showToastNotification(`Cliente "${name}" registrado exitosamente.`);
+            }, 1500);
+        }
+
+        // TEMPLATE FLOW
+        function renderCreateTemplateStep1(container) {
+            container.innerHTML = `
+                <div class="space-y-4">
+                    <div>
+                        <span class="text-[9px] uppercase font-black text-neutral-500 tracking-widest">Plantillas Organizacionales</span>
+                        <h3 class="text-sm font-bold text-white mt-1">Elegir Set para Clonar</h3>
+                        <p class="text-[11px] text-neutral-500">Duplica una estructura completa de tareas, roles y timings.</p>
+                    </div>
+                    
+                    <div class="space-y-2 pt-2">
+                        <div onclick="applyTemplate('growth')" class="p-3 bg-neutral-900 border border-neutral-800 rounded-xl cursor-pointer hover:border-brand-500 transition-colors">
+                            <p class="text-xs font-bold text-white">Pack Redes Crecimiento</p>
+                            <p class="text-[10px] text-neutral-500 mt-1">10 tareas estructuradas: Planificación, Diseño, Programación, Pauta.</p>
+                        </div>
+                        <div onclick="applyTemplate('impulse')" class="p-3 bg-neutral-900 border border-neutral-800 rounded-xl cursor-pointer hover:border-brand-500 transition-colors">
+                            <p class="text-xs font-bold text-white">Pack Identidad Impulso</p>
+                            <p class="text-[10px] text-neutral-500 mt-1">5 tareas estructuradas: Briefing, Moodboard, Bocetos, Manual de marca.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end pt-4 border-t border-[#262626]">
+                        <button onclick="closeCreateModal()" class="px-3 py-1.5 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 border border-[#262626] text-[11px] font-bold rounded-lg transition-colors cursor-pointer">Cerrar</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function applyTemplate(type) {
+            closeCreateModal();
+            showToastNotification(`Plantilla ${type === 'growth' ? 'Redes Crecimiento' : 'Identidad Impulso'} precargada. Lista para usar.`);
+        }
+
+        // --- Keyboard events and clicks ---
+        document.addEventListener('keydown', function(e) {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                openSearchModal();
+            }
+            if (e.key === 'Escape') {
+                closeSearchModal();
+                closeDrawer();
+                closeCreateModal();
+                closeCopilot();
+            }
+        });
+
+        document.addEventListener('click', function(e) {
+            const dropdown = document.getElementById('omni-dropdown');
+            if (dropdown && !dropdown.contains(e.target) && e.target.id !== 'omni-new-btn' && !e.target.closest('#omni-new-btn')) {
+                dropdown.classList.add('hidden');
+            }
+            
+            const menus = document.querySelectorAll('[id^="task-menu-"]');
+            menus.forEach(m => {
+                if (!m.contains(e.target) && !e.target.closest('button')) {
+                    m.classList.add('hidden');
+                }
+            });
+        });
+
+        function toggleTaskMenu(event, taskId) {
+            event.stopPropagation();
+            const menus = document.querySelectorAll('[id^="task-menu-"]');
+            menus.forEach(m => {
+                if (m.id !== `task-menu-${taskId}`) {
+                    m.classList.add('hidden');
+                }
+            });
+            const menu = document.getElementById(`task-menu-${taskId}`);
+            menu.classList.toggle('hidden');
+        }
+
+        function actionTask(event, taskId, actionName) {
+            event.stopPropagation();
+            const menu = document.getElementById(`task-menu-${taskId}`);
+            menu.classList.add('hidden');
+            showToastNotification(`${actionName} en Notion.`);
+        }
+
+        function deleteTask(event, taskId) {
+            event.stopPropagation();
+            const menu = document.getElementById(`task-menu-${taskId}`);
+            menu.classList.add('hidden');
+            
+            const taskIndex = seedData.tasks.findIndex(t => t.id === taskId);
+            if (taskIndex > -1) {
+                const tName = seedData.tasks[taskIndex].nombre;
+                seedData.tasks.splice(taskIndex, 1);
+                renderDashboard();
+                showToastNotification(`Tarea "${tName}" eliminada.`);
+            }
+        }
+
+        // --- Page Navigation Switcher ---
+        function switchPage(pageId) {
+            // Hide all pages
+            const pages = document.querySelectorAll('.page-container');
+            pages.forEach(p => p.classList.add('hidden'));
+            
+            // Show selected page
+            const selectedPage = document.getElementById(`page-${pageId}`);
+            if (selectedPage) {
+                selectedPage.classList.remove('hidden');
+            }
+            
+            // Update nav links styling
+            const navLinks = document.querySelectorAll('nav button');
+            navLinks.forEach(link => {
+                link.classList.remove('nav-active');
+            });
+            
+            const activeNav = document.getElementById(`nav-${pageId}`);
+            if (activeNav) {
+                activeNav.classList.add('nav-active');
+            }
+            
+            // Update Topbar Title indicator
+            const titleSpan = document.querySelector('header span:nth-child(2)');
+            if (titleSpan) {
+                if (pageId === 'home') {
+                    titleSpan.innerText = 'Brandex OS';
+                } else {
+                    titleSpan.innerText = `Brandex OS / ${pageId.charAt(0).toUpperCase() + pageId.slice(1)}`;
+                }
+            }
+            
+            lucide.createIcons();
+        }
+
+        // --- Avatar color switcher ---
+        let currentAvatarIndex = 0;
+        const avatarStyles = [
+            { bg: 'bg-brand-500/10', border: 'border-brand-500/30', text: 'text-brand-500' },
+            { bg: 'bg-indigo-500/10', border: 'border-indigo-500/30', text: 'text-indigo-400' },
+            { bg: 'bg-rose-500/10', border: 'border-rose-500/30', text: 'text-rose-400' },
+            { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400' },
+            { bg: 'bg-purple-500/10', border: 'border-purple-500/30', text: 'text-purple-400' }
+        ];
+
+        function cycleAvatarColor() {
+            currentAvatarIndex = (currentAvatarIndex + 1) % avatarStyles.length;
+            const style = avatarStyles[currentAvatarIndex];
+            const avatar = document.getElementById('user-avatar');
+            
+            // Clear and set styling classes
+            avatar.className = `w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm interactive-action ${style.bg} ${style.border} ${style.text}`;
+            
+            showToastNotification("Esquema de color de perfil actualizado.");
+        }
+
+        // --- Brandex Copilot AI Assistant Logic ---
+        function toggleCopilot() {
+            const drawer = document.getElementById('copilot-drawer');
+            const isOpen = drawer.classList.contains('drawer-open');
+            if (isOpen) {
+                closeCopilot();
+            } else {
+                drawer.classList.remove('drawer-closed');
+                drawer.classList.add('drawer-open');
+                
+                // Set focus on input
+                setTimeout(() => {
+                    document.getElementById('copilot-prompt-input').focus();
+                }, 100);
+            }
+        }
+
+        function closeCopilot() {
+            const drawer = document.getElementById('copilot-drawer');
+            drawer.classList.remove('drawer-open');
+            drawer.classList.add('drawer-closed');
+        }
+
+        function autoGrowPrompt(textarea) {
+            textarea.style.height = 'auto';
+            textarea.style.height = (textarea.scrollHeight) + 'px';
+            document.getElementById('copilot-char-count').innerText = `${textarea.value.length}/1000`;
+        }
+
+        function handleCopilotSubmit(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submitCopilotPrompt();
+            }
+        }
+
+        function submitCopilotPrompt() {
+            const input = document.getElementById('copilot-prompt-input');
+            const prompt = input.value.trim();
+            if (!prompt) return;
+
+            // Clear input and reset height
+            input.value = '';
+            input.style.height = 'auto';
+            document.getElementById('copilot-char-count').innerText = '0/1000';
+
+            // Append User Message to history
+            const history = document.getElementById('copilot-chat-history');
+            
+            const userMsgDiv = document.createElement('div');
+            userMsgDiv.className = 'space-y-2 text-right';
+            userMsgDiv.innerHTML = `
+                <div class="flex items-center justify-end gap-2">
+                    <span class="type-metadata text-neutral-500 uppercase">Tú</span>
+                    <span class="w-2 h-2 rounded-full bg-neutral-500"></span>
+                </div>
+                <p class="type-body text-neutral-200 bg-white/[0.03] inline-block p-3 rounded-xl max-w-[85%] text-left border border-white/5">
+                    ${prompt}
+                </p>
+            `;
+            history.appendChild(userMsgDiv);
+            history.scrollTop = history.scrollHeight;
+
+            // Show Deep Research Agent steps loader
+            const loader = document.getElementById('copilot-loader');
+            const stepsContainer = document.getElementById('copilot-loader-steps');
+            loader.classList.remove('hidden');
+            stepsContainer.innerHTML = '';
+
+            // Hide old response
+            document.getElementById('copilot-response-container').classList.add('hidden');
+
+            const query = prompt.toLowerCase();
+            let steps = [];
+            let responseText = '';
+            let confidence = 94;
+
+            if (query.includes('edwin') || query.includes('optimizar')) {
+                steps = [
+                    "Auditando capacidad de Edwin (80% actual) y tareas asignadas...",
+                    "Buscando tareas pendientes en proyectos 'Vidagro E-Commerce'...",
+                    "Simulando reasignación de la tarea 'Revisar Dummies' a Yordy...",
+                    "Calculando nueva capacidad: Edwin 75%, Yordy 65%..."
+                ];
+                responseText = "He completado el análisis de optimización. Edwin se encuentra sobre el 80% de su capacidad con tareas críticas acumuladas. Recomiendo transferir la tarea **'Revisar Dummies Vidagro'** a **Yordy** (quien opera al 60% de capacidad). Esto redistribuye la carga de forma uniforme:\n\n• **Edwin:** Baja a **75%**\n• **Yordy:** Sube a **65%**\n\n¿Deseas que realice el cambio optimista en Notion ahora mismo?";
+                confidence = 98;
+            } else if (query.includes('mrr') || query.includes('proyectar') || query.includes('finanzas')) {
+                steps = [
+                    "Sumando MRR activo actual de clientes...",
+                    "Evaluando meta mensual ($15,000)...",
+                    "Simulando cobro de facturas pendientes..."
+                ];
+                responseText = "El análisis proyecta un incremento del MRR a **$12,800** para final de mes si se formaliza la renovación de **Grupo Sie7ek** ($1,250) y se culmina el hito de **Vidagro E-Commerce**.\n\nPara alcanzar la meta total de **$15,000**, se requiere la adquisición de al menos un cliente en Plan Crecimiento ($2,500) o dos en Plan Impulso.";
+                confidence = 96;
+            } else {
+                steps = [
+                    "Procesando intención del prompt...",
+                    "Buscando registros relacionales..."
+                ];
+                responseText = "He recibido tu instrucción. Como asistente de Brandex OS, puedo ayudarte a balancear las cargas de trabajo de tu equipo, calcular predicciones financieras, o automatizar flujos de plantillas en Notion. Prueba escribiendo: **'Optimizar Edwin'** o **'Analizar MRR'**.";
+                confidence = 90;
+            }
+
+            // Execute steps sequentially with timeouts
+            let currentStep = 0;
+            function runStep() {
+                if (currentStep < steps.length) {
+                    const stepDiv = document.createElement('div');
+                    stepDiv.className = 'flex items-center gap-2 text-neutral-400';
+                    stepDiv.innerHTML = `
+                        <div class="w-3.5 h-3.5 flex items-center justify-center rounded-full bg-yellow-500/10 text-yellow-500" id="step-icon-${currentStep}">
+                            <i data-lucide="loader" class="w-2.5 h-2.5 animate-spin"></i>
+                        </div>
+                        <span class="type-metadata">${steps[currentStep]}</span>
+                    `;
+                    stepsContainer.appendChild(stepDiv);
+                    lucide.createIcons();
+                    history.scrollTop = history.scrollHeight;
+
+                    setTimeout(() => {
+                        // Mark current step as completed
+                        const iconDiv = document.getElementById(`step-icon-${currentStep}`);
+                        if (iconDiv) {
+                            iconDiv.className = "w-3.5 h-3.5 flex items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400";
+                            iconDiv.innerHTML = `<i data-lucide="check" class="w-2.5 h-2.5"></i>`;
+                        }
+                        lucide.createIcons();
+
+                        currentStep++;
+                        runStep();
+                    }, 1000);
+                } else {
+                    // All steps completed, hide loader and stream text
+                    setTimeout(() => {
+                        loader.classList.add('hidden');
+                        streamAIResponse(responseText, confidence);
+                    }, 600);
+                }
+            }
+
+            setTimeout(() => {
+                runStep();
+            }, 500);
+        }
+
+        function streamAIResponse(text, confidence) {
+            const container = document.getElementById('copilot-response-container');
+            const textEl = document.getElementById('copilot-response-text');
+            const confEl = document.getElementById('copilot-confidence');
+            
+            // Set confidence text
+            confEl.innerHTML = `
+                <span class="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+                <span class="text-[9px] text-brand-500 font-bold uppercase tracking-wider">${confidence}% Confianza</span>
+            `;
+
+            textEl.innerHTML = '';
+            container.classList.remove('hidden');
+            
+            let i = 0;
+            // Append typewriter cursor
+            const cursor = document.createElement('span');
+            cursor.className = 'animate-pulse text-brand-500 ml-0.5 font-bold';
+            cursor.innerText = '█';
+            textEl.appendChild(cursor);
+
+            const history = document.getElementById('copilot-chat-history');
+
+            function typeWriter() {
+                if (i < text.length) {
+                    const char = text.charAt(i);
+                    // Insert character before cursor
+                    cursor.insertAdjacentHTML('beforebegin', char === '\n' ? '<br>' : char);
+                    i++;
+                    history.scrollTop = history.scrollHeight;
+                    setTimeout(typeWriter, 12); // fast streaming
+                } else {
+                    // Remove cursor at end
+                    cursor.remove();
+                }
+            }
+            typeWriter();
+        }
+
+        // --- Swipe Gesture Controllers ---
+        function setupSwipeGestures() {
+            const systemDrawer = document.getElementById('system-drawer');
+            const copilotDrawer = document.getElementById('copilot-drawer');
+            
+            setupDrawerSwipe(systemDrawer, closeDrawer);
+            setupDrawerSwipe(copilotDrawer, closeCopilot);
+        }
+
+        function setupDrawerSwipe(drawerEl, closeFunc) {
+            let startX = 0;
+            let touchStartX = 0;
+            let isDragging = false;
+
+            // Touch events
+            drawerEl.addEventListener('touchstart', e => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+
+            drawerEl.addEventListener('touchend', e => {
+                const touchEndX = e.changedTouches[0].screenX;
+                if (touchEndX - touchStartX > 80) {
+                    closeFunc();
+                }
+            }, { passive: true });
+
+            // Mouse events to emulate swipe drag on Desktop
+            drawerEl.addEventListener('mousedown', e => {
+                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('select') || e.target.closest('a')) return;
+                isDragging = true;
+                startX = e.clientX;
+                drawerEl.style.transition = 'none'; // disable transition while dragging
+            });
+
+            document.addEventListener('mousemove', e => {
+                if (!isDragging) return;
+                const diff = e.clientX - startX;
+                if (diff > 0) {
+                    drawerEl.style.transform = `translateX(${diff}px)`;
+                }
+            });
+
+            document.addEventListener('mouseup', e => {
+                if (!isDragging) return;
+                isDragging = false;
+                drawerEl.style.transition = ''; // restore CSS transition
+                const diff = e.clientX - startX;
+                drawerEl.style.transform = '';
+                if (diff > 120) {
+                    closeFunc();
+                }
+            });
+        }
+
+        // --- Initialize App ---
+        renderDashboard();
+        setupSwipeGestures();
+    </script>
+</body>
+</html>
