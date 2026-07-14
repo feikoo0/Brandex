@@ -681,14 +681,16 @@ export function HomeDashboard({
     }
     
     // Inicializar coordenadas para el efecto tilt
-    lastPointerXRef.current = event.pointerCoordinates?.x ?? null;
+    const activator = event.activatorEvent as PointerEvent | MouseEvent | null;
+    lastPointerXRef.current = activator?.clientX ?? null;
     setDragRotation(0);
 
     playSound('click');
   };
 
   const handleDragMove = (event: DragMoveEvent) => {
-    const currentPointerX = event.pointerCoordinates?.x;
+    const nativeEvent = event.activatorEvent as PointerEvent | MouseEvent | null;
+    const currentPointerX = nativeEvent?.clientX;
     if (currentPointerX == null) return;
 
     if (lastPointerXRef.current !== null) {
