@@ -537,6 +537,24 @@ export function HomeDashboard({
       };
     }));
   };
+
+  // Status update that also syncs statusColor
+  const updateTaskStatus = (projId: string | number, tId: string | number, status: 'Pendiente' | 'En Proceso' | 'Completado') => {
+    const statusColor =
+      status === 'Completado' ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' :
+      status === 'En Proceso' ? 'bg-amber-500/20 border-amber-500/30 text-amber-400' :
+      'bg-white/5 border border-white/10 text-white/60';
+    onUpdateProjects(prev => prev.map(p => {
+      if (String(p.id) !== String(projId)) return p;
+      return {
+        ...p,
+        tasks: p.tasks?.map(t => {
+          if (String(t.id) !== String(tId)) return t;
+          return { ...t, status, statusColor };
+        })
+      };
+    }));
+  };
   useEffect(() => {
     if (expandedCardId === null) {
       setActiveStatusDropdownCardId(null);
@@ -1216,7 +1234,11 @@ export function HomeDashboard({
           }
           setExpandedCardId(prev => prev === taskId ? null : taskId);
         }}
-        className={`task-card w-full h-full rounded-[24px] bg-gradient-to-br from-[hsl(60_1.6%_9%)] to-[hsl(60_1.6%_7%)] border p-3.5 pb-3 flex flex-col justify-between transition-all duration-300 ease-out cursor-grab group relative overflow-hidden select-text ${
+        className={`task-card w-full h-full rounded-[24px] bg-gradient-to-br from-[hsl(60_1.6%_9%)] to-[hsl(60_1.6%_7%)] border p-3.5 pb-3 flex flex-col justify-between transition-all duration-300 ease-out cursor-grab group relative select-text ${
+          activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId
+            ? 'overflow-visible z-50'
+            : 'overflow-hidden'
+        } ${
           isDragging 
             ? "border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)] bg-slate-900" 
             : isAnyCardDragging
@@ -1256,9 +1278,18 @@ export function HomeDashboard({
               {isExpanded ? formattedCreationDate : shortCreationDate}
             </span>
             {!isHomeEditMode && (
-              <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0">
+              <button
+                data-no-dnd
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectProject) onSelectProject(projectId);
+                  onSelectTab('proyecto');
+                }}
+                className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0 p-0.5 rounded hover:bg-white/10 cursor-pointer"
+                title={`Ir a ${projName}`}
+              >
                 <ExternalLink className="w-3.5 h-3.5 text-slate-400 hover:text-white transition-colors duration-200" />
-              </div>
+              </button>
             )}
           </div>
           
@@ -1295,7 +1326,9 @@ export function HomeDashboard({
           )}
 
           {/* Client & Project details & Description visible on hover */}
-          <div className="task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto z-20">
+          <div className={`task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto z-20 ${
+            activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId ? 'overflow-visible' : ''
+          }`}>
             {/* Properties: Status and Format/Type */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-400">
               {/* 1. Status Pill (kept as the only true pill, made slightly smaller) */}
@@ -1327,7 +1360,7 @@ export function HomeDashboard({
                         key={st}
                         onClick={(e) => {
                           e.stopPropagation();
-                          updateTaskProperty(projectId, task.id, "status", st);
+                          updateTaskStatus(projectId, task.id, st);
                           setActiveStatusDropdownCardId(null);
                         }}
                         className={`text-left px-3 py-1.5 text-[12px] font-bold rounded-lg flex items-center justify-between hover:bg-white/[0.06] transition-colors ${
@@ -1888,6 +1921,17 @@ export function HomeDashboard({
           transform: translateY(22px) !important;
           transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease-out !important;
           will-change: max-height, transform;
+        }
+        /* Allow dropdown popups to escape overflow:hidden */
+        .task-card-details.overflow-visible {
+          overflow: visible !important;
+        }
+        .task-card-wrapper:has(.overflow-visible) {
+          z-index: 50 !important;
+        }
+        .task-card-details.overflow-visible {
+          overflow: visible !important;
+          clip-path: none !important;
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-details {
           max-height: 105px !important;
