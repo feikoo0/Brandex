@@ -50,7 +50,7 @@ export function AppSidebar() {
   const setTab    = useUIStore((s) => s.setTab);
   const isSmartMode = useUIStore((s) => s.isSmartMode);
   const toggleSmartMode = useUIStore((s) => s.toggleSmartMode);
-  const sync      = useSync();
+  const syncMutation = useSync();
   const router    = useRouter();
   
   const { theme, setTheme } = useTheme();
@@ -75,10 +75,12 @@ export function AppSidebar() {
       {/* Sync */}
       <div className="w-full flex justify-center py-6">
         <button
-          onClick={() => sync()}
-          className="w-10 h-10 rounded-full flex justify-center items-center group transition-colors relative dark:bg-white/[0.04] bg-black/[0.04] dark:border-white/5 border-black/5 dark:text-white/50 text-black/50 hover:text-black dark:hover:text-white"
+          onClick={() => syncMutation.mutate()}
+          disabled={syncMutation.isPending}
+          className="w-10 h-10 rounded-full flex justify-center items-center group transition-colors relative dark:bg-white/[0.04] bg-black/[0.04] dark:border-white/5 border-black/5 dark:text-white/50 text-black/50 hover:text-black dark:hover:text-white disabled:opacity-50"
+          title="Sincronizar Base de Datos"
         >
-          <RefreshCw className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" />
+          <RefreshCw className={cn("w-4 h-4", syncMutation.isPending ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500")} />
         </button>
       </div>
 

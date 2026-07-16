@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Pencil, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 import { ProjectDashboard, Project, Task } from "./components/ProjectDashboard";
@@ -122,10 +122,11 @@ export default function BrandexV3Page() {
   const [viewFilterMode, setViewFilterMode] = useState<"mio" | "equipo">("equipo");
   const [groupingMode, setGroupingMode] = useState<"fecha" | "cliente" | "prioridad" | "estado">("fecha");
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
+  const [isHomeEditMode, setIsHomeEditMode] = useState(false);
   const [notificationCount, setNotificationCount] = useState(3);
   const [isNightMode, setIsNightMode] = useState(true);
   const isNeumorphic = true;
-  const [activeProject, setActiveProject] = useState(1);
+  const [activeProject, setActiveProject] = useState<string | number>(1);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
@@ -158,8 +159,9 @@ export default function BrandexV3Page() {
   if (hour >= 12 && hour < 19) greeting = "Buenas tardes";
   else if (hour >= 19) greeting = "Buenas noches";
 
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [isClient, setIsClient] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const [sessionGreeting, setSessionGreeting] = useState<string>("Buenos días, bienvenido de nuevo");
   const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
@@ -209,18 +211,52 @@ export default function BrandexV3Page() {
 
     const loadFromFirestore = async () => {
       try {
+        // 1. Check if we have already seeded in the past
+        const metaDoc = await getDoc(doc(db, "v3_settings", "seed_status"));
+        const alreadySeededInFirestore = metaDoc.exists() && metaDoc.data()?.seeded;
+        
+        let alreadySeededInLocal = false;
+        if (typeof window !== "undefined") {
+          alreadySeededInLocal = localStorage.getItem("brandex_v3_seeded") === "true";
+        }
+
+        const isAlreadySeeded = alreadySeededInFirestore || alreadySeededInLocal;
+
         const colRef = collection(db, "v3_projects");
         const snap = await getDocs(colRef);
         
-        if (snap.empty) {
-          console.log("Firestore v3_projects is empty. Seeding INITIAL_PROJECTS.");
+        if (snap.empty && !isAlreadySeeded) {
+          console.log("Firestore v3_projects is empty and never seeded. Seeding INITIAL_PROJECTS.");
           const seedData = seedProjectsWithSessions(INITIAL_PROJECTS);
           const seedPromises = seedData.map(p => {
             return setDoc(doc(db, "v3_projects", String(p.id)), p);
           });
           await Promise.all(seedPromises);
+          
+          // Save seeding status
+          try {
+            await setDoc(doc(db, "v3_settings", "seed_status"), { seeded: true });
+          } catch (metaErr) {
+            console.error("Failed to write seed_status to Firestore settings:", metaErr);
+          }
+          if (typeof window !== "undefined") {
+            localStorage.setItem("brandex_v3_seeded", "true");
+          }
+          
           setProjects(seedData);
         } else {
+          // If alreadySeeded doesn't exist yet but snap is not empty, ensure we set it
+          if (!isAlreadySeeded && !snap.empty) {
+            try {
+              await setDoc(doc(db, "v3_settings", "seed_status"), { seeded: true });
+            } catch (metaErr) {
+              console.error("Failed to write seed_status to Firestore settings:", metaErr);
+            }
+            if (typeof window !== "undefined") {
+              localStorage.setItem("brandex_v3_seeded", "true");
+            }
+          }
+          
           const list: Project[] = [];
           snap.forEach(docSnap => {
             list.push(docSnap.data() as Project);
@@ -228,6 +264,7 @@ export default function BrandexV3Page() {
           list.sort((a, b) => Number(a.id) - Number(b.id));
           setProjects(list);
         }
+        setIsLoaded(true);
       } catch (err) {
         console.error("Firestore load error, falling back to localStorage:", err);
         const savedProjects = localStorage.getItem('brandex_v3_projects');
@@ -245,8 +282,15 @@ export default function BrandexV3Page() {
             setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
           }
         } else {
-          setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
+          // If we fallback and don't have local projects, but we did seed in the past, keep empty array
+          const wasSeeded = typeof window !== "undefined" && localStorage.getItem("brandex_v3_seeded") === "true";
+          if (wasSeeded) {
+            setProjects([]);
+          } else {
+            setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
+          }
         }
+        setIsLoaded(true);
       }
     };
 
@@ -255,8 +299,11 @@ export default function BrandexV3Page() {
 
   // Save to Firestore and localStorage when projects change
   useEffect(() => {
-    if (isClient && projects.length > 0) {
+    if (isClient && isLoaded) {
       localStorage.setItem('brandex_v3_projects', JSON.stringify(projects));
+      if (typeof window !== "undefined" && projects.length > 0) {
+        localStorage.setItem("brandex_v3_seeded", "true");
+      }
       
       // Save each project to Firestore asynchronously
       projects.forEach(async (p) => {
@@ -267,7 +314,7 @@ export default function BrandexV3Page() {
         }
       });
     }
-  }, [projects, isClient]);
+  }, [projects, isLoaded, isClient]);
 
   const updatePriority = (id: number, priority: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, priority } : p));
@@ -331,8 +378,38 @@ export default function BrandexV3Page() {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, status } : p));
   };
 
+  const deleteProject = async (id: number) => {
+    try {
+      // 1. Delete from Firestore first
+      await deleteDoc(doc(db, "v3_projects", String(id)));
+      
+      // 2. Update local state & localStorage
+      setProjects(prev => {
+        const next = prev.filter(p => p.id !== id);
+        if (activeProject === id) {
+          if (next.length > 0) {
+            setActiveProject(next[0].id);
+          } else {
+            setActiveProject("");
+          }
+        }
+        localStorage.setItem('brandex_v3_projects', JSON.stringify(next));
+        return next;
+      });
+      playSound('trash');
+    } catch (err) {
+      console.error("Error deleting project from Firestore:", err);
+    }
+  };
+
   const addProject = () => {
     const newId = Math.max(...projects.map(p => p.id), 0) + 1;
+    const today = new Date();
+    const dayStr = today.getDate().toString().padStart(2, '0');
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const monthStr = months[today.getMonth()];
+    const startDateFormatted = `${dayStr} ${monthStr}`;
+
     const newProject: Project = {
       id: newId,
       title: "Nuevo Proyecto",
@@ -346,6 +423,7 @@ export default function BrandexV3Page() {
       status: "En Revisión Interna",
       statusColor: "bg-yellow-500/10 border-yellow-500/30 text-yellow-500",
       burnRate: "0h / 0h",
+      startDate: startDateFormatted,
       deadline: "Sin Fecha",
       daysRemaining: "-",
       briefCore: "Escribe el core brief aquí.",
@@ -385,6 +463,7 @@ export default function BrandexV3Page() {
       status: data.status,
       statusColor,
       burnRate: data.burnRate,
+      startDate: data.startDate,
       deadline: data.deadline,
       daysRemaining: data.daysRemaining,
       briefCore: data.desc || "Escribe el core brief aquí.",
@@ -442,6 +521,54 @@ export default function BrandexV3Page() {
 
   return (
     <main className={`relative w-screen h-screen overflow-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#111113] text-neutral-100' : 'bg-[#f8fafc] text-slate-900'}`}>
+      {/* Loading Screen Overlay */}
+      <AnimatePresence>
+        {!isLoaded && (
+          <motion.div
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.4 } }}
+            className="absolute inset-0 z-[1000] flex flex-col items-center justify-center bg-[#111113]"
+          >
+            {/* Ambient background glow */}
+            <div className="absolute w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-[80px]" />
+            <div className="absolute w-[300px] h-[300px] bg-cyan-500/10 rounded-full blur-[60px]" />
+
+            <div className="relative flex flex-col items-center text-center px-4 max-w-sm">
+              {/* Spinning tech loader */}
+              <div className="relative w-16 h-16 mb-6">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-t-2 border-r-2 border-indigo-500"
+                />
+                <motion.div
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                  className="absolute inset-2 rounded-full border-b-2 border-l-2 border-cyan-400 opacity-60"
+                />
+                <div className="absolute inset-4 rounded-full bg-[#111113] border border-white/5 flex items-center justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin text-white/40" />
+                </div>
+              </div>
+
+              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-white leading-relaxed">
+                Braindex OS
+              </h2>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mt-2">
+                Sincronizando Lienzo v3...
+              </p>
+              <div className="w-32 h-1 bg-zinc-900 rounded-full mt-4 overflow-hidden relative">
+                <motion.div
+                  animate={{ left: ["-100%", "100%"] }}
+                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full"
+                />
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Background Container */}
       <div className="absolute inset-0 overflow-hidden z-0 bg-transparent pointer-events-none">
         <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#111113]' : 'bg-[#f8fafc]'}`} />
@@ -449,13 +576,14 @@ export default function BrandexV3Page() {
 
       {/* Top Left Logo Wrapper */}
       <div className="absolute top-[28px] left-3.5 w-10 h-14 flex items-center justify-center z-50">
-        <Link href="/" className="group flex items-center justify-center">
+        <Link href="/brandex-v3" className="group flex items-center justify-center">
           <Image 
-            src="/BRANDEX%20ICON.png?v=2" 
+            src="/BRANDEX%20ICON.png" 
             alt="Brandex Icon" 
             width={28} 
             height={28} 
-            className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'filter brightness-125' : 'filter invert-[0.15]'}`}
+            referrerPolicy="no-referrer"
+            className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
           />
         </Link>
       </div>
@@ -589,7 +717,25 @@ export default function BrandexV3Page() {
           {/* Quick Action Buttons on the right side of col-span-9 */}
           {activeTab === "home" && (
             <div className="flex items-center gap-3 shrink-0">
-              {/* 1. Agrupar Dropdown Button */}
+              {/* 1. Pencil Edit Mode Toggle Button */}
+              <button
+                onClick={() => {
+                  playSound('click');
+                  setIsHomeEditMode(!isHomeEditMode);
+                }}
+                className={`flex items-center justify-center w-8 h-8 rounded-full border text-xs font-bold transition-all duration-200 shadow-sm shrink-0 ${
+                  isHomeEditMode
+                    ? "bg-amber-500/20 border-amber-500/30 text-amber-400 hover:bg-amber-500/30 animate-[subtle-pulse_1.5s_infinite]"
+                    : isNightMode
+                      ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
+                      : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
+                }`}
+                title={isHomeEditMode ? "Salir de modo edición" : "Entrar a modo edición"}
+              >
+                <Pencil className="w-4 h-4" />
+              </button>
+
+              {/* 2. Agrupar Dropdown Button next to pencil */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -602,7 +748,7 @@ export default function BrandexV3Page() {
                       : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <Layers className="w-3.5 h-3.5" />
+                  <Layers className="w-3.5 h-3.5 text-slate-400" />
                   <span>
                     {
                       groupingMode === "fecha" ? "Fecha" :
@@ -882,9 +1028,24 @@ export default function BrandexV3Page() {
                     <div className="flex flex-col min-w-0 flex-1">
                       {/* Title and Priority Pill Row */}
                       <div className="flex items-center justify-between gap-2 w-full">
-                        <h3 className={`${isNightMode ? 'text-zinc-100' : isNeumorphic ? 'text-slate-800' : 'text-white/90'} font-bold text-[13px] truncate tracking-wide leading-tight`} title={card.title}>
-                          {card.title}
-                        </h3>
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          {/* Quick delete trash icon */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`¿Estás seguro de que deseas eliminar el proyecto "${card.title}" y todas sus tareas?`)) {
+                                deleteProject(card.id);
+                              }
+                            }}
+                            className="p-1 rounded-full text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors duration-200 shrink-0"
+                            title="Eliminar Proyecto"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <h3 className={`${isNightMode ? 'text-zinc-100' : isNeumorphic ? 'text-slate-800' : 'text-white/90'} font-bold text-[13px] truncate tracking-wide leading-tight`} title={card.title}>
+                            {card.title}
+                          </h3>
+                        </div>
                         
                         {/* Priority Pill with Dropdown */}
                         <div className="relative flex-shrink-0">
@@ -1194,6 +1355,7 @@ export default function BrandexV3Page() {
           onUpdatePriority={updatePriority}
           onUpdateDaysRemaining={updateDaysRemaining}
           onSelectTask={(taskId) => setActiveTaskId(taskId)}
+          onDeleteProject={deleteProject}
           isNeumorphic={isNeumorphic}
           isNightMode={isNightMode}
         />
@@ -1223,6 +1385,8 @@ export default function BrandexV3Page() {
                 viewFilterMode={viewFilterMode}
                 groupingMode={groupingMode}
                 onUpdateProjects={setProjects}
+                isHomeEditMode={isHomeEditMode}
+                onDeleteProject={deleteProject}
               />
             )}
 
@@ -1353,6 +1517,7 @@ export default function BrandexV3Page() {
         onCreateProject={addNewProjectFromModal}
         isNightMode={isNightMode}
         isNeumorphic={isNeumorphic}
+        projects={projects}
       />
     </main>
   );

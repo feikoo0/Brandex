@@ -52,7 +52,18 @@ export function useData() {
 // ── Manual sync trigger ────────────────────────────────────────────────────────
 export function useSync() {
   const qc = useQueryClient();
-  return () => qc.invalidateQueries({ queryKey: QUERY_KEY });
+  return useMutation({
+    mutationFn: () => syncAll(true),
+    onSuccess: (res) => {
+      qc.setQueryData(QUERY_KEY, {
+        clientes:     res.clientes     ?? [],
+        proyectos:    res.proyectos    ?? [],
+        tareas:       res.tareas       ?? [],
+        trabajadores: res.trabajadores ?? [],
+        recursos:     res.recursos     ?? [],
+      });
+    },
+  });
 }
 
 // ── Task mutations ─────────────────────────────────────────────────────────────

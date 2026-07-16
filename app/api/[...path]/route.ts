@@ -15,7 +15,15 @@ import {
   getFocusConfig,
   setFocusConfig,
   updateCachedItem,
-  addCachedItem
+  addCachedItem,
+  createLocalClient,
+  updateLocalClient,
+  createLocalProject,
+  updateLocalProject,
+  createLocalTask,
+  updateLocalTask,
+  createLocalWorker,
+  updateLocalWorker
 } from "@/lib/notionServer";
 
 const CLIENTES_DB = process.env.CLIENTES_DB || "";
@@ -192,167 +200,52 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
       return NextResponse.json({ ok: false, error: "Faltan parámetros" }, { status: 400 });
     }
 
-    const propName = recordType === "worker" ? "Token Equipo" : "Token";
-    const props = { [propName]: { rich_text: [{ text: { content: newToken } }] } };
-    const r = await notion("PATCH", `/pages/${pageId}`, { properties: props });
-
-    if (r.error) {
-      return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
+    try {
+      if (recordType === "worker") {
+        await updateLocalWorker(pageId, { token: newToken });
+      } else {
+        await updateLocalClient(pageId, { token: newToken });
+      }
+      return NextResponse.json({ ok: true });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-
-    if (recordType === "worker") {
-      const parsed = parseWorker(r);
-      await updateCachedItem("trabajadores", pageId, parsed);
-    } else {
-      const parsed = parseClient(r);
-      await updateCachedItem("clientes", pageId, parsed);
-    }
-
-    return NextResponse.json({ ok: true });
   }
 
   if (p === "/api/task/create") {
-    const errors: string[] = [];
-    let r: any;
-
-    // Cascade creation attempts
-    // Try 1: status type
-    const props1 = buildTaskProps(data, "status");
-    r = await notion("POST", "/pages", { parent: { database_id: TAREAS_DB }, properties: props1 });
-    
-    if (r.error) {
-      errors.push(`status: ${r.error}`);
-      // Try 2: select type
-      const props2 = buildTaskProps(data, "select");
-      r = await notion("POST", "/pages", { parent: { database_id: TAREAS_DB }, properties: props2 });
-      
-      if (r.error) {
-        errors.push(`select: ${r.error}`);
-        // Try 3: safe-only properties
-        const props3 = buildTaskProps(data, "status"); // wait, task safe-only parser
-        // We will construct safe props
-        const safeProps: any = {
-          "Titulo/Idea": { title: [{ text: { content: data.titulo || "Nueva Tarea" } }] }
-        };
-        if (data.contenido) safeProps["Contenido"] = { rich_text: [{ text: { content: data.contenido } }] };
-        if (data.fechaEntrega) safeProps["Fecha de Entrega"] = { date: { start: data.fechaEntrega } };
-        if (data.fechaProg) safeProps["Fecha programada"] = { date: { start: data.fechaProg } };
-        
-        r = await notion("POST", "/pages", { parent: { database_id: TAREAS_DB }, properties: safeProps });
-        
-        if (r.error) {
-          errors.push(`safe: ${r.error}`);
-          return NextResponse.json({ ok: false, error: errors.join(" | ") }, { status: 500 });
-        }
-      }
+    try {
+      const task = await createLocalTask(data);
+      return NextResponse.json({ ok: true, id: task.id });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-
-    const pageId = r.id;
-    let finalPage = r;
-
-    // Notion relation update workaround (Dedicated PATCH)
-    if (pageId) {
-      const relProps: any = {};
-      const pid = toUuid(data.proyecto_id || data.proyecto_ids?.[0]);
-      if (pid) relProps["Proyectos"] = { relation: [{ id: pid }] };
-      
-      const cid = toUuid(data.cliente_id || data.cliente_ids?.[0]);
-      if (cid) relProps["Cliente"] = { relation: [{ id: cid }] };
-
-      if (Object.keys(relProps).length > 0) {
-        const r_rel = await notion("PATCH", `/pages/${pageId}`, { properties: relProps });
-        if (!r_rel.error) {
-          finalPage = r_rel;
-        } else {
-          console.warn(`⚠️ Relations PATCH failed for ${pageId}: ${r_rel.error}`);
-        }
-      }
-    }
-
-    const parsed = parseTask(finalPage);
-    await addCachedItem("tareas", parsed);
-
-    return NextResponse.json({ ok: true, id: pageId });
   }
 
   if (p === "/api/project/create") {
-    const errors: string[] = [];
-    let r: any;
-
-    // Try 1: status type
-    const props1 = buildProjProps(data, "status");
-    r = await notion("POST", "/pages", { parent: { database_id: PROYECTOS_DB }, properties: props1 });
-
-    if (r.error) {
-      errors.push(`status: ${r.error}`);
-      // Try 2: select type
-      const props2 = buildProjProps(data, "select");
-      r = await notion("POST", "/pages", { parent: { database_id: PROYECTOS_DB }, properties: props2 });
-
-      if (r.error) {
-        errors.push(`select: ${r.error}`);
-        // Try 3: safe fields
-        const safeProps: any = {};
-        if (data.nombre) safeProps["Nombre"] = { title: [{ text: { content: data.nombre } }] };
-        if (data.recursosDrive) safeProps["Recursos DRIVE"] = { url: data.recursosDrive };
-        if (data.costo !== undefined) safeProps["Costo del Proyecto"] = { number: parseFloat(data.costo) || 0 };
-        const fi = (data.fechaInicio || "").trim();
-        const ff = (data.fechaFin || "").trim();
-        if (fi || ff) safeProps["Fecha Proyecto"] = { date: { start: fi || ff, end: ff || null } };
-        if (data.descripcion) safeProps["Descripción proyecto"] = { rich_text: [{ text: { content: data.descripcion } }] };
-
-        r = await notion("POST", "/pages", { parent: { database_id: PROYECTOS_DB }, properties: safeProps });
-
-        if (r.error) {
-          errors.push(`safe: ${r.error}`);
-          // Try 4: title-only
-          const props4 = { "Nombre": { title: [{ text: { content: (data.nombre || "Nuevo Proyecto").trim() } }] } };
-          r = await notion("POST", "/pages", { parent: { database_id: PROYECTOS_DB }, properties: props4 });
-
-          if (r.error) {
-            errors.push(`title-only: ${r.error}`);
-            return NextResponse.json({ ok: false, error: errors.join(" | ") }, { status: 500 });
-          }
-        }
-      }
+    try {
+      const proj = await createLocalProject(data);
+      return NextResponse.json({ ok: true, id: proj.id });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-
-    const parsed = parseProject(r);
-    await addCachedItem("proyectos", parsed);
-
-    return NextResponse.json({ ok: true, id: r.id });
   }
 
   if (p === "/api/client/create") {
-    const nombre = data.nombre || "Nuevo Cliente";
-    const props = { "Nombre": { title: [{ text: { content: nombre } }] } };
-    const r = await notion("POST", "/pages", { parent: { database_id: CLIENTES_DB }, properties: props });
-
-    if (r.error) {
-      return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
+    try {
+      const client = await createLocalClient(data);
+      return NextResponse.json({ ok: true, id: client.id });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-
-    const parsed = parseClient(r);
-    await addCachedItem("clientes", parsed);
-
-    return NextResponse.json({ ok: true, id: r.id });
   }
 
   if (p === "/api/worker/create") {
-    if (!EQUIPO_DB) {
-      return NextResponse.json({ ok: false, error: "EQUIPO_DB no configurada" }, { status: 400 });
+    try {
+      const worker = await createLocalWorker(data);
+      return NextResponse.json({ ok: true, id: worker.id });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-    const props = buildWorkerProps(data);
-    const r = await notion("POST", "/pages", { parent: { database_id: EQUIPO_DB }, properties: props });
-
-    if (r.error) {
-      return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
-    }
-
-    const parsed = parseWorker(r);
-    await addCachedItem("trabajadores", parsed);
-
-    return NextResponse.json({ ok: true, id: r.id });
   }
 
   if (p === "/api/agent/chat") {
@@ -364,7 +257,7 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
     const messages = data.messages || [];
     const systemPrompt = {
       role: "system",
-      content: `Eres el Agente Inteligente de Brandex OS. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes en Notion.
+      content: `Eres el Agente Inteligente de Brandex OS. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes de forma local y segura.
 ESTRUCTURA DE DATOS:
 - Proyectos: nombre, cliente_id, estadoProyecto, prioridad, area, formato, fechaInicio, fechaFin, descripcion.
 - Tareas: titulo, proyecto_id, estado, prioridad, area, formato, esfuerzo, asignado, contenido.
@@ -432,72 +325,39 @@ export async function PATCH(req: NextRequest, { params }: { params: { path: stri
   }
 
   if (p === "/api/client/update") {
-    const props: any = {};
-    if ("redes" in data) props["Redes"] = { url: data.redes || null };
-    if ("obs" in data) props["Observaciones"] = { rich_text: [{ text: { content: data.obs } }] };
-    if ("potencial" in data) props["Potencial"] = { status: { name: data.potencial } };
-    if ("fuente" in data) props["Fuente"] = { select: { name: data.fuente } };
-    if ("drive" in data) props["Drvie Cliente"] = { url: data.drive || null };
-
-    const r = await notion("PATCH", `/pages/${pageId}`, { properties: props });
-    if (r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
-
-    const parsed = parseClient(r);
-    await updateCachedItem("clientes", pageId, parsed);
-
-    return NextResponse.json({ ok: true });
+    try {
+      await updateLocalClient(pageId, data);
+      return NextResponse.json({ ok: true });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
+    }
   }
 
   if (p === "/api/task/update") {
-    const props = buildTaskUpdateProps(data, "status");
-    const r = await notion("PATCH", `/pages/${pageId}`, { properties: props });
-    if (r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
-
-    const parsed = parseTask(r);
-    await updateCachedItem("tareas", pageId, parsed);
-
-    return NextResponse.json({ ok: true });
+    try {
+      await updateLocalTask(pageId, data);
+      return NextResponse.json({ ok: true });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
+    }
   }
 
   if (p === "/api/project/update") {
-    const props = buildProjProps(data, "status");
-    const r = await notion("PATCH", `/pages/${pageId}`, { properties: props });
-    if (r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
-
-    const parsed = parseProject(r);
-    await updateCachedItem("proyectos", pageId, parsed);
-
-    return NextResponse.json({ ok: true });
+    try {
+      await updateLocalProject(pageId, data);
+      return NextResponse.json({ ok: true });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
+    }
   }
 
   if (p === "/api/worker/update") {
-    const props: any = {};
-    if ("nombre" in data && data.nombre) {
-      props["Nombre"] = { title: [{ text: { content: data.nombre } }] };
+    try {
+      await updateLocalWorker(pageId, data);
+      return NextResponse.json({ ok: true });
+    } catch (err: any) {
+      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
-    if ("rol" in data && data.rol) {
-      props["Rol"] = { select: { name: data.rol } };
-    }
-    if ("disponibilidad" in data && data.disponibilidad) {
-      props["Disponibilidad"] = { select: { name: data.disponibilidad } };
-    }
-    if ("tarifa" in data && data.tarifa) {
-      try { props["Tarifa"] = { number: parseFloat(data.tarifa) }; } catch {}
-    }
-    if ("contrato" in data && data.contrato) {
-      props["Tipo Contrato"] = { select: { name: data.contrato } };
-    }
-    if ("notas" in data) {
-      props["Notas"] = { rich_text: [{ text: { content: data.notas } }] };
-    }
-
-    const r = await notion("PATCH", `/pages/${pageId}`, { properties: props });
-    if (r.error) return NextResponse.json({ ok: false, error: r.error }, { status: 500 });
-
-    const parsed = parseWorker(r);
-    await updateCachedItem("trabajadores", pageId, parsed);
-
-    return NextResponse.json({ ok: true });
   }
 
   return NextResponse.json({ error: "Endpoint not found" }, { status: 404 });

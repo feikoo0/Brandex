@@ -51,7 +51,9 @@ export async function notion(method: string, path: string, body?: any) {
 
 // ── Query Database with Pagination ───────────────────────────────────────────
 export async function queryDb(dbId: string, sorts?: any[]) {
-  if (!dbId) return [];
+  if (!dbId) {
+    throw new Error("Database ID is not configured");
+  }
   const pages: any[] = [];
   let cursor: string | undefined = undefined;
 
@@ -62,8 +64,7 @@ export async function queryDb(dbId: string, sorts?: any[]) {
 
     const r = await notion("POST", `/databases/${dbId}/query`, body);
     if (r.error) {
-      console.error(`Error querying database ${dbId}:`, r.error);
-      break;
+      throw new Error(`Error querying database ${dbId}: ${r.error}`);
     }
 
     pages.push(...(r.results || []));
@@ -522,64 +523,380 @@ export async function addCachedItem(docName: string, newItem: any) {
   }
 }
 
-// ── Sync All Data (Firestore first, or Notion overwrite) ──────────────────────
+// ── Mock Fallback Data ────────────────────────────────────────────────────────
+const MOCK_CLIENTES = [
+  {
+    id: "c1",
+    nombre: "Café de Especialidad Esquina",
+    potencial: "Alto",
+    redes: "https://instagram.com/cafeesquina",
+    fuente: "Instagram",
+    obs: "Cliente interesado en expandir su marca con reels gastronómicos y contenido estético.",
+    token: "TOK-CAF-01",
+    drive: "https://drive.google.com/drive/folders/cafe",
+    instagram: "https://instagram.com/cafeesquina",
+    facebook: "https://facebook.com/cafeesquina",
+    tiktok: "https://tiktok.com/@cafeesquina",
+    web: "https://cafeesquina.com",
+    whatsapp: "https://wa.me/521234567890",
+    telefono: "+52 1 234 567 890",
+    celular: "+52 1 234 567 890",
+    url: ""
+  },
+  {
+    id: "c2",
+    nombre: "FitLife Gym & Studio",
+    potencial: "Alto",
+    redes: "https://instagram.com/fitlifegym",
+    fuente: "Recomendación",
+    obs: "Cadena de gimnasios boutique. Enfoque en captación de leads mediante desafíos de 30 días.",
+    token: "TOK-FIT-02",
+    drive: "https://drive.google.com/drive/folders/fitlife",
+    instagram: "https://instagram.com/fitlifegym",
+    facebook: "https://facebook.com/fitlifegym",
+    tiktok: "https://tiktok.com/@fitlifegym",
+    web: "https://fitlifegym.com",
+    whatsapp: "https://wa.me/521234567891",
+    telefono: "+52 1 234 567 891",
+    celular: "+52 1 234 567 891",
+    url: ""
+  },
+  {
+    id: "c3",
+    nombre: "Moda Atemporal Co.",
+    potencial: "Medio",
+    redes: "https://instagram.com/modatemporal",
+    fuente: "Web",
+    obs: "Tienda de ropa sustentable. Requiere fotografía minimalista de producto y carruseles informativos.",
+    token: "TOK-MOD-03",
+    drive: "https://drive.google.com/drive/folders/moda",
+    instagram: "https://instagram.com/modatemporal",
+    facebook: "",
+    tiktok: "https://tiktok.com/@modatemporal",
+    web: "https://modatemporal.co",
+    whatsapp: "https://wa.me/521234567892",
+    telefono: "+52 1 234 567 892",
+    celular: "+52 1 234 567 892",
+    url: ""
+  }
+];
+
+const MOCK_PROYECTOS = [
+  {
+    id: "p1",
+    nombre: "Campaña Brunch de Verano",
+    cliente_ids: ["c1"],
+    estadoProyecto: "Activo",
+    estado: "En curso",
+    area: "Social Media",
+    formato: "Reels",
+    prioridad: "Alta",
+    ciclo: "Mensual",
+    esfuerzo: "Medio",
+    plataformas: ["Instagram", "TikTok"],
+    fechaInicio: "2026-07-01",
+    fechaFin: "2026-07-31",
+    recursosDrive: "https://drive.google.com/drive/folders/cafe-brunch",
+    costo: 1800,
+    tarea_ids: ["t1", "t2"],
+    descripcion: "Estrategia de posicionamiento de los nuevos desayunos fríos y postres frutales.",
+    url: ""
+  },
+  {
+    id: "p2",
+    nombre: "Desafío Transformación 30 Días",
+    cliente_ids: ["c2"],
+    estadoProyecto: "Activo",
+    estado: "En curso",
+    area: "Social Media",
+    formato: "Posts",
+    prioridad: "Alta",
+    ciclo: "Mensual",
+    esfuerzo: "Alto",
+    plataformas: ["Instagram", "Facebook"],
+    fechaInicio: "2026-07-05",
+    fechaFin: "2026-08-05",
+    recursosDrive: "https://drive.google.com/drive/folders/fitlife-desafio",
+    costo: 2500,
+    tarea_ids: ["t3", "t4", "t5"],
+    descripcion: "Campaña publicitaria orgánica para promover el programa de transformación de verano.",
+    url: ""
+  },
+  {
+    id: "p3",
+    nombre: "Lanzamiento Colección Lino",
+    cliente_ids: ["c3"],
+    estadoProyecto: "Activo",
+    estado: "Planificación",
+    area: "Diseño",
+    formato: "Branding",
+    prioridad: "Media",
+    ciclo: "Trimestral",
+    esfuerzo: "Medio",
+    plataformas: ["Instagram", "Web"],
+    fechaInicio: "2026-07-15",
+    fechaFin: "2026-08-15",
+    recursosDrive: "https://drive.google.com/drive/folders/moda-lino",
+    costo: 3500,
+    tarea_ids: ["t6"],
+    descripcion: "Sesión fotográfica de producto y diseño de catálogo digital para la nueva temporada.",
+    url: ""
+  }
+];
+
+const MOCK_TAREAS = [
+  {
+    id: "t1",
+    titulo: "Planificar Guiones de Reels de Bebidas Frías",
+    estado: "Pendiente",
+    area: "Social Media",
+    asignado: "Feiko de Jong",
+    asignado_ids: ["w1"],
+    formato: "Reels",
+    esfuerzo: "Bajo",
+    prioridad: "Alta",
+    plataformas: ["Instagram", "TikTok"],
+    contenido: "Escribir 3 guiones enfocados en el latte helado y el cold brew de coco.",
+    copy: "El verano sabe mejor con un cold brew bien helado. 🥥☕ ¿Ya probaste nuestro cold brew de coco?",
+    adminNotes: "Asegurar que se grabe con buena luz natural en la terraza.",
+    notasCliente: "Por favor, destacar que usamos leche vegetal sin costo extra.",
+    fechaProg: "2026-07-14",
+    fechaEntrega: "2026-07-18",
+    proyecto_ids: ["p1"],
+    cliente_ids: ["c1"],
+    created: "2026-07-13T10:00:00Z",
+    url: ""
+  },
+  {
+    id: "t2",
+    titulo: "Edición de Video: Elaboración de Croissants",
+    estado: "En Proceso",
+    area: "Video",
+    asignado: "Santiago Pérez",
+    asignado_ids: ["w2"],
+    formato: "Reels",
+    esfuerzo: "Medio",
+    prioridad: "Media",
+    plataformas: ["Instagram"],
+    contenido: "Video de ritmo rápido mostrando las capas del croissant al morderlo.",
+    copy: "Capas de perfección crujiente recién salidas de nuestro horno. 🥐✨ Ven por el tuyo antes de que se acaben.",
+    adminNotes: "Utilizar música en tendencia de estilo lofi acústico.",
+    notasCliente: "",
+    fechaProg: "2026-07-15",
+    fechaEntrega: "2026-07-20",
+    proyecto_ids: ["p1"],
+    cliente_ids: ["c1"],
+    created: "2026-07-13T11:00:00Z",
+    url: ""
+  },
+  {
+    id: "t3",
+    titulo: "Diseñar Carrusel: 5 Errores Comunes al Entrenar",
+    estado: "Completado",
+    area: "Diseño",
+    asignado: "Karla Mendoza",
+    asignado_ids: ["w3"],
+    formato: "Posts",
+    esfuerzo: "Alto",
+    prioridad: "Alta",
+    plataformas: ["Instagram", "Facebook"],
+    contenido: "Diseñar 6 slides educativos con contraste oscuro y tipografías grandes en negrita.",
+    copy: "Evita estos 5 errores comunes para acelerar tus resultados. Guardar este post para tu próxima rutina. 💪🔥",
+    adminNotes: "Mantener colores corporativos de FitLife: amarillo flúor y negro mate.",
+    notasCliente: "El logo del gym debe estar en la última diapositiva.",
+    fechaProg: "2026-07-10",
+    fechaEntrega: "2026-07-13",
+    proyecto_ids: ["p2"],
+    cliente_ids: ["c2"],
+    created: "2026-07-09T09:00:00Z",
+    url: ""
+  },
+  {
+    id: "t4",
+    titulo: "Grabar Testimoniales de Alumnos Reales",
+    estado: "Revisión",
+    area: "Social Media",
+    asignado: "Feiko de Jong",
+    asignado_ids: ["w1"],
+    formato: "Reels",
+    esfuerzo: "Alto",
+    prioridad: "Alta",
+    plataformas: ["Instagram", "TikTok"],
+    contenido: "Entrevistar a 3 alumnos que completaron el desafío anterior sobre su progreso.",
+    copy: "La motivación te hace empezar, el hábito te mantiene. Escucha la historia de Sofía, Carlos y Ana. 🌟🏋️‍♂️",
+    adminNotes: "Editar subtítulos llamativos con colores contrastantes.",
+    notasCliente: "Muy buen video, se ve excelente.",
+    fechaProg: "2026-07-12",
+    fechaEntrega: "2026-07-16",
+    proyecto_ids: ["p2"],
+    cliente_ids: ["c2"],
+    created: "2026-07-10T14:00:00Z",
+    url: ""
+  },
+  {
+    id: "t5",
+    titulo: "Calendario de Stories Semanal - FitLife",
+    estado: "En Proceso",
+    area: "Social Media",
+    asignado: "Santiago Pérez",
+    asignado_ids: ["w2"],
+    formato: "Posts",
+    esfuerzo: "Bajo",
+    prioridad: "Baja",
+    plataformas: ["Instagram"],
+    contenido: "Estructura diaria de historias: encuestas de hábitos, tips rápidos, y llamadas a la acción.",
+    copy: "",
+    adminNotes: "Configurar stickers interactivos en Instagram para fomentar respuestas.",
+    notasCliente: "",
+    fechaProg: "2026-07-14",
+    fechaEntrega: "2026-07-15",
+    proyecto_ids: ["p2"],
+    cliente_ids: ["c2"],
+    created: "2026-07-13T15:00:00Z",
+    url: ""
+  },
+  {
+    id: "t6",
+    titulo: "Propuesta Estética Catálogo Digital Lino",
+    estado: "Pendiente",
+    area: "Diseño",
+    asignado: "Karla Mendoza",
+    asignado_ids: ["w3"],
+    formato: "Branding",
+    esfuerzo: "Medio",
+    prioridad: "Media",
+    plataformas: ["Instagram", "Web"],
+    contenido: "Definición de paleta de colores (tonos tierra, beige, oliva) y retícula tipográfica.",
+    copy: "",
+    adminNotes: "Alinear con la identidad orgánica y minimalista de la marca.",
+    notasCliente: "",
+    fechaProg: "2026-07-16",
+    fechaEntrega: "2026-07-22",
+    proyecto_ids: ["p3"],
+    cliente_ids: ["c3"],
+    created: "2026-07-14T08:00:00Z",
+    url: ""
+  }
+];
+
+const MOCK_TRABAJADORES = [
+  {
+    id: "w1",
+    nombre: "Feiko de Jong",
+    rol: "Director Creativo",
+    disponibilidad: "Completa",
+    tarifa: 50,
+    especialidad: ["Estrategia", "Copywriting", "Branding"],
+    email: "feiko@brandex.co",
+    telefono: "+52 1 55 1234 5678",
+    contrato: "Socio",
+    portfolio: "https://brandex.co/team/feiko",
+    notas: "Coordinador de proyectos y contacto principal de clientes.",
+    token: "TOK-FEI-01",
+    url: "",
+    created: "2026-07-01T00:00:00Z"
+  },
+  {
+    id: "w2",
+    nombre: "Santiago Pérez",
+    rol: "Editor Audiovisual",
+    disponibilidad: "Parcial",
+    tarifa: 35,
+    especialidad: ["Video", "TikTok", "Motion Graphics"],
+    email: "santiago@brandex.co",
+    telefono: "+52 1 55 8765 4321",
+    contrato: "Freelance",
+    portfolio: "https://brandex.co/team/santiago",
+    notas: "Editor principal de Reels, TikToks y contenido interactivo de video.",
+    token: "TOK-SAN-02",
+    url: "",
+    created: "2026-07-01T00:00:00Z"
+  },
+  {
+    id: "w3",
+    nombre: "Karla Mendoza",
+    rol: "Diseñadora de Marca",
+    disponibilidad: "Completa",
+    tarifa: 40,
+    especialidad: ["Diseño", "Branding", "Carruseles"],
+    email: "karla@brandex.co",
+    telefono: "+52 1 55 9876 5432",
+    contrato: "Nómina",
+    portfolio: "https://brandex.co/team/karla",
+    notas: "Responsable de identidades visuales y post de alto impacto.",
+    token: "TOK-KAR-03",
+    url: "",
+    created: "2026-07-01T00:00:00Z"
+  }
+];
+
+const MOCK_RECURSOS = [
+  {
+    id: "r1",
+    nombre: "Plantillas de CapCut Pro para Reels",
+    tipo: "Herramienta",
+    enlace: "https://capcut.com/brandex-templates",
+    desc: "Plantillas prediseñadas con cortes sincronizados para videos de comida y lifestyle.",
+    url: "",
+    created: "2026-07-05T00:00:00Z"
+  },
+  {
+    id: "r2",
+    nombre: "Paletas de Color Orgánicas - Verano 2026",
+    tipo: "Diseño",
+    enlace: "https://coolors.co/brandex-summer",
+    desc: "Códigos hexadecimales sugeridos para marcas sustentables y cafeterías.",
+    url: "",
+    created: "2026-07-08T00:00:00Z"
+  },
+  {
+    id: "r3",
+    nombre: "Kit de Tipografías Sans-Serif Elegantes",
+    tipo: "Recurso",
+    enlace: "https://fonts.google.com/specimen/Space+Grotesk",
+    desc: "Enlace y pesos recomendados para cabeceras y display de alto contraste.",
+    url: "",
+    created: "2026-07-10T00:00:00Z"
+  }
+];
+
+// ── Sync All Data (Firestore Direct, No Notion) ──────────────────────
 export async function syncAllData(forceSync = false) {
-  if (!forceSync) {
-    const [c, p, t, r, w] = await Promise.all([
-      getCacheDoc("clientes"),
-      getCacheDoc("proyectos"),
-      getCacheDoc("tareas"),
-      getCacheDoc("recursos"),
-      getCacheDoc("trabajadores")
-    ]);
-    
-    // If all exist in cache, return them immediately
-    if (c && p && t && r && w) {
-      console.log(">>> Syncing from Firestore Cache (Instant load)");
-      return {
-        clientes: c,
-        proyectos: p,
-        tareas: t,
-        recursos: r,
-        trabajadores: w
-      };
-    }
-    console.log(">>> Cache miss, triggering full Notion sync");
-  } else {
-    console.log(">>> Force Sync requested: querying Notion databases");
+  const [c, p, t, r, w] = await Promise.all([
+    getCacheDoc("clientes"),
+    getCacheDoc("proyectos"),
+    getCacheDoc("tareas"),
+    getCacheDoc("recursos"),
+    getCacheDoc("trabajadores")
+  ]);
+  
+  // If all exist in cache and have items, return them immediately
+  if (c && p && t && r && w && (c.length > 0 || p.length > 0)) {
+    console.log(">>> Syncing from Firestore Cache (Instant load)");
+    return {
+      clientes: c,
+      proyectos: p,
+      tareas: t,
+      recursos: r,
+      trabajadores: w
+    };
   }
 
-  // Query Notion
-  const [cRaw, pRaw, tRaw, rRaw, wRaw] = await Promise.all([
-    queryDb(CLIENTES_DB),
-    queryDb(PROYECTOS_DB),
-    queryDb(TAREAS_DB),
-    queryDb(RECURSOS_DB),
-    queryDb(EQUIPO_DB)
-  ]);
-
-  // Parse Notion data
-  const clientes = cRaw.map(parseClient);
-  const proyectos = pRaw.map(parseProject);
-  const tareas = tRaw.map(parseTask);
-  const recursos = rRaw.map(parseRecurso);
-  const trabajadores = wRaw.map(parseWorker);
-
-  // Write parsed data to Firestore cache in parallel
+  console.log(">>> No cache exists. Writing premium mock data to Firestore Cache.");
   await Promise.all([
-    setCacheDoc("clientes", clientes),
-    setCacheDoc("proyectos", proyectos),
-    setCacheDoc("tareas", tareas),
-    setCacheDoc("recursos", recursos),
-    setCacheDoc("trabajadores", trabajadores)
+    setCacheDoc("clientes", MOCK_CLIENTES),
+    setCacheDoc("proyectos", MOCK_PROYECTOS),
+    setCacheDoc("tareas", MOCK_TAREAS),
+    setCacheDoc("recursos", MOCK_RECURSOS),
+    setCacheDoc("trabajadores", MOCK_TRABAJADORES)
   ]);
 
   return {
-    clientes,
-    proyectos,
-    tareas,
-    recursos,
-    trabajadores
+    clientes: MOCK_CLIENTES,
+    proyectos: MOCK_PROYECTOS,
+    tareas: MOCK_TAREAS,
+    recursos: MOCK_RECURSOS,
+    trabajadores: MOCK_TRABAJADORES
   };
 }
 
@@ -607,3 +924,215 @@ export async function setFocusConfig(focusPins: any[]) {
     return false;
   }
 }
+
+// ── Direct Local CRUD Operations (Bypassing Notion entirely) ──────────────────
+
+export function generateId(): string {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export async function createLocalClient(data: any) {
+  const newClient = {
+    id: generateId(),
+    nombre: data.nombre || "Nuevo Cliente",
+    potencial: data.potencial || "Alto",
+    redes: data.redes || "",
+    fuente: data.fuente || "Instagram",
+    obs: data.obs || "",
+    token: data.token || `TOK-${(data.nombre || "CLI").slice(0, 3).toUpperCase()}-${Math.floor(Math.random() * 100)}`,
+    drive: data.drive || "",
+    instagram: data.instagram || "",
+    facebook: data.facebook || "",
+    tiktok: data.tiktok || "",
+    web: data.web || "",
+    whatsapp: data.whatsapp || "",
+    telefono: data.telefono || "",
+    celular: data.celular || "",
+    url: ""
+  };
+  await addCachedItem("clientes", newClient);
+  return newClient;
+}
+
+export async function updateLocalClient(id: string, data: any) {
+  const fields: any = {};
+  if ("nombre" in data) fields.nombre = data.nombre;
+  if ("redes" in data) fields.redes = data.redes;
+  if ("obs" in data) fields.obs = data.obs;
+  if ("potencial" in data) fields.potencial = data.potencial;
+  if ("fuente" in data) fields.fuente = data.fuente;
+  if ("drive" in data) fields.drive = data.drive;
+  if ("instagram" in data) fields.instagram = data.instagram;
+  if ("facebook" in data) fields.facebook = data.facebook;
+  if ("tiktok" in data) fields.tiktok = data.tiktok;
+  if ("web" in data) fields.web = data.web;
+  if ("whatsapp" in data) fields.whatsapp = data.whatsapp;
+  if ("telefono" in data) fields.telefono = data.telefono;
+  if ("celular" in data) fields.celular = data.celular;
+  if ("token" in data) fields.token = data.token;
+
+  await updateCachedItem("clientes", id, fields);
+  return { id, ...fields };
+}
+
+export async function createLocalProject(data: any) {
+  const newProj = {
+    id: generateId(),
+    nombre: data.nombre || "Nuevo Proyecto",
+    cliente_ids: Array.isArray(data.cliente_ids) ? data.cliente_ids : (data.cliente_id ? [data.cliente_id] : []),
+    estadoProyecto: data.estadoProyecto || "Activo",
+    estado: data.estado || "En curso",
+    area: data.area || "",
+    formato: data.formato || "",
+    prioridad: data.prioridad || "Media",
+    ciclo: data.ciclo || "Mensual",
+    esfuerzo: data.esfuerzo || "Medio",
+    plataformas: Array.isArray(data.plataformas) ? data.plataformas : [],
+    fechaInicio: data.fechaInicio || "",
+    fechaFin: data.fechaFin || "",
+    recursosDrive: data.recursosDrive || "",
+    costo: parseFloat(data.costo) || 0,
+    tarea_ids: Array.isArray(data.tarea_ids) ? data.tarea_ids : [],
+    descripcion: data.descripcion || "",
+    url: ""
+  };
+  await addCachedItem("proyectos", newProj);
+  return newProj;
+}
+
+export async function updateLocalProject(id: string, data: any) {
+  const fields: any = {};
+  if ("nombre" in data) fields.nombre = data.nombre;
+  if ("cliente_ids" in data) fields.cliente_ids = data.cliente_ids;
+  else if ("cliente_id" in data) fields.cliente_ids = data.cliente_id ? [data.cliente_id] : [];
+  if ("estadoProyecto" in data) fields.estadoProyecto = data.estadoProyecto;
+  if ("estado" in data) fields.estado = data.estado;
+  if ("area" in data) fields.area = data.area;
+  if ("formato" in data) fields.formato = data.formato;
+  if ("prioridad" in data) fields.prioridad = data.prioridad;
+  if ("ciclo" in data) fields.ciclo = data.ciclo;
+  if ("esfuerzo" in data) fields.esfuerzo = data.esfuerzo;
+  if ("plataformas" in data) fields.plataformas = data.plataformas;
+  if ("fechaInicio" in data) fields.fechaInicio = data.fechaInicio;
+  if ("fechaFin" in data) fields.fechaFin = data.fechaFin;
+  if ("recursosDrive" in data) fields.recursosDrive = data.recursosDrive;
+  if ("costo" in data) fields.costo = parseFloat(data.costo) || 0;
+  if ("tarea_ids" in data) fields.tarea_ids = data.tarea_ids;
+  if ("descripcion" in data) fields.descripcion = data.descripcion;
+
+  await updateCachedItem("proyectos", id, fields);
+  return { id, ...fields };
+}
+
+export async function createLocalTask(data: any) {
+  const pids = Array.isArray(data.proyecto_ids) ? data.proyecto_ids : (data.proyecto_id ? [data.proyecto_id] : []);
+  const cids = Array.isArray(data.cliente_ids) ? data.cliente_ids : (data.cliente_id ? [data.cliente_id] : []);
+  const taskId = generateId();
+
+  const newTask = {
+    id: taskId,
+    titulo: data.titulo || "Nueva Tarea",
+    estado: data.estado || "Pendiente",
+    area: data.area || "",
+    asignado: data.asignado || "",
+    asignado_ids: Array.isArray(data.asignado_ids) ? data.asignado_ids : (data.asignado_id ? [data.asignado_id] : []),
+    formato: data.formato || "",
+    esfuerzo: data.esfuerzo || "Medio",
+    prioridad: data.prioridad || "Media",
+    plataformas: Array.isArray(data.plataformas) ? data.plataformas : [],
+    contenido: data.contenido || "",
+    copy: data.copy || "",
+    adminNotes: data.adminNotes || data.admin_notes || "",
+    notasCliente: data.notasCliente || "",
+    fechaProg: data.fechaProg || "",
+    fechaEntrega: data.fechaEntrega || "",
+    proyecto_ids: pids,
+    cliente_ids: cids,
+    created: new Date().toISOString(),
+    url: ""
+  };
+  await addCachedItem("tareas", newTask);
+
+  // Link task inside project if project exists
+  if (pids.length > 0) {
+    for (const pid of pids) {
+      const currentProjects = await getCacheDoc("proyectos") || [];
+      const proj = currentProjects.find((p: any) => p.id === pid);
+      if (proj) {
+        const updatedTaskIds = Array.from(new Set([...(proj.tarea_ids || []), taskId]));
+        await updateCachedItem("proyectos", pid, { tarea_ids: updatedTaskIds });
+      }
+    }
+  }
+
+  return newTask;
+}
+
+export async function updateLocalTask(id: string, data: any) {
+  const fields: any = {};
+  if ("titulo" in data) fields.titulo = data.titulo;
+  if ("estado" in data) fields.estado = data.estado;
+  if ("area" in data) fields.area = data.area;
+  if ("asignado" in data) fields.asignado = data.asignado;
+  if ("asignado_ids" in data) fields.asignado_ids = data.asignado_ids;
+  if ("formato" in data) fields.formato = data.formato;
+  if ("esfuerzo" in data) fields.esfuerzo = data.esfuerzo;
+  if ("prioridad" in data) fields.prioridad = data.prioridad;
+  if ("plataformas" in data) fields.plataformas = data.plataformas;
+  if ("contenido" in data) fields.contenido = data.contenido;
+  if ("copy" in data) fields.copy = data.copy;
+  if ("adminNotes" in data) fields.adminNotes = data.adminNotes;
+  if ("admin_notes" in data) fields.adminNotes = data.admin_notes;
+  if ("notasCliente" in data) fields.notasCliente = data.notasCliente;
+  if ("fechaProg" in data) fields.fechaProg = data.fechaProg;
+  if ("fechaEntrega" in data) fields.fechaEntrega = data.fechaEntrega;
+  if ("proyecto_ids" in data) fields.proyecto_ids = data.proyecto_ids;
+  if ("cliente_ids" in data) fields.cliente_ids = data.cliente_ids;
+
+  await updateCachedItem("tareas", id, fields);
+  return { id, ...fields };
+}
+
+export async function createLocalWorker(data: any) {
+  const newWorker = {
+    id: generateId(),
+    nombre: data.nombre || "Nuevo Trabajador",
+    rol: data.rol || "",
+    disponibilidad: data.disponibilidad || "Completa",
+    tarifa: parseFloat(data.tarifa) || 0,
+    especialidad: Array.isArray(data.especialidad) ? data.especialidad : [],
+    email: data.email || "",
+    telefono: data.telefono || "",
+    contrato: data.contrato || "",
+    portfolio: data.portfolio || "",
+    notas: data.notas || "",
+    token: data.token || `TOK-WRK-${Math.floor(Math.random() * 1000)}`,
+    url: "",
+    created: new Date().toISOString()
+  };
+  await addCachedItem("trabajadores", newWorker);
+  return newWorker;
+}
+
+export async function updateLocalWorker(id: string, data: any) {
+  const fields: any = {};
+  if ("nombre" in data) fields.nombre = data.nombre;
+  if ("rol" in data) fields.rol = data.rol;
+  if ("disponibilidad" in data) fields.disponibilidad = data.disponibilidad;
+  if ("tarifa" in data) fields.tarifa = parseFloat(data.tarifa) || 0;
+  if ("especialidad" in data) fields.especialidad = data.especialidad;
+  if ("email" in data) fields.email = data.email;
+  if ("telefono" in data) fields.telefono = data.telefono;
+  if ("contrato" in data) fields.contrato = data.contrato;
+  if ("portfolio" in data) fields.portfolio = data.portfolio;
+  if ("notas" in data) fields.notas = data.notas;
+  if ("token" in data) fields.token = data.token;
+
+  await updateCachedItem("trabajadores", id, fields);
+  return { id, ...fields };
+}
+

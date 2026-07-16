@@ -7,7 +7,7 @@
 //  1. authStore — role, user info, login/logout
 //  2. uiStore   — tab activo, estado de modales, sort, calendario
 //
-//  Los datos de Notion (tareas, proyectos, etc.) viven en TanStack Query
+//  Los datos de la aplicación (tareas, proyectos, etc.) viven en TanStack Query
 //  (hooks/useData.ts) para caching y background refresh automático.
 // ─────────────────────────────────────────────────────────────────────────────
 

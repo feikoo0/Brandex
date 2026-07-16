@@ -15,6 +15,7 @@ export interface Task {
   statusColor: string;
   subtasks: { id: number; text: string; done: boolean }[];
   attachmentUrl?: string;
+  fecha_creacion?: string;
   kanbanOrders?: Record<string, number>;
 }
 
@@ -41,6 +42,7 @@ interface NewProjectModalProps {
   onCreateProject: (project: ProjectData) => void;
   isNightMode: boolean;
   isNeumorphic: boolean;
+  projects?: any[];
 }
 
 const PRESET_GRADIENTS = [
@@ -51,12 +53,62 @@ const PRESET_GRADIENTS = [
   { name: "Charcoal Steel", gradient: "from-slate-600 to-slate-800", glow: "bg-slate-500" }
 ];
 
+const formatDateToFriendly = (date: Date): string => {
+  const day = date.getDate().toString().padStart(2, '0');
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const month = months[date.getMonth()];
+  return `${day} ${month}`;
+};
+
+const formatDateToInput = (date: Date): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const parseInputToFriendly = (val: string): string => {
+  if (!val) return "Sin Fecha";
+  const parts = val.split('-');
+  if (parts.length !== 3) return val;
+  const yyyy = Number(parts[0]);
+  const mm = Number(parts[1]);
+  const dd = Number(parts[2]);
+  const date = new Date(yyyy, mm - 1, dd);
+  return formatDateToFriendly(date);
+};
+
+const calculateDaysRemaining = (startStr: string, endStr: string): string => {
+  if (!startStr || !endStr) return "-";
+  const start = new Date(startStr + "T00:00:00");
+  const end = new Date(endStr + "T00:00:00");
+  const diffTime = end.getTime() - start.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  if (isNaN(diffDays)) return "-";
+  if (diffDays < 0) return "Vencido";
+  return `${diffDays} días`;
+};
+
+const getThisWeekFriday = (): Date => {
+  const d = new Date();
+  const day = d.getDay(); // 0: Sun, 1: Mon, etc.
+  const diff = (day <= 5 ? 5 - day : 5 - day + 7);
+  d.setDate(d.getDate() + diff);
+  return d;
+};
+
+const getEndOfMonth = (): Date => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0);
+};
+
 export default function NewProjectModal({
   isOpen,
   onClose,
   onCreateProject,
   isNightMode,
-  isNeumorphic
+  isNeumorphic,
+  projects
 }: NewProjectModalProps) {
   // Project Info States
   const [title, setTitle] = useState("Nuevo Proyecto");
@@ -73,19 +125,44 @@ export default function NewProjectModal({
     const month = months[today.getMonth()];
     return `${day} ${month}`;
   });
+  const [startDateRaw, setStartDateRaw] = useState(() => formatDateToInput(new Date()));
+  const [deadlineRaw, setDeadlineRaw] = useState(() => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return formatDateToInput(tomorrow);
+  });
   const [deadline, setDeadline] = useState("Sin Fecha");
   const [daysRemaining, setDaysRemaining] = useState("-");
   const [burnRate, setBurnRate] = useState("0h / 0h");
   const [selectedGradientIdx, setSelectedGradientIdx] = useState(0);
 
+  // Client dropdown custom states
+  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+  const [clientSearch, setClientSearch] = useState("");
+
+  const uniqueClients = React.useMemo(() => {
+    const fromProps = projects ? projects.map((p: any) => p.client) : [];
+    const defaults = ["Apple Inc.", "Nike", "Tesla", "Airbnb", "OpenAI", "Stripe", "OpenSea", "Mayo Clinic"];
+    const combined = Array.from(new Set([...fromProps, ...defaults])).filter(Boolean);
+    return combined;
+  }, [projects]);
+
   // Tasks List States
   const [tasks, setTasks] = useState<Task[]>([]);
+
+  // Automatically calculate days remaining when dates change
+  useEffect(() => {
+    if (startDateRaw && deadlineRaw) {
+      const days = calculateDaysRemaining(startDateRaw, deadlineRaw);
+      setDaysRemaining(days);
+    }
+  }, [startDateRaw, deadlineRaw]);
 
   // Reset inputs when modal opens
   useEffect(() => {
     if (isOpen) {
       setTitle("Nuevo Proyecto");
-      setClient("Cliente");
+      setClient("Apple Inc.");
       setPackageStr("Estratégico");
       setDesc("");
       setStatus("Activo");
@@ -93,16 +170,20 @@ export default function NewProjectModal({
       setCost("$2,500");
       
       const today = new Date();
-      const day = today.getDate().toString().padStart(2, '0');
-      const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-      const month = months[today.getMonth()];
-      setStartDate(`${day} ${month}`);
+      setStartDateRaw(formatDateToInput(today));
+      setStartDate(formatDateToFriendly(today));
       
-      setDeadline("Sin Fecha");
-      setDaysRemaining("-");
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setDeadlineRaw(formatDateToInput(tomorrow));
+      setDeadline(formatDateToFriendly(tomorrow));
+      
+      setDaysRemaining("1 días");
       setBurnRate("0h / 0h");
       setTasks([]);
       setSelectedGradientIdx(0);
+      setIsClientDropdownOpen(false);
+      setClientSearch("");
       playSound('pop');
     }
   }, [isOpen]);
@@ -110,6 +191,8 @@ export default function NewProjectModal({
   const handleAddDraftTask = () => {
     playSound('pop');
     const newTaskNum = tasks.length + 1;
+    const today = new Date();
+    const fecha_creacion = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const newTask: Task = {
       id: Date.now(),
       title: `Tarea ${newTaskNum}`,
@@ -121,7 +204,8 @@ export default function NewProjectModal({
       subtasks: [
         { id: 1, text: "Primer paso", done: false },
         { id: 2, text: "Verificación final", done: false }
-      ]
+      ],
+      fecha_creacion
     };
     setTasks(prev => [...prev, newTask]);
   };
@@ -187,7 +271,7 @@ export default function NewProjectModal({
     }
     
     playSound('click');
-    const selectedPreset = PRESET_GRADIENTS[selectedGradientIdx];
+    const selectedPreset = PRESET_GRADIENTS[0];
     onCreateProject({
       title,
       client,
@@ -229,7 +313,7 @@ export default function NewProjectModal({
           className={`relative w-full max-w-[1150px] max-h-[90vh] overflow-y-auto flex flex-col rounded-[24px] border pointer-events-auto shadow-2xl p-6 md:p-8 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] ${
             isNightMode
               ? "bg-[#16181d]/95 border-white/5 text-neutral-100 shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
-              : "bg-white/95 border-slate-200 text-slate-900 shadow-[0_20px_50px_rgba(0,0,0,0.15)]"
+                    : "text-slate-900 border-slate-350"
           }`}
         >
           {/* Header */}
@@ -247,7 +331,7 @@ export default function NewProjectModal({
               className={`w-9 h-9 rounded-full flex items-center justify-center border transition-all ${
                 isNightMode
                   ? "bg-white/5 border-white/10 hover:bg-white/10 text-white"
-                  : "bg-slate-100 border-slate-200 hover:bg-slate-200 text-slate-800"
+                    : "text-slate-900 border-slate-350"
               }`}
             >
               <X className="w-4 h-4" />
@@ -278,21 +362,107 @@ export default function NewProjectModal({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Col 1 */}
               <div className="flex flex-col gap-4">
-                {/* Cliente */}
-                <div className="flex flex-col gap-1.5">
+                {/* Cliente Dropdown */}
+                <div className="relative flex flex-col gap-1.5 z-50">
                   <label className={`text-[10px] font-bold uppercase tracking-wider ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
                     Cliente
                   </label>
-                  <input
-                    type="text"
-                    value={client}
-                    onChange={(e) => setClient(e.target.value)}
-                    className={`px-3.5 py-2 rounded-xl text-sm font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
+                  
+                  <div 
+                    className={`rounded-xl border transition-all relative ${
                       isNightMode
-                        ? "border-white/10 text-white"
-                        : "border-slate-250 text-slate-800"
+                        ? "border-white/10 bg-[#16181d]"
+                    : "text-slate-900 border-slate-350"
                     }`}
-                  />
+                  >
+                    {/* Trigger row */}
+                    <div 
+                      onClick={() => {
+                        playSound('click');
+                        setIsClientDropdownOpen(!isClientDropdownOpen);
+                      }}
+                      className="px-3.5 py-2 flex items-center justify-between cursor-pointer select-none"
+                    >
+                      <span className="text-sm font-semibold">
+                        {client || "Seleccionar Cliente..."}
+                      </span>
+                      <span className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full ${
+                        isNightMode ? "bg-white/5 text-zinc-400" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {isClientDropdownOpen ? "Cerrar" : "Cambiar"}
+                      </span>
+                    </div>
+
+                    {/* Expanding rectangle with background color */}
+                    <AnimatePresence>
+                      {isClientDropdownOpen && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className={`overflow-hidden border-t border-dashed ${
+                            isNightMode
+                              ? "border-white/10 bg-[#13151a]"
+                    : "text-slate-900 border-slate-350"
+                          }`}
+                        >
+                          <div className="p-3 flex flex-col gap-3">
+                            {/* Search or Add Custom Client Input */}
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                placeholder="Cliente personalizado..."
+                                value={clientSearch}
+                                onChange={(e) => {
+                                  setClientSearch(e.target.value);
+                                  setClient(e.target.value);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className={`flex-1 px-3 py-1.5 rounded-lg text-xs font-medium border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
+                                  isNightMode
+                                    ? "border-white/10 text-white placeholder-zinc-500 bg-black/20"
+                    : "text-slate-900 border-slate-350"
+                                }`}
+                              />
+                            </div>
+
+                            {/* Pills of all unique clients */}
+                            <div className="flex flex-wrap gap-1.5 max-h-[140px] overflow-y-auto pr-1">
+                              {uniqueClients
+                                .filter(c => c.toLowerCase().includes(clientSearch.toLowerCase()))
+                                .map((cName) => {
+                                  const isSelected = client === cName;
+                                  return (
+                                    <button
+                                      key={cName}
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        playSound('click');
+                                        setClient(cName);
+                                        setIsClientDropdownOpen(false);
+                                        setClientSearch("");
+                                      }}
+                                      className={`px-2.5 py-1 rounded-full text-xs font-bold border transition-all ${
+                                        isSelected
+                                          ? isNightMode
+                                            ? "bg-sky-500/25 border-sky-500 text-sky-400 shadow-sm"
+                                            : "bg-sky-500 text-white border-sky-500 shadow-sm"
+                                          : isNightMode
+                                            ? "bg-[#1c1e24] border-white/5 text-zinc-400 hover:bg-white/10 hover:text-white"
+                    : "text-slate-900 border-slate-350"
+                                      }`}
+                                    >
+                                      {cName}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
 
                 {/* Paquete */}
@@ -306,7 +476,7 @@ export default function NewProjectModal({
                     className={`px-3.5 py-2 rounded-xl text-sm font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
                       isNightMode
                         ? "border-white/10 text-white bg-[#1a1c23]"
-                        : "border-slate-250 text-slate-800 bg-white"
+                    : "text-slate-900 border-slate-350"
                     }`}
                   >
                     <option value="Estratégico">Estratégico</option>
@@ -334,7 +504,7 @@ export default function NewProjectModal({
                       className={`pl-8 pr-3.5 py-2 rounded-xl text-sm font-semibold border bg-transparent outline-none w-full focus:ring-1 focus:ring-sky-500/50 transition-all ${
                         isNightMode
                           ? "border-white/10 text-white"
-                          : "border-slate-250 text-slate-800"
+                    : "text-slate-900 border-slate-350"
                       }`}
                     />
                   </div>
@@ -358,13 +528,14 @@ export default function NewProjectModal({
                       return (
                         <button
                           key={prio}
+                          type="button"
                           onClick={() => { playSound('click'); setPriority(prio); }}
                           className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                             isActive
                               ? `${colors} scale-105 shadow-sm`
                               : isNightMode
                                 ? "bg-white/5 border-white/5 text-zinc-400 hover:bg-white/10"
-                                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                    : "text-slate-900 border-slate-350"
                           }`}
                         >
                           {prio}
@@ -377,38 +548,70 @@ export default function NewProjectModal({
 
               {/* Col 3 */}
               <div className="flex flex-col gap-4">
-                {/* Fechas */}
+                {/* Fecha de Creación (No Editable) */}
                 <div className="flex flex-col gap-1.5">
                   <label className={`text-[10px] font-bold uppercase tracking-wider ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
-                    Línea Temporal (Creado • Límite)
+                    Fecha de Creación
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      placeholder="Inicio (ex. 24 Jun)"
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
-                        isNightMode
-                          ? "border-white/10 text-white"
-                          : "border-slate-250 text-slate-800"
-                      }`}
-                    />
-                    <input
-                      type="text"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      placeholder="Límite (ex. 15 Jul)"
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
-                        isNightMode
-                          ? "border-white/10 text-white"
-                          : "border-slate-250 text-slate-800"
-                      }`}
-                    />
+                  <div className={`px-3.5 py-2.5 rounded-xl text-xs font-semibold border select-none transition-all ${
+                    isNightMode
+                      ? "border-white/5 bg-white/[0.02] text-zinc-400"
+                    : "text-slate-900 border-slate-350"
+                  }`}>
+                    {startDate} (Hoy)
                   </div>
                 </div>
 
-                {/* Días restantes & BurnRate */}
+                {/* Línea Temporal Límite */}
+                <div className="flex flex-col gap-1.5">
+                  <label className={`text-[10px] font-bold uppercase tracking-wider ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
+                    Línea Temporal (Límite)
+                  </label>
+                  <input
+                    type="date"
+                    value={deadlineRaw}
+                    onChange={(e) => {
+                      setDeadlineRaw(e.target.value);
+                      setDeadline(parseInputToFriendly(e.target.value));
+                    }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
+                      isNightMode
+                        ? "border-white/10 text-white [color-scheme:dark]"
+                    : "text-slate-900 border-slate-350"
+                    }`}
+                  />
+                  
+                  {/* Quick Options for Deadline */}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                    {[
+                      { label: "Hoy", getDate: () => new Date() },
+                      { label: "Mañana", getDate: () => new Date(Date.now() + 86400000) },
+                      { label: "Esta semana", getDate: () => getThisWeekFriday() },
+                      { label: "Este mes", getDate: () => getEndOfMonth() },
+                    ].map((opt) => (
+                      <button
+                        key={opt.label}
+                        type="button"
+                        onClick={() => {
+                          playSound('click');
+                          const d = opt.getDate();
+                          const raw = formatDateToInput(d);
+                          setDeadlineRaw(raw);
+                          setDeadline(formatDateToFriendly(d));
+                        }}
+                        className={`px-2 py-0.5 rounded text-[9px] font-bold transition-all ${
+                          isNightMode
+                            ? "bg-white/5 border border-white/10 hover:bg-white/10 text-zinc-300"
+                    : "text-slate-900 border-slate-350"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Días restantes & Horas Presupuesto */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex flex-col gap-1.5">
                     <label className={`text-[9px] font-bold uppercase tracking-wider ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
@@ -417,11 +620,11 @@ export default function NewProjectModal({
                     <input
                       type="text"
                       value={daysRemaining}
-                      onChange={(e) => setDaysRemaining(e.target.value)}
-                      className={`px-3 py-2 rounded-xl text-xs font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
+                      readOnly
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold border select-none bg-transparent outline-none transition-all ${
                         isNightMode
-                          ? "border-white/10 text-white"
-                          : "border-slate-250 text-slate-800"
+                          ? "border-white/5 text-zinc-400 bg-white/[0.01]"
+                    : "text-slate-900 border-slate-350"
                       }`}
                     />
                   </div>
@@ -436,7 +639,7 @@ export default function NewProjectModal({
                       className={`px-3 py-2 rounded-xl text-xs font-semibold border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all ${
                         isNightMode
                           ? "border-white/10 text-white"
-                          : "border-slate-250 text-slate-800"
+                    : "text-slate-900 border-slate-350"
                       }`}
                     />
                   </div>
@@ -457,35 +660,9 @@ export default function NewProjectModal({
                 className={`px-4 py-3 rounded-2xl text-sm leading-relaxed border bg-transparent outline-none focus:ring-1 focus:ring-sky-500/50 transition-all resize-none ${
                   isNightMode
                     ? "border-white/10 text-white"
-                    : "border-slate-250 text-slate-800"
+                    : "text-slate-900 border-slate-350"
                 }`}
               />
-            </div>
-
-            {/* Gradient Preset Selector */}
-            <div className="flex flex-col gap-2">
-              <label className={`text-[10px] font-bold uppercase tracking-wider ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
-                Estilo Visual (Gradiente)
-              </label>
-              <div className="flex items-center gap-3.5 flex-wrap">
-                {PRESET_GRADIENTS.map((preset, idx) => {
-                  const isSel = idx === selectedGradientIdx;
-                  return (
-                    <button
-                      key={preset.name}
-                      onClick={() => { playSound('click'); setSelectedGradientIdx(idx); }}
-                      className={`h-9 px-4 rounded-xl text-xs font-bold text-white bg-gradient-to-r ${preset.gradient} relative transition-all duration-300 ${
-                        isSel
-                          ? "ring-2 ring-offset-2 ring-sky-500 scale-105 shadow-md"
-                          : "opacity-60 hover:opacity-100"
-                      }`}
-                      style={{ outlineOffset: 2 }}
-                    >
-                      {preset.name}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* Divisor */}
@@ -520,7 +697,7 @@ export default function NewProjectModal({
                       className={`relative w-[340px] h-[340px] shrink-0 rounded-2xl p-4 flex flex-col border transition-all shadow-sm ${
                         isNightMode
                           ? "bg-neutral-900/60 border-neutral-800 text-neutral-50"
-                          : "bg-slate-50 border-slate-200 text-slate-900"
+                    : "text-slate-900 border-slate-350"
                       }`}
                     >
                       {/* Delete Task Button */}
@@ -547,7 +724,7 @@ export default function NewProjectModal({
                             className={`px-2 py-0.5 rounded border text-[8px] font-extrabold uppercase tracking-widest leading-none outline-none focus:border-sky-500 w-[120px] ${
                               isNightMode
                                 ? "border-neutral-800 bg-neutral-950 text-neutral-300"
-                                : "border-slate-200 bg-slate-100 text-slate-700"
+                                : "border-slate-200 bg-slate-50 text-slate-800"
                             }`}
                           />
                           <input
@@ -595,7 +772,7 @@ export default function NewProjectModal({
                             className={`w-4 h-4 rounded-full flex items-center justify-center border transition-colors ${
                               isNightMode
                                 ? "bg-white/5 border-white/15 text-neutral-400 hover:text-white"
-                                : "bg-slate-100 border-slate-250 text-slate-650 hover:text-slate-900"
+                                : "bg-slate-50 border-slate-200 text-slate-650 hover:bg-slate-100"
                             }`}
                             title="Añadir subtarea"
                           >
@@ -616,7 +793,7 @@ export default function NewProjectModal({
                                     ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-500'
                                     : isNightMode
                                       ? 'border-neutral-700 hover:border-neutral-500'
-                                      : 'border-slate-350 hover:border-slate-500'
+                                      : 'border-slate-300 hover:border-slate-400'
                                 }`}
                               >
                                 {sub.done && (
@@ -659,7 +836,7 @@ export default function NewProjectModal({
                     className={`w-[340px] h-[340px] shrink-0 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all hover:scale-[1.01] ${
                       isNightMode
                         ? "border-neutral-800 bg-neutral-900/20 text-neutral-400 hover:text-neutral-200"
-                        : "border-slate-300 bg-slate-50/50 text-slate-500 hover:text-slate-700"
+                        : "border-slate-250 bg-slate-50 text-slate-500 hover:text-slate-700"
                     }`}
                   >
                     <Plus className="w-8 h-8 opacity-60" strokeWidth={1.5} />

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
-import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, Plus, Check, Clock } from "lucide-react";
+import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, Plus, Check, Clock, X, Pencil, Trash2, Folder, AlertTriangle } from "lucide-react";
 import { Project, Task } from "./ProjectDashboard";
 import TimeHeatmap from "./TimeHeatmap";
 import { playSound } from "../utils/audio";
@@ -22,7 +22,8 @@ import {
   pointerWithin,
   closestCorners,
   defaultDropAnimation,
-  DropAnimation
+  DropAnimation,
+  Modifier
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -46,6 +47,75 @@ const animateLayoutChanges: AnimateLayoutChanges = (args) => {
     return true;
   }
   return defaultAnimateLayoutChanges(args);
+};
+
+let lastActivatorEvent: any = null;
+let cachedOffset: { x: number; y: number } | null = null;
+
+const alignToTopCenter: Modifier = ({
+  transform,
+  activeNodeRect,
+  activatorEvent,
+}) => {
+  if (!activatorEvent) {
+    lastActivatorEvent = null;
+    cachedOffset = null;
+    return transform;
+  }
+
+  if (activeNodeRect && activatorEvent !== lastActivatorEvent) {
+    lastActivatorEvent = activatorEvent;
+    let initialX = 0;
+    let initialY = 0;
+
+    if (typeof window !== "undefined") {
+      if (activatorEvent instanceof MouseEvent) {
+        initialX = activatorEvent.clientX;
+        initialY = activatorEvent.clientY;
+      } else if (window.TouchEvent && activatorEvent instanceof TouchEvent) {
+        const touch = activatorEvent.touches[0] || activatorEvent.changedTouches[0];
+        if (touch) {
+          initialX = touch.clientX;
+          initialY = touch.clientY;
+        }
+      } else {
+        // Fallback
+        const anyEvent = activatorEvent as any;
+        if (anyEvent.clientX !== undefined) {
+          initialX = anyEvent.clientX;
+          initialY = anyEvent.clientY;
+        } else if (anyEvent.touches && anyEvent.touches[0]) {
+          initialX = anyEvent.touches[0].clientX;
+          initialY = anyEvent.touches[0].clientY;
+        }
+      }
+    }
+
+    if (initialX && initialY) {
+      cachedOffset = {
+        x: initialX - activeNodeRect.left,
+        y: initialY - activeNodeRect.top,
+      };
+    } else {
+      cachedOffset = null;
+    }
+  }
+
+  if (cachedOffset && activeNodeRect) {
+    const targetOffsetX = activeNodeRect.width / 2;
+    const targetOffsetY = 0; // Top border
+
+    const diffX = cachedOffset.x - targetOffsetX;
+    const diffY = cachedOffset.y - targetOffsetY;
+
+    return {
+      ...transform,
+      x: transform.x + diffX,
+      y: transform.y + diffY,
+    };
+  }
+
+  return transform;
 };
 
 class SmartMouseSensor extends MouseSensor {
@@ -120,7 +190,7 @@ interface SortableTaskCardProps {
   extraClass: string;
   renderTaskCard: (
     taskId: string,
-    projectId: number,
+    projectId: string | number,
     projectName: string,
     taskTitle: string,
     completedTasks: number,
@@ -131,6 +201,7 @@ interface SortableTaskCardProps {
     forceCollapsed?: boolean
   ) => React.ReactNode;
   colId: string;
+  draggingTaskId: string | null;
 }
 
 // Contenedor Droppable para columnas vacías
@@ -159,7 +230,7 @@ function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHover
   );
 }
 
-function SortableTaskCard({ t, extraClass, renderTaskCard, colId }: SortableTaskCardProps) {
+function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId }: SortableTaskCardProps) {
   const taskIdComposite = t.id.startsWith("kt-") ? t.id : `kt-${t.projectId}-${t.id}`;
 
   const {
@@ -183,10 +254,12 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId }: SortableTask
   });
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: isDragging ? undefined : CSS.Translate.toString(transform),
     transition,
-    opacity: isDragging ? 0.3 : 1,
   };
+
+  const isAnyCardDragging = draggingTaskId !== null;
+  const isCurrentDragging = draggingTaskId === taskIdComposite;
 
   return (
     <div
@@ -194,7 +267,15 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId }: SortableTask
       style={style}
       {...attributes}
       {...listeners}
-      className={`task-card-wrapper relative shrink-0 ${isDragging ? 'is-dragging-card' : ''} ${extraClass}`}
+      className={`task-card-wrapper relative shrink-0 transition-all duration-200 ${
+        isDragging 
+          ? 'opacity-20 scale-95 border-2 border-dashed border-sky-500/35 rounded-[24px]' 
+          : ''
+      } ${
+        isAnyCardDragging && !isCurrentDragging
+          ? 'pointer-events-none'
+          : ''
+      } ${extraClass}`}
       data-task-id={taskIdComposite}
     >
       <div className="w-full h-full">
@@ -209,7 +290,7 @@ type ViewMode = "buscar" | "kanban" | "tabla" | "timeline";
 interface HomeDashboardProps {
   projects: Project[];
   onSelectTab: (tab: string) => void;
-  onSelectProject?: (projectId: number) => void;
+  onSelectProject?: (projectId: string | number) => void;
   isNeumorphic: boolean;
   isNightMode: boolean;
   activeView: ViewMode;
@@ -217,6 +298,8 @@ interface HomeDashboardProps {
   viewFilterMode: "mio" | "equipo";
   groupingMode: "fecha" | "cliente" | "prioridad" | "estado";
   onUpdateProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  isHomeEditMode?: boolean;
+  onDeleteProject?: (id: number) => void;
 }
 
 
@@ -250,10 +333,22 @@ export function HomeDashboard({
   viewFilterMode,
   groupingMode,
   onUpdateProjects,
+  isHomeEditMode = false,
+  onDeleteProject,
 }: HomeDashboardProps) {
   const [dbSubView, setDbSubView] = useState<"proyectos" | "tareas">("proyectos");
   const [columnScrollIndices, setColumnScrollIndices] = useState<Record<string, number>>({});
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    isOpen: boolean;
+    step: 1 | 2;
+    projectId: number;
+    projectTitle: string;
+    taskId: number;
+    taskTitle: string;
+    targetType?: "task" | "project";
+  } | null>(null);
 
   const [availableFormats, setAvailableFormats] = useState<string[]>([
     "Reel",
@@ -282,10 +377,10 @@ export function HomeDashboard({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
-  const handleDropTask = (taskId: string, projectId: number, oldColId: string | undefined, newColId: string, orderMap: Record<string, number>) => {
+  const handleDropTask = (taskId: string, projectId: string | number, oldColId: string | undefined, newColId: string, orderMap: Record<string, number>) => {
     const parts = taskId.split("-");
-    const taskIdNum = parseInt(parts[2], 10);
-    if (isNaN(taskIdNum)) return;
+    const taskIdStr = parts[2];
+    if (!taskIdStr) return;
 
     if (groupingMode === "estado") {
       const status = newColId.replace("status-", "");
@@ -306,7 +401,7 @@ export function HomeDashboard({
           }
 
           // 2. Si es la tarea ESPECÍFICA que se arrastró, actualizamos su estado
-          if (p.id === projectId && t.id === taskIdNum) {
+          if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
             if (status === "Revisión") {
               updatedTask = {
                 ...updatedTask,
@@ -356,7 +451,7 @@ export function HomeDashboard({
           return updatedTask;
         }) || [];
         
-        if (p.id !== projectId) return { ...p, tasks: updatedTasks };
+        if (String(p.id) !== String(projectId)) return { ...p, tasks: updatedTasks };
         return { ...p, priority, tasks: updatedTasks };
       }));
     } else if (groupingMode === "fecha") {
@@ -382,7 +477,7 @@ export function HomeDashboard({
             };
           }
 
-          if (p.id === projectId && t.id === taskIdNum) {
+          if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
             updatedTask = { ...updatedTask, fecha_programada: dateStr };
           }
           
@@ -430,13 +525,13 @@ export function HomeDashboard({
     setAvailableFormats(Array.from(formatsSet));
   }, [projects]);
 
-  const updateTaskProperty = (projId: number, tId: number, key: string, value: any) => {
+  const updateTaskProperty = (projId: string | number, tId: string | number, key: string, value: any) => {
     onUpdateProjects(prev => prev.map(p => {
-      if (p.id !== projId) return p;
+      if (String(p.id) !== String(projId)) return p;
       return {
         ...p,
         tasks: p.tasks?.map(t => {
-          if (t.id !== tId) return t;
+          if (String(t.id) !== String(tId)) return t;
           return { ...t, [key]: value };
         })
       };
@@ -550,8 +645,9 @@ export function HomeDashboard({
     if (viewFilterMode === "mio") {
       return kanbanTasks.filter(t => {
         const parts = t.id.split("-");
-        const taskIdNum = parseInt(parts[2] || "0", 10);
-        return taskIdNum % 2 === 0;
+        const taskIdStr = parts[2] || "0";
+        const charSum = taskIdStr.split("").reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+        return charSum % 2 === 0;
       });
     }
     return kanbanTasks;
@@ -585,6 +681,22 @@ export function HomeDashboard({
   const lastOverId = useRef<string | null>(null);
 
   const [dragRotation, setDragRotation] = useState(0);
+  const [dragTiltX, setDragTiltX] = useState(0);
+  const [dragScaleY, setDragScaleY] = useState(1);
+  const [dragScaleX, setDragScaleX] = useState(1);
+
+  const physicsRef = useRef({
+    angle: 0,
+    angularVelocity: 0,
+    angleX: 0,
+    angularVelocityX: 0,
+    scaleY: 1,
+    scaleX: 1,
+    lastX: null as number | null,
+    lastY: null as number | null,
+    animationFrameId: null as number | null,
+  });
+
   const lastPointerXRef = useRef<number | null>(null);
   const pointerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -672,6 +784,24 @@ export function HomeDashboard({
     return task;
   };
 
+  const cleanupDrag = () => {
+    if (typeof window !== "undefined" && (window as any)._handleGlobalMouseMove) {
+      window.removeEventListener("mousemove", (window as any)._handleGlobalMouseMove);
+      (window as any)._handleGlobalMouseMove = null;
+    }
+    if (physicsRef.current.animationFrameId !== null) {
+      cancelAnimationFrame(physicsRef.current.animationFrameId);
+      physicsRef.current.animationFrameId = null;
+    }
+    setDraggingTaskId(null);
+    setHoveredColumnId(null);
+    setDragRotation(0);
+    setDragTiltX(0);
+    setDragScaleY(1);
+    setDragScaleX(1);
+    lastPointerXRef.current = null;
+  };
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     setDraggingTaskId(active.id as string);
@@ -680,33 +810,93 @@ export function HomeDashboard({
       setExpandedCardId(null);
     }
     
-    // Inicializar coordenadas para el efecto tilt
+    // Inicializar coordenadas para el efecto de gravedad y balanceo físico de la tarjeta
     const activator = event.activatorEvent as PointerEvent | MouseEvent | null;
-    lastPointerXRef.current = activator?.clientX ?? null;
-    setDragRotation(0);
+    const initialX = activator?.clientX ?? null;
+    const initialY = activator?.clientY ?? null;
+    lastPointerXRef.current = initialX;
+    
+    // Configurar estado físico inicial de la simulación
+    physicsRef.current = {
+      angle: 0,
+      angularVelocity: 0,
+      angleX: 0,
+      angularVelocityX: 0,
+      scaleY: 1,
+      scaleX: 1,
+      lastX: initialX,
+      lastY: initialY,
+      animationFrameId: null,
+    };
+
+    const updatePhysics = () => {
+      const state = physicsRef.current;
+      
+      // 1. Física de balanceo horizontal (Eje Z - Péndulo por gravedad)
+      const gravityForceZ = -state.angle * 0.16; // Gravedad tirando al centro
+      state.angularVelocity += gravityForceZ;
+      state.angularVelocity *= 0.85; // Amortiguación de aire
+      state.angle += state.angularVelocity;
+
+      // Limitar rotación para que sea natural y controlada
+      state.angle = Math.max(-15, Math.min(15, state.angle));
+
+      // 2. Física de inclinación vertical (Eje X - Inercia de arrastre vertical)
+      const gravityForceX = -state.angleX * 0.18; // Resorte restaurador
+      state.angularVelocityX += gravityForceX;
+      state.angularVelocityX *= 0.82; // Fricción
+      state.angleX += state.angularVelocityX;
+
+      // Limitar inclinación en perspectiva 3D
+      state.angleX = Math.max(-12, Math.min(12, state.angleX));
+
+      // 3. Estiramiento elástico por gravedad y velocidad de arrastre (efecto muelle)
+      const speed = Math.sqrt(state.angularVelocity * state.angularVelocity + state.angularVelocityX * state.angularVelocityX);
+      state.scaleY = 1 + Math.min(0.08, speed * 0.0045);
+      state.scaleX = 1 - Math.min(0.04, speed * 0.0022); // Conservación del volumen de la tarjeta (Poisson)
+
+      // Actualizar estados sincronizados con el frame de renderizado del navegador
+      setDragRotation(state.angle);
+      setDragTiltX(state.angleX);
+      setDragScaleY(state.scaleY);
+      setDragScaleX(state.scaleX);
+
+      // Siguiente frame
+      state.animationFrameId = requestAnimationFrame(updatePhysics);
+    };
+
+    // Iniciar loop de simulación física a 60/120 FPS
+    physicsRef.current.animationFrameId = requestAnimationFrame(updatePhysics);
+
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      const state = physicsRef.current;
+      if (state.lastX !== null && state.lastY !== null) {
+        const deltaX = e.clientX - state.lastX;
+        const deltaY = e.clientY - state.lastY;
+
+        // Movimiento X genera torque en el balanceo Z (péndulo)
+        const torqueZ = -deltaX * 0.7;
+        state.angularVelocity += torqueZ;
+
+        // Movimiento Y genera inclinación en X
+        const torqueX = deltaY * 0.45;
+        state.angularVelocityX += torqueX;
+      }
+      state.lastX = e.clientX;
+      state.lastY = e.clientY;
+      lastPointerXRef.current = e.clientX;
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("mousemove", handleGlobalMouseMove);
+      (window as any)._handleGlobalMouseMove = handleGlobalMouseMove;
+    }
 
     playSound('click');
   };
 
   const handleDragMove = (event: DragMoveEvent) => {
-    const nativeEvent = event.activatorEvent as PointerEvent | MouseEvent | null;
-    const currentPointerX = nativeEvent?.clientX;
-    if (currentPointerX == null) return;
-
-    if (lastPointerXRef.current !== null) {
-      const deltaX = currentPointerX - lastPointerXRef.current;
-      const rotation = Math.max(-12, Math.min(12, deltaX * 0.5));
-      setDragRotation(rotation);
-    }
-
-    lastPointerXRef.current = currentPointerX;
-
-    if (pointerTimeoutRef.current) {
-      clearTimeout(pointerTimeoutRef.current);
-    }
-    pointerTimeoutRef.current = setTimeout(() => {
-      setDragRotation(0);
-    }, 100);
+    // Gestionado mediante el event listener global integrado en el loop físico
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -732,29 +922,36 @@ export function HomeDashboard({
     if (activeColId !== overColId) {
       setHoveredColumnId(overColId);
       setLocalKanbanTasks(prev => {
-        return prev.map(t => {
+        const activeIdx = prev.findIndex(t => t.id === activeId);
+        const overIdx = prev.findIndex(t => t.id === overId);
+        
+        const updatedTasks = prev.map(t => {
           if (t.id === activeId) {
             return updateTaskColumn(t, overColId);
           }
           return t;
         });
+
+        if (overIdx !== -1) {
+          return arrayMove(updatedTasks, activeIdx, overIdx);
+        }
+        return updatedTasks;
       });
+    } else {
+      // Reordenar en tiempo real dentro de la misma columna para que las tarjetas se aparten fluidamente
+      const activeIdx = localKanbanTasks.findIndex(t => t.id === activeId);
+      const overIdx = localKanbanTasks.findIndex(t => t.id === overId);
+      if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
+        setLocalKanbanTasks(prev => arrayMove(prev, activeIdx, overIdx));
+      }
     }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     
-    // Limpiar estados y referencias del efecto tilt
-    if (pointerTimeoutRef.current) {
-      clearTimeout(pointerTimeoutRef.current);
-    }
-    setDragRotation(0);
-    lastPointerXRef.current = null;
-    
     if (!over) {
-      setDraggingTaskId(null);
-      setHoveredColumnId(null);
+      cleanupDrag();
       return;
     }
 
@@ -763,8 +960,7 @@ export function HomeDashboard({
 
     const activeTask = localKanbanTasks.find(t => t.id === activeId);
     if (!activeTask) {
-      setDraggingTaskId(null);
-      setHoveredColumnId(null);
+      cleanupDrag();
       return;
     }
 
@@ -819,13 +1015,13 @@ export function HomeDashboard({
     });
 
     const parts = activeId.split("-");
-    const projectId = parseInt(parts[1], 10);
-    const taskNum = parseInt(parts[2], 10);
+    const projectId = parts[1];
+    const taskNum = parts[2];
 
     // Obtener oldColId buscando la tarea original
     let oldColId: string | undefined = undefined;
-    const project = projects.find(p => p.id === projectId);
-    const originalTask = project?.tasks?.find(t => t.id === taskNum);
+    const project = projects.find(p => String(p.id) === String(projectId));
+    const originalTask = project?.tasks?.find(t => String(t.id) === String(taskNum));
     if (originalTask) {
       if (groupingMode === "estado") {
         oldColId = `status-${originalTask.status || "Pendiente"}`;
@@ -848,8 +1044,7 @@ export function HomeDashboard({
     playSound(overColId !== oldColId ? 'whoosh' : 'pop');
     handleDropTask(activeId, projectId, oldColId, overColId, orderMap);
 
-    setDraggingTaskId(null);
-    setHoveredColumnId(null);
+    cleanupDrag();
   };
 
   useEffect(() => {
@@ -864,7 +1059,7 @@ export function HomeDashboard({
 
   const renderTaskCard = (
     taskId: string, 
-    projectId: number, 
+    projectId: string | number, 
     projectName: string, 
     taskTitle: string, 
     completedTasks: number, 
@@ -877,7 +1072,7 @@ export function HomeDashboard({
     const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
     
     // Retrieve project and client names dynamically
-    const project = projects.find(p => p.id === projectId);
+    const project = projects.find(p => String(p.id) === String(projectId));
     const clientName = project?.client || "Cliente";
     const projName = project?.title || projectName;
     const task = project?.tasks?.find(t => `kt-${projectId}-${t.id}` === taskId);
@@ -890,8 +1085,9 @@ export function HomeDashboard({
       if (task.status === "Completado") offset = 12;
       else if (task.status === "En Proceso") offset = 0;
       else {
-        if (task.id % 3 === 0) offset = 1;
-        else if (task.id % 3 === 1) offset = 4;
+        const numericId = parseInt(String(task.id).replace(/\D/g, ""), 10) || 0;
+        if (numericId % 3 === 0) offset = 1;
+        else if (numericId % 3 === 1) offset = 4;
         else offset = 15;
       }
       const d = new Date();
@@ -920,8 +1116,9 @@ export function HomeDashboard({
       if (task.status === "Completado") offset = 12;
       else if (task.status === "En Proceso") offset = 0;
       else {
-        if (task.id % 3 === 0) offset = 1;
-        else if (task.id % 3 === 1) offset = 4;
+        const numericId = parseInt(String(task.id).replace(/\D/g, ""), 10) || 0;
+        if (numericId % 3 === 0) offset = 1;
+        else if (numericId % 3 === 1) offset = 4;
         else offset = 15;
       }
       const d = new Date();
@@ -947,7 +1144,8 @@ export function HomeDashboard({
     // 3. Creacion Date calculation
     const createdDate = (task.fecha_creacion ? new Date(task.fecha_creacion + "T00:00:00") : (() => {
       const d = new Date();
-      const offset = 2 + (task.id % 5);
+      const numericId = parseInt(String(task.id).replace(/\D/g, ""), 10) || 0;
+      const offset = 2 + (numericId % 5);
       d.setDate(d.getDate() - offset);
       return d;
     })());
@@ -975,7 +1173,7 @@ export function HomeDashboard({
       return `Creado el ${day} de ${month} • ${relativePart}`;
     })();
 
-    const isDragging = draggingTaskId === taskId;
+    const isDragging = draggingTaskId === taskId && !forceCollapsed;
     const isAnyCardDragging = draggingTaskId !== null;
     const isExpanded = forceCollapsed ? false : (isDragging ? false : (expandedCardId === taskId));
 
@@ -983,6 +1181,7 @@ export function HomeDashboard({
       <div
         onClick={(e) => {
           if (isDragging) return;
+          if (isHomeEditMode) return;
           const isDeselecting = expandedCardId === taskId;
           const container = e.currentTarget.closest('.task-list-scroll');
           if (container) {
@@ -1023,39 +1222,82 @@ export function HomeDashboard({
             : isAnyCardDragging
               ? "border-white/[0.03]"
               : "border-white/[0.03] hover:border-white/10 hover:scale-[1.02] active:scale-[0.99]"
-        }`}
+        } ${isHomeEditMode ? "home-edit-wiggle" : ""}`}
       >
         
+        {/* Circle X Delete Button on top right in Edit Mode */}
+        {isHomeEditMode && (
+          <button
+            data-no-dnd
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteModalConfig({
+                isOpen: true,
+                step: 1,
+                projectId: Number(projectId),
+                projectTitle: projName,
+                taskId: task.id,
+                taskTitle: task.title,
+                targetType: undefined,
+              });
+              playSound('click');
+            }}
+            className="absolute top-2.5 right-2.5 z-50 flex items-center justify-center w-5.5 h-5.5 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-md active:scale-90 transition-all cursor-pointer pointer-events-auto"
+            title="Eliminar tarea o proyecto"
+          >
+            <X className="w-3 h-3 stroke-[3]" />
+          </button>
+        )}
+
         {/* Top Group: Project Title & Icon & Task Title */}
         <div className="flex flex-col relative z-10">
           <div className="flex items-center justify-between w-full">
             <span className="text-[10px] font-semibold text-slate-500 select-none truncate max-w-[85%]">
               {isExpanded ? formattedCreationDate : shortCreationDate}
             </span>
-            <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0">
-              <ExternalLink className="w-3.5 h-3.5 text-slate-400 hover:text-white transition-colors duration-200" />
-            </div>
+            {!isHomeEditMode && (
+              <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0">
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400 hover:text-white transition-colors duration-200" />
+              </div>
+            )}
           </div>
           
           {/* Slide-Up Task Title */}
-          <h4 className="task-card-title text-[15px] font-bold text-white tracking-normal leading-snug mt-1">
-            {taskTitle}
-          </h4>
+          {isHomeEditMode ? (
+            <input
+              type="text"
+              data-no-dnd
+              value={taskTitle}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                const newTitle = e.target.value;
+                onUpdateProjects(prev => {
+                  return prev.map(p => {
+                    if (p.id === projectId) {
+                      const updatedTasks = (p.tasks || []).map(t => {
+                        if (t.id === task.id) {
+                          return { ...t, title: newTitle };
+                        }
+                        return t;
+                      });
+                      return { ...p, tasks: updatedTasks };
+                    }
+                    return p;
+                  });
+                });
+              }}
+              className="task-card-title text-[15px] font-bold text-white bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 mt-1.5 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left"
+            />
+          ) : (
+            <h4 className="task-card-title text-[15px] font-bold text-white tracking-normal leading-snug mt-1 line-clamp-2">
+              {taskTitle}
+            </h4>
+          )}
 
           {/* Client & Project details & Description visible on hover */}
-          <div className="task-card-details flex flex-col gap-1 mt-1.5 select-none pointer-events-auto z-20">
-            {desc && (
-              <p className="text-[12px] text-white/90 font-medium leading-[18px] line-clamp-3 max-w-[95%] mt-0.5">
-                {desc}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Dynamic task metadata properties block visible when expanded */}
-        {isExpanded && (
-          <>
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 mt-2.5 relative z-30 pointer-events-auto text-[12px] font-semibold text-slate-400">
+          <div className="task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto z-20">
+            {/* Properties: Status and Format/Type */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-400">
               {/* 1. Status Pill (kept as the only true pill, made slightly smaller) */}
               <div className="relative">
                 <button
@@ -1065,7 +1307,7 @@ export function HomeDashboard({
                     setActiveFormatDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className={`flex items-center gap-1 h-6 px-2 rounded-full border text-[11px] font-bold transition-all duration-200 select-none shadow-sm ${
+                  className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold transition-all duration-200 select-none shadow-sm ${
                     task.status === "Completado" 
                       ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" 
                       : task.status === "En Proceso"
@@ -1105,7 +1347,7 @@ export function HomeDashboard({
 
               {/* 2. Format (Type) as selectable text */}
               <div className="relative flex items-center gap-1 shrink-0">
-                <Layers className="w-3.5 h-3.5 text-slate-500 shrink-0 select-none pointer-events-none" />
+                <Layers className="w-3 h-3 text-slate-500 shrink-0 select-none pointer-events-none" />
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1113,7 +1355,7 @@ export function HomeDashboard({
                     setActiveStatusDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className="hover:underline hover:text-white text-[12px] font-semibold text-slate-450 hover:underline transition-all duration-150 flex items-center gap-0.5 capitalize"
+                  className="hover:underline hover:text-white text-[11px] font-semibold text-slate-400 transition-all duration-150 flex items-center gap-0.5 capitalize"
                 >
                   <span>{task.format || "Formato"}</span>
                   <ChevronDown className="w-2.5 h-2.5 opacity-60" />
@@ -1182,6 +1424,17 @@ export function HomeDashboard({
               </div>
             </div>
 
+            {desc && (
+              <p className="text-[12px] text-white/90 font-medium leading-[18px] line-clamp-3 max-w-[95%] mt-0.5">
+                {desc}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Dynamic task metadata properties block visible when expanded */}
+        {isExpanded && (
+          <>
             {/* Date Comparison block matching attached image mockup layout */}
             <div className="mt-2.5 pt-2.5 border-t border-white/[0.04] flex flex-col gap-1 text-[12px] z-30 pointer-events-auto relative">
               {/* Row 0: Tiempo */}
@@ -1360,21 +1613,65 @@ export function HomeDashboard({
           </div>
 
           {/* Segmented Progress Bar */}
-          <div className="flex gap-1.5 w-full">
+          <div className="flex gap-1.5 w-full relative z-35 pointer-events-auto" data-no-dnd>
             {(project?.tasks || []).map((tk, idx) => {
               const segmentColor = 
                 tk.status === "Completado" 
-                   ? "bg-emerald-500" 
+                   ? "bg-emerald-500 hover:bg-emerald-450" 
                    : tk.status === "En Proceso" 
-                     ? "bg-amber-500" 
+                     ? "bg-amber-500 hover:bg-amber-450" 
                      : isNightMode 
-                       ? "bg-white/[0.08]" 
-                       : "bg-black/[0.08]";
+                       ? "bg-white/[0.08] hover:bg-white/20" 
+                       : "bg-black/[0.08] hover:bg-black/20";
               return (
                 <div
                   key={idx}
-                  className={`h-1 flex-1 rounded-full transition-all duration-500 ${segmentColor}`}
-                />
+                  className="relative group/segment flex-1"
+                >
+                  <div
+                    onClick={(e) => {
+                      if (isHomeEditMode) {
+                        e.stopPropagation();
+                        const nextStatus: "Pendiente" | "En Proceso" | "Completado" = 
+                          tk.status === "Pendiente" 
+                            ? "En Proceso" 
+                            : tk.status === "En Proceso" 
+                              ? "Completado" 
+                              : "Pendiente";
+                        onUpdateProjects(prev => {
+                          return prev.map(p => {
+                            if (p.id === projectId) {
+                              const updatedTasks = (p.tasks || []).map(t => {
+                                if (t.id === tk.id) {
+                                  return { ...t, status: nextStatus };
+                                }
+                                return t;
+                              });
+                              return { ...p, tasks: updatedTasks };
+                            }
+                            return p;
+                          });
+                        });
+                        playSound('click');
+                      }
+                    }}
+                    className={`h-1 w-full rounded-full transition-all duration-300 ${segmentColor} ${isHomeEditMode ? "cursor-pointer h-2 border border-white/10 shadow-sm active:scale-y-125" : ""}`}
+                    title={isHomeEditMode ? `Cambiar estado de "${tk.title}": ${tk.status}` : undefined}
+                  />
+
+                  {/* Elegant floating tooltip on hover */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[10px] font-bold text-white flex items-center gap-2">
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      tk.status === "Completado"
+                        ? "bg-emerald-500"
+                        : tk.status === "En Proceso"
+                          ? "bg-amber-500"
+                          : "bg-slate-400"
+                    }`} />
+                    <span>{tk.title}</span>
+                    <span className="opacity-60 font-semibold text-[9px]">({tk.status})</span>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -1383,6 +1680,42 @@ export function HomeDashboard({
             <span className="capitalize">tarea {taskIndex || completedTasks} de {totalTasks}</span>
             <span>{progressPercent}%</span>
           </div>
+
+          {/* Quick Add Task Button when Edit Mode is active */}
+          {isHomeEditMode && (
+            <div className="flex items-center justify-center mt-1 relative z-30 pointer-events-auto" data-no-dnd>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newTaskId = Math.max(...(project?.tasks || []).map(t => t.id), 0) + 1;
+                  const newTask: Task = {
+                    id: newTaskId,
+                    title: "Nueva Tarea Rápida",
+                    desc: "Descripción de la tarea",
+                    format: "Reel",
+                    time: "1.5h",
+                    status: "Pendiente",
+                    statusColor: "bg-slate-500",
+                    subtasks: [],
+                    fecha_creacion: formatLocalDate(new Date())
+                  };
+                  onUpdateProjects(prev => {
+                    return prev.map(p => {
+                      if (p.id === projectId) {
+                        return { ...p, tasks: [...(p.tasks || []), newTask] };
+                      }
+                      return p;
+                    });
+                  });
+                  playSound('click');
+                }}
+                className="w-full flex items-center justify-center gap-1 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 active:scale-98 transition-all text-[10px] font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <Plus className="w-2.5 h-2.5" />
+                <span>Agregar tarea rápida</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1399,6 +1732,18 @@ export function HomeDashboard({
       draggingTaskId ? "overflow-visible is-dragging-active" : "overflow-y-auto"
     }`}>
       <style>{`
+        @keyframes subtle-wiggle {
+          0% { transform: rotate(-0.5deg); }
+          100% { transform: rotate(0.5deg); }
+        }
+        @keyframes subtle-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.82; }
+        }
+        .home-edit-wiggle {
+          animation: subtle-wiggle 0.22s ease-in-out infinite alternate, subtle-pulse 1.3s ease-in-out infinite;
+        }
+
         .task-list-scroll {
           scroll-snap-type: y mandatory;
           scroll-behavior: smooth;
@@ -1422,7 +1767,7 @@ export function HomeDashboard({
         /* Reset card internals to defaults during scroll/cooldown */
         .task-list-scroll.is-scrolling .task-card-title,
         .task-list-scroll.hover-disabled .task-card-title {
-          transform: translateY(22px) !important;
+          transform: translateY(12px) !important;
         }
         .task-list-scroll.is-scrolling .project-title,
         .task-list-scroll.hover-disabled .project-title {
@@ -1525,7 +1870,7 @@ export function HomeDashboard({
 
         /* Task title (base rules) */
         .task-card-title {
-          transform: translateY(22px) !important;
+          transform: translateY(12px) !important;
           transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease-out !important;
           will-change: transform;
         }
@@ -1545,7 +1890,7 @@ export function HomeDashboard({
           will-change: max-height, transform;
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-details {
-          max-height: 80px !important;
+          max-height: 105px !important;
           opacity: 1 !important;
           transform: translateY(0px) !important;
           transition-delay: 180ms !important;
@@ -1586,7 +1931,7 @@ export function HomeDashboard({
           color: #ffffff !important;
         }
         .is-expanded-double .task-card-details {
-          max-height: 180px !important;
+          max-height: 220px !important;
           opacity: 1 !important;
           transform: translateY(0px) !important;
         }
@@ -1807,8 +2152,8 @@ export function HomeDashboard({
                             isHovered={isHovered}
                           >
                             <div className="flex items-center justify-between px-1 mb-1 shrink-0">
-                              <span className={`text-[10px] font-bold uppercase tracking-wider ${col.colorClass}`}>{col.name}</span>
-                              <span className={`w-4 h-4 rounded-full ${col.badgeBg} text-[9px] ${col.badgeText} flex items-center justify-center font-mono font-bold`}>{colTasks.length}</span>
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-white">{col.name}</span>
+                              <span className="w-4 h-4 rounded-full bg-white/10 text-[9px] text-white flex items-center justify-center font-mono font-bold">{colTasks.length}</span>
                             </div>
                             
                             <SortableContext
@@ -1831,7 +2176,7 @@ export function HomeDashboard({
                                 }}
                                 className={`task-list-scroll relative h-[490px] hide-scrollbar flex flex-col gap-2.5 px-2 py-2.5 -mx-2 overflow-y-auto ${
                                   draggingTaskId 
-                                    ? (isHovered ? "z-50" : "z-10") 
+                                    ? `${isHovered ? "z-50" : "z-10"} hover-disabled` 
                                     : "z-10"
                                 }`}
                                 style={{
@@ -1897,11 +2242,12 @@ export function HomeDashboard({
 
                                   return (
                                     <SortableTaskCard
-                                      key={`kt-${t.projectId}-${t.id}`}
+                                      key={t.id}
                                       t={t}
                                       extraClass={extraClass}
                                       renderTaskCard={renderTaskCard}
                                       colId={col.id}
+                                      draggingTaskId={draggingTaskId}
                                     />
                                   );
                                 })}
@@ -1912,19 +2258,24 @@ export function HomeDashboard({
                       })}
                     </div>
 
-                    <DragOverlay adjustScale={false} dropAnimation={dropAnimation}>
+                    <DragOverlay adjustScale={false} dropAnimation={dropAnimation} modifiers={[alignToTopCenter]}>
                       {draggingTaskId ? (() => {
-                        const parts = draggingTaskId.split("-");
-                        const projectId = parseInt(parts[1], 10);
-                        const taskIdNum = parseInt(parts[2], 10);
-                        const task = kanbanTasks.find(t => t.id === taskIdNum && t.projectId === projectId);
+                        const task = kanbanTasks.find(t => t.id === draggingTaskId);
                         if (!task) return null;
                         return (
                           <div 
-                            className="task-card-wrapper pointer-events-none scale-[1.03] shadow-[0_20px_25px_-5px_rgba(0,0,0,0.1),0_10px_10px_-5px_rgba(0,0,0,0.04)]"
+                            className="w-full pointer-events-none select-none"
                             style={{ height: 150 }}
                           >
-                            {renderTaskCard(draggingTaskId, task.projectId, task.projectName, task.taskTitle, task.completedTasks, task.totalTasks, task.taskIndex, task.desc, "", true)}
+                            <div
+                              className="task-card-wrapper w-full h-full shadow-[0_30px_60px_-15px_rgba(0,0,0,0.55)]"
+                              style={{ 
+                                transform: `perspective(1000px) scale(${1.04 * dragScaleX}, ${1.04 * dragScaleY}) rotateX(${dragTiltX}deg) rotateY(${dragRotation * 0.18}deg) rotateZ(${dragRotation}deg)`,
+                                transformOrigin: "center center"
+                               }}
+                            >
+                              {renderTaskCard(draggingTaskId, task.projectId, task.projectName, task.taskTitle, task.completedTasks, task.totalTasks, task.taskIndex, task.desc, "", true)}
+                            </div>
                           </div>
                         );
                       })() : null}
@@ -2298,6 +2649,250 @@ export function HomeDashboard({
 
       </div>
 
+      {/* Custom Delete Confirmation Modal */}
+      <AnimatePresence>
+        {deleteModalConfig && deleteModalConfig.isOpen && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+            {/* Blur backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setDeleteModalConfig(null)}
+              className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+            />
+
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              className={`relative w-full max-w-md overflow-hidden rounded-[32px] border shadow-2xl p-6 z-10 flex flex-col gap-5 ${
+                isNightMode
+                  ? "bg-slate-900/95 border-white/10 text-white shadow-black/80"
+                  : "bg-white border-slate-200 text-slate-800 shadow-slate-200/50"
+              }`}
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => {
+                  setDeleteModalConfig(null);
+                  playSound('click');
+                }}
+                className={`absolute top-4 right-4 p-1.5 rounded-full transition-all ${
+                  isNightMode 
+                    ? "hover:bg-white/10 text-slate-400 hover:text-white" 
+                    : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              {deleteModalConfig.step === 1 ? (
+                <>
+                  {/* Step 1: Choose Task or Project */}
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                      <AlertTriangle className="w-6 h-6 animate-pulse" />
+                    </div>
+                    <div className="flex flex-col">
+                      <h3 className="text-lg font-extrabold tracking-tight leading-tight">
+                        Opciones de Eliminación
+                      </h3>
+                      <p className="text-xs text-slate-400 font-medium mt-0.5">
+                        Selecciona qué deseas remover del sistema.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 flex flex-col gap-3">
+                    {/* Option A: Task */}
+                    <button
+                      onClick={() => {
+                        setDeleteModalConfig(prev => prev ? { ...prev, step: 2, targetType: "task" } : null);
+                        playSound('click');
+                      }}
+                      className={`group w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3.5 ${
+                        isNightMode
+                          ? "bg-white/[0.02] border-white/5 hover:bg-rose-500/10 hover:border-rose-500/20"
+                          : "bg-slate-50 border-slate-150 hover:bg-rose-50 hover:border-rose-200"
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl transition-all ${
+                        isNightMode 
+                          ? "bg-rose-500/10 text-rose-400 group-hover:bg-rose-500/20" 
+                          : "bg-rose-100 text-rose-600 group-hover:bg-rose-200"
+                      }`}>
+                        <Trash2 className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-rose-400">
+                          Eliminar Tarea
+                        </span>
+                        <span className={`block text-sm font-bold truncate mt-0.5 ${
+                          isNightMode ? "text-white" : "text-slate-900"
+                        }`}>
+                          "{deleteModalConfig.taskTitle}"
+                        </span>
+                        <span className="block text-[11px] text-slate-400 mt-1">
+                          Solo se removerá esta tarea individual de su proyecto.
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Option B: Project */}
+                    <button
+                      onClick={() => {
+                        setDeleteModalConfig(prev => prev ? { ...prev, step: 2, targetType: "project" } : null);
+                        playSound('click');
+                      }}
+                      className={`group w-full text-left p-4 rounded-2xl border transition-all flex items-start gap-3.5 ${
+                        isNightMode
+                          ? "bg-white/[0.02] border-white/5 hover:bg-rose-600/15 hover:border-rose-600/25"
+                          : "bg-slate-50 border-slate-150 hover:bg-rose-100/50 hover:border-rose-300"
+                      }`}
+                    >
+                      <div className={`p-2 rounded-xl transition-all ${
+                        isNightMode 
+                          ? "bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20" 
+                          : "bg-amber-100 text-amber-600 group-hover:bg-amber-200"
+                      }`}>
+                        <Folder className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-amber-400">
+                          Eliminar Proyecto Completo
+                        </span>
+                        <span className={`block text-sm font-bold truncate mt-0.5 ${
+                          isNightMode ? "text-white" : "text-slate-900"
+                        }`}>
+                          "{deleteModalConfig.projectTitle}"
+                        </span>
+                        <span className="block text-[11px] text-slate-400 mt-1">
+                          ⚠️ Eliminará el proyecto completo junto con todas sus tareas asociadas.
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setDeleteModalConfig(null);
+                      playSound('click');
+                    }}
+                    className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all text-center ${
+                      isNightMode
+                        ? "bg-white/5 hover:bg-white/10 text-slate-300"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    Cancelar
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Step 2: Confirm Action */}
+                  <div className="flex flex-col items-center text-center gap-3">
+                    <div className="p-4 rounded-full bg-rose-500/15 text-rose-500 border border-rose-500/25">
+                      <Trash2 className="w-8 h-8 animate-pulse" />
+                    </div>
+                    
+                    <h3 className="text-xl font-extrabold tracking-tight text-rose-500">
+                      ¿Confirmar Acción?
+                    </h3>
+                    
+                    <p className={`text-sm mt-1 leading-relaxed px-1 ${isNightMode ? "text-slate-300" : "text-slate-600"}`}>
+                      {deleteModalConfig.targetType === "task" ? (
+                        <>
+                          ¿Estás completamente seguro de que deseas eliminar la tarea{" "}
+                          <span className={`font-extrabold ${isNightMode ? "text-white" : "text-slate-950"}`}>"{deleteModalConfig.taskTitle}"</span>?
+                          Esta acción la removerá permanentemente del proyecto{" "}
+                          <span className="font-bold">{deleteModalConfig.projectTitle}</span>.
+                        </>
+                      ) : (
+                        <>
+                          ¡Atención! Estás a punto de eliminar el proyecto{" "}
+                          <span className={`font-extrabold ${isNightMode ? "text-white" : "text-slate-950"}`}>"{deleteModalConfig.projectTitle}"</span> y todas las tareas que contiene.
+                          <span className="block mt-2 text-rose-500 font-extrabold text-xs uppercase tracking-wider">
+                            ⚠️ Esta acción es irreversible.
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col gap-2.5 mt-3">
+                    {/* Confirm Button */}
+                    <button
+                      onClick={async () => {
+                        if (deleteModalConfig.targetType === "task") {
+                          // Delete task
+                          onUpdateProjects(prev => {
+                            return prev.map(p => {
+                              if (p.id === deleteModalConfig.projectId) {
+                                const updatedTasks = (p.tasks || []).filter(t => t.id !== deleteModalConfig.taskId);
+                                return { ...p, tasks: updatedTasks };
+                              }
+                              return p;
+                            });
+                          });
+                          playSound('trash');
+                        } else {
+                          // Delete project
+                          if (onDeleteProject) {
+                            onDeleteProject(deleteModalConfig.projectId);
+                          } else {
+                            onUpdateProjects(prev => prev.filter(p => p.id !== deleteModalConfig.projectId));
+                            playSound('trash');
+                          }
+                        }
+                        setDeleteModalConfig(null);
+                      }}
+                      className="w-full py-3.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-rose-500/10 active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4 stroke-[2.5]" />
+                      <span>Sí, eliminar definitivamente</span>
+                    </button>
+
+                    <div className="flex gap-2 w-full">
+                      {/* Go Back Button */}
+                      <button
+                        onClick={() => {
+                          setDeleteModalConfig(prev => prev ? { ...prev, step: 1, targetType: undefined } : null);
+                          playSound('click');
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all text-center border ${
+                          isNightMode
+                            ? "bg-white/5 border-white/5 hover:bg-white/10 text-slate-300"
+                            : "bg-slate-50 border-slate-200 hover:bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        Atrás
+                      </button>
+
+                      {/* Cancel Button */}
+                      <button
+                        onClick={() => {
+                          setDeleteModalConfig(null);
+                          playSound('click');
+                        }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all text-center ${
+                          isNightMode
+                            ? "bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white"
+                            : "bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800"
+                        }`}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

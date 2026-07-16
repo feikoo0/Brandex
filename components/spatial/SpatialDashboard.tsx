@@ -122,7 +122,7 @@ export default function SpatialDashboard() {
         <RefreshCw className="w-10 h-10 text-rose-500 mb-3" />
         <p className="text-sm font-bold">Error al cargar datos del dashboard.</p>
         <button
-          onClick={() => syncData()}
+          onClick={() => syncData.mutate()}
           className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all"
         >
           Reintentar sincronización
@@ -161,15 +161,16 @@ export default function SpatialDashboard() {
                   {greetingWord}, {userName || "Feiko"}
                 </h1>
                 <p className="text-xs text-neutral-500 font-bold mt-1 uppercase tracking-wider">
-                  Hoy tienes {activeProjects.length} proyectos en curso y {pendingTasks.length} tareas pendientes en Notion.
+                  Hoy tienes {activeProjects.length} proyectos en curso y {pendingTasks.length} tareas pendientes.
                 </p>
               </div>
               <button
-                onClick={() => syncData()}
-                className="p-2 rounded-full bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.1] text-neutral-400 hover:text-white transition-all cursor-pointer"
-                title="Sincronizar Notion"
+                onClick={() => syncData.mutate()}
+                disabled={syncData.isPending}
+                className="p-2 rounded-full bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.08] hover:border-white/[0.1] text-neutral-400 hover:text-white transition-all cursor-pointer disabled:opacity-50"
+                title="Sincronizar Base de Datos"
               >
-                <RefreshCw className="w-4 h-4" />
+                <RefreshCw className={cn("w-4 h-4", syncData.isPending && "animate-spin")} />
               </button>
             </div>
 

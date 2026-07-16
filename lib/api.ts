@@ -62,8 +62,9 @@ export async function loginWithToken(
 }
 
 // ── Sync (full data load) ─────────────────────────────────────────────────────
-export async function syncAll(): Promise<SyncResponse> {
-  return apiFetch<SyncResponse>("GET", "/api/sync");
+export async function syncAll(force = false): Promise<SyncResponse> {
+  const path = force ? "/api/sync?force=true" : "/api/sync";
+  return apiFetch<SyncResponse>("GET", path);
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────────────

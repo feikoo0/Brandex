@@ -6,7 +6,7 @@ import { playSound } from '../utils/audio';
 import { getDynamicProgress } from '../utils/data';
 import DateRangePicker from './DateRangePicker';
 import Image from 'next/image';
-import { Calendar, DollarSign, Clock, Flag, ClipboardList, TrendingUp, Users, Plus } from 'lucide-react';
+import { Calendar, DollarSign, Clock, Flag, ClipboardList, TrendingUp, Users, Plus, Trash2 } from 'lucide-react';
 
 export interface Task {
   id: number;
@@ -67,6 +67,7 @@ interface ProjectDashboardProps {
   onUpdatePriority?: (id: number, newPriority: string) => void;
   onUpdateDaysRemaining?: (id: number, newDaysRemaining: string) => void;
   onSelectTask?: (taskId: number) => void;
+  onDeleteProject?: (id: number) => void;
   isNeumorphic?: boolean;
   isNightMode?: boolean;
 }
@@ -154,6 +155,7 @@ export function ProjectDashboard({
   onUpdatePriority,
   onUpdateDaysRemaining,
   onSelectTask,
+  onDeleteProject,
   isNeumorphic = false,
   isNightMode = false
 }: ProjectDashboardProps) {
@@ -379,6 +381,8 @@ export function ProjectDashboard({
   };
 
   const handleAddTask = () => {
+    const today = new Date();
+    const fecha_creacion = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const newTask: Task = {
       id: Date.now(),
       title: "Nueva Tarea",
@@ -387,7 +391,8 @@ export function ProjectDashboard({
       time: "0H",
       status: "Pendiente",
       statusColor: "bg-white",
-      subtasks: []
+      subtasks: [],
+      fecha_creacion
     };
     setTasks([...tasks, newTask]);
     playSound('pop');
@@ -421,6 +426,8 @@ export function ProjectDashboard({
   const handleCreateTask = () => {
     playSound('pop');
     const newTaskNum = tasks.length + 1;
+    const today = new Date();
+    const fecha_creacion = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
     const newTask = {
       id: Date.now(),
       title: `Nueva Tarea ${newTaskNum}`,
@@ -433,7 +440,8 @@ export function ProjectDashboard({
       subtasks: [
         { id: 1, text: "Paso inicial de la tarea", done: false },
         { id: 2, text: "Verificar entregables finales", done: false }
-      ]
+      ],
+      fecha_creacion
     };
     setTasks(prev => [...prev, newTask]);
     // Expand newly created task by default
@@ -569,6 +577,24 @@ export function ProjectDashboard({
               </button>
               <span className={`text-[12px] font-bold leading-none ${isNightMode ? 'text-zinc-400' : 'text-slate-500'}`}>Equipo</span>
             </div>
+
+            {/* Delete Project/Folder button */}
+            {onDeleteProject && (
+              <div className="flex items-center gap-2 flex-shrink-0 select-none ml-4">
+                <button 
+                  onClick={() => {
+                    if (window.confirm("¿Estás seguro de que quieres eliminar este proyecto/carpeta y todas sus tareas?")) {
+                      onDeleteProject(project.id);
+                    }
+                  }}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center transition-all duration-300 shadow-md bg-rose-500/10 border border-rose-500/20 text-rose-500 hover:bg-rose-500/20 hover:scale-105 active:scale-95`}
+                  title="Eliminar Proyecto"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-500" strokeWidth={2.5} />
+                </button>
+                <span className="text-[12px] font-bold leading-none text-rose-500">Eliminar</span>
+              </div>
+            )}
           </motion.div>
         </div>
 
