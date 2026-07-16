@@ -79,6 +79,27 @@ const FULL_MONTH_NAMES = {
 };
 const WEEKDAYS_SPANISH = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
+// Shared helper: parse task time string → minutes
+export const parseTaskTimeToMinutes = (time: string): number => {
+  if (!time) return 0;
+  const t = time.toLowerCase().trim();
+  const horasMatch = t.match(/^(\d+(?:\.\d+)?)\s*hora/);
+  if (horasMatch) return Math.round(parseFloat(horasMatch[1]) * 60);
+  const minMatch = t.match(/^(\d+(?:\.\d+)?)\s*min/);
+  if (minMatch) return Math.round(parseFloat(minMatch[1]));
+  // fallback: plain numbers like "2h" or "40h" (from session tracker)
+  const hMatch = t.match(/^(\d+(?:\.\d+)?)h$/);
+  if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60);
+  return 0;
+};
+
+// Build a formatted burnRate string from tasks (total hours, all statuses)
+export const computeBurnRateFromTasks = (tasks: Task[]): string => {
+  const totalMinutes = tasks.reduce((acc, t) => acc + parseTaskTimeToMinutes(t.time), 0);
+  const totalHours = totalMinutes === 0 ? 0 : Math.max(1, Math.round(totalMinutes / 60));
+  return `${totalHours}h`;
+};
+
 function getFullDeadlineText(deadlineStr: string | undefined): string {
   if (!deadlineStr) return "";
   if (deadlineStr.toLowerCase() === 'entregado') return "Entregado";
@@ -292,6 +313,16 @@ export function ProjectDashboard({
   };
 
   const dynamicProgress = getDynamicProgress(project);
+
+  // Auto-sync burnRate from tasks whenever tasks change
+  useEffect(() => {
+    if (!project || !onUpdateBurnRate || tasks.length === 0) return;
+    const computed = computeBurnRateFromTasks(tasks);
+    // Only call if the value actually changed to avoid infinite loops
+    if (computed !== project.burnRate) {
+      onUpdateBurnRate(project.id, computed);
+    }
+  }, [tasks]);
 
   useEffect(() => {
     if (project && tasks.length > 0) {
@@ -851,11 +882,9 @@ export function ProjectDashboard({
             <div className="flex items-center gap-2 leading-none">
               <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
               <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Tiempo:</span>
-              <InlineEditable 
-                value={project.burnRate || "0h / 0h"} 
-                onSave={(val) => onUpdateBurnRate && onUpdateBurnRate(project.id, val)}
-                className={`text-[13px] font-black inline-block leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`} 
-              />
+              <span className={`text-[13px] font-black inline-block leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`}>
+                {computeBurnRateFromTasks(tasks)}
+              </span>
             </div>
           </motion.div>
 

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, Plus, Check, Clock, X, Pencil, Trash2, Folder, AlertTriangle } from "lucide-react";
-import { Project, Task } from "./ProjectDashboard";
+import { Project, Task, parseTaskTimeToMinutes as parseTaskTimeToMinutesHome } from "./ProjectDashboard";
 import TimeHeatmap from "./TimeHeatmap";
 import { playSound } from "../utils/audio";
 import {
@@ -554,27 +554,14 @@ export function HomeDashboard({
   const totalProjects = projects.length;
   const totalTasks = projects.reduce((acc, p) => acc + (p.tasks?.length || 0), 0);
 
-  // Parse t.time strings like "15 min", "30 min", "1 hora", "2 horas", "3 horas o más", "45 min", "4 horas", etc.
-  const parseTaskTimeToMinutes = (time: string): number => {
-    if (!time) return 0;
-    const t = time.toLowerCase().trim();
-    // "3 horas o más" → treat as 3h
-    const horasMatch = t.match(/^(\d+(?:\.\d+)?)\s*hora/);
-    if (horasMatch) return Math.round(parseFloat(horasMatch[1]) * 60);
-    // "15 min", "30 min", "45 min"
-    const minMatch = t.match(/^(\d+(?:\.\d+)?)\s*min/);
-    if (minMatch) return Math.round(parseFloat(minMatch[1]));
-    return 0;
-  };
-
-  const totalHoursRaw = projects.reduce((acc, p) => {
-    return acc + (p.tasks?.reduce((tacc, t) => {
-      return tacc + parseTaskTimeToMinutes((t as any).time || "");
-    }, 0) || 0);
+  // Home LED: solo suma horas de tareas NO completadas (carga de trabajo pendiente)
+  const pendingHoursRaw = projects.reduce((acc, p) => {
+    return acc + (p.tasks
+      ?.filter(t => t.status !== "Completado")
+      .reduce((tacc, t) => tacc + parseTaskTimeToMinutesHome((t as any).time || ""), 0) || 0);
   }, 0);
 
-  // Convert total minutes → hours (rounded, minimum 1 if any time exists but < 1h)
-  const totalHours = totalHoursRaw === 0 ? 0 : Math.max(1, Math.round(totalHoursRaw / 60));
+  const totalHours = pendingHoursRaw === 0 ? 0 : Math.max(1, Math.round(pendingHoursRaw / 60));
 
   const kanbanTasks = React.useMemo(() => {
     const list: any[] = [];
