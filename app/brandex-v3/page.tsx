@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Pencil, Loader2 } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Pencil, Loader2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
@@ -119,6 +119,9 @@ function getProjectHSL(project: Project): { h: number; s: number; l: number } {
 export default function BrandexV3Page() {
   const [activeTab, setActiveTab] = useState("home");
   const [homeView, setHomeView] = useState<"buscar" | "kanban" | "tabla" | "timeline">("kanban");
+  const [previousHomeView, setPreviousHomeView] = useState<"kanban" | "tabla" | "timeline">("kanban");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [viewFilterMode, setViewFilterMode] = useState<"mio" | "equipo">("equipo");
   const [groupingMode, setGroupingMode] = useState<"fecha" | "cliente" | "prioridad" | "estado">("fecha");
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
@@ -126,6 +129,7 @@ export default function BrandexV3Page() {
   const [notificationCount, setNotificationCount] = useState(3);
   const [isNightMode, setIsNightMode] = useState(true);
   const isNeumorphic = true;
+  const isSearchActive = activeTab === "home" && homeView === "buscar";
   const [activeProject, setActiveProject] = useState<string | number>(1);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
@@ -591,9 +595,19 @@ export default function BrandexV3Page() {
       {/* Dynamic 2-line Title next to Logo + Home KPIs & TimeHeatmap */}
       {/* Dynamic Header Wrapper aligned with the 12-column grid */}
       <div className="absolute top-[20px] left-[216px] right-[40px] h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
-        <div className="col-span-9 flex items-center justify-between h-full relative">
+        <div className={`col-span-9 flex items-center ${isSearchActive ? "justify-start gap-3" : "justify-between"} h-full relative`}>
           {/* Title on the left */}
-          <div className="flex items-center shrink-0">
+          <motion.div 
+            animate={{ 
+              opacity: isSearchActive ? 0 : 1,
+            }}
+            style={{
+              pointerEvents: isSearchActive ? "none" : "auto",
+              display: isSearchActive ? "none" : "flex"
+            }}
+            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            className="flex items-center shrink-0 overflow-hidden mr-5"
+          >
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}
@@ -623,20 +637,64 @@ export default function BrandexV3Page() {
                 </span>
               </motion.div>
             </AnimatePresence>
-          </div>
+          </motion.div>
+
+          {/* Close Search Button */}
+          <AnimatePresence>
+            {isSearchActive && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.8, x: -10 }}
+                animate={{ opacity: 1, scale: 1, x: 0 }}
+                exit={{ opacity: 0, scale: 0.8, x: -10 }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                type="button"
+                onClick={() => {
+                  setHomeView(previousHomeView);
+                  playSound('click');
+                }}
+                className="flex items-center justify-center w-8 h-8 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 cursor-pointer shrink-0 z-50"
+                title="Cerrar búsqueda"
+              >
+                <X className="w-4 h-4" />
+              </motion.button>
+            )}
+          </AnimatePresence>
 
           {/* View Switcher centered inside col-span-9 */}
           {activeTab === "home" && (
-            <div className="relative flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0">
+            <motion.div 
+              layout
+              animate={{
+                marginLeft: isSearchActive ? 0 : (hoveredTab === "buscar" ? -35 : 0)
+              }}
+              transition={{ type: "spring", stiffness: 350, damping: 28 }}
+              className="relative flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0"
+            >
               {/* Search Tab */}
-              <button
+              <motion.button
+                layout
                 type="button"
-                onClick={() => setHomeView("buscar")}
-                className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-8 text-xs font-bold transition-colors duration-200 ${
-                  homeView === "buscar"
-                    ? "text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                onHoverStart={() => !isSearchActive && setHoveredTab("buscar")}
+                onHoverEnd={() => setHoveredTab(null)}
+                onClick={() => {
+                  if (homeView !== "buscar") {
+                    setPreviousHomeView(homeView);
+                  }
+                  setHomeView("buscar");
+                  playSound('click');
+                }}
+                animate={{
+                  width: isSearchActive ? 320 : (hoveredTab === "buscar" ? 135 : 100),
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
+                className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 text-xs font-bold transition-colors duration-200 ${
+                  isSearchActive
+                    ? "text-white px-3"
+                    : "text-slate-400 hover:text-slate-200 cursor-pointer px-0"
                 }`}
+                style={{
+                  display: "inline-flex",
+                }}
               >
                 {homeView === "buscar" && (
                   <motion.span
@@ -645,14 +703,40 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Search className="w-4 h-4 shrink-0" />
-                <span>Search</span>
-              </button>
+                {!isSearchActive && hoveredTab === "buscar" && (
+                  <motion.span
+                    layoutId="hoverViewIndicator"
+                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <Search className="w-4 h-4 shrink-0 text-slate-400 relative z-10" />
+                {isSearchActive ? (
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    placeholder="Buscar proyectos o tareas..."
+                    className="bg-transparent border-none outline-none text-xs text-white w-full placeholder:text-slate-500 focus:ring-0 focus:outline-none relative z-10"
+                    autoFocus
+                  />
+                ) : (
+                  <span className="relative z-10">Search</span>
+                )}
+              </motion.button>
 
               {/* Kanban Tab */}
-              <button
+              <motion.button
+                layout
                 type="button"
-                onClick={() => setHomeView("kanban")}
+                onHoverStart={() => setHoveredTab("kanban")}
+                onHoverEnd={() => setHoveredTab(null)}
+                onClick={() => {
+                  setHomeView("kanban");
+                  playSound('click');
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "kanban"
                     ? "text-white"
@@ -666,14 +750,28 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <LayoutGrid className="w-4 h-4 shrink-0" />
-                <span>Kanban</span>
-              </button>
+                {hoveredTab === "kanban" && (
+                  <motion.span
+                    layoutId="hoverViewIndicator"
+                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <LayoutGrid className="w-4 h-4 shrink-0 relative z-10" />
+                <span className="relative z-10">Kanban</span>
+              </motion.button>
 
               {/* Base de Datos Tab */}
-              <button
+              <motion.button
+                layout
                 type="button"
-                onClick={() => setHomeView("tabla")}
+                onHoverStart={() => setHoveredTab("tabla")}
+                onHoverEnd={() => setHoveredTab(null)}
+                onClick={() => {
+                  setHomeView("tabla");
+                  playSound('click');
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "tabla"
                     ? "text-white"
@@ -687,14 +785,28 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Table className="w-4 h-4 shrink-0" />
-                <span>Base de datos</span>
-              </button>
+                {hoveredTab === "tabla" && (
+                  <motion.span
+                    layoutId="hoverViewIndicator"
+                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <Table className="w-4 h-4 shrink-0 relative z-10" />
+                <span className="relative z-10">Base de datos</span>
+              </motion.button>
 
               {/* Timeline Tab */}
-              <button
+              <motion.button
+                layout
                 type="button"
-                onClick={() => setHomeView("timeline")}
+                onHoverStart={() => setHoveredTab("timeline")}
+                onHoverEnd={() => setHoveredTab(null)}
+                onClick={() => {
+                  setHomeView("timeline");
+                  playSound('click');
+                }}
+                transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "timeline"
                     ? "text-white"
@@ -708,15 +820,22 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <CalendarDays className="w-4 h-4 shrink-0" />
-                <span>Timeline</span>
-              </button>
-            </div>
+                {hoveredTab === "timeline" && (
+                  <motion.span
+                    layoutId="hoverViewIndicator"
+                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <CalendarDays className="w-4 h-4 shrink-0 relative z-10" />
+                <span className="relative z-10">Timeline</span>
+              </motion.button>
+            </motion.div>
           )}
 
           {/* Quick Action Buttons on the right side of col-span-9 */}
           {activeTab === "home" && (
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-3 shrink-0 ml-auto">
               {/* 1. Pencil Edit Mode Toggle Button */}
               <button
                 onClick={() => {
@@ -1387,6 +1506,8 @@ export default function BrandexV3Page() {
                 onUpdateProjects={setProjects}
                 isHomeEditMode={isHomeEditMode}
                 onDeleteProject={deleteProject}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
               />
             )}
 

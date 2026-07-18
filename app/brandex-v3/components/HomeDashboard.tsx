@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
-import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, Plus, Check, Clock, X, Pencil, Trash2, Folder, AlertTriangle } from "lucide-react";
-import { Project, Task, parseTaskTimeToMinutes as parseTaskTimeToMinutesHome } from "./ProjectDashboard";
+import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, ChevronUp, Plus, Check, Clock, X, Pencil, Trash2, Folder, AlertTriangle } from "lucide-react";
+import { Project, Task } from "./ProjectDashboard";
 import TimeHeatmap from "./TimeHeatmap";
 import { playSound } from "../utils/audio";
 import {
@@ -49,74 +50,46 @@ const animateLayoutChanges: AnimateLayoutChanges = (args) => {
   return defaultAnimateLayoutChanges(args);
 };
 
-let lastActivatorEvent: any = null;
-let cachedOffset: { x: number; y: number } | null = null;
+interface MemoizedDragOverlayCardProps {
+  task: any;
+  renderTaskCard: (
+    taskId: string,
+    projectId: string | number,
+    projectName: string,
+    taskTitle: string,
+    completedTasks: number,
+    totalTasks: number,
+    taskIndex?: number,
+    desc?: string,
+    columnId?: string,
+    forceCollapsed?: boolean
+  ) => React.ReactNode;
+  dragCardRef: React.RefObject<HTMLDivElement>;
+}
 
-const alignToTopCenter: Modifier = ({
-  transform,
-  activeNodeRect,
-  activatorEvent,
-}) => {
-  if (!activatorEvent) {
-    lastActivatorEvent = null;
-    cachedOffset = null;
-    return transform;
-  }
-
-  if (activeNodeRect && activatorEvent !== lastActivatorEvent) {
-    lastActivatorEvent = activatorEvent;
-    let initialX = 0;
-    let initialY = 0;
-
-    if (typeof window !== "undefined") {
-      if (activatorEvent instanceof MouseEvent) {
-        initialX = activatorEvent.clientX;
-        initialY = activatorEvent.clientY;
-      } else if (window.TouchEvent && activatorEvent instanceof TouchEvent) {
-        const touch = activatorEvent.touches[0] || activatorEvent.changedTouches[0];
-        if (touch) {
-          initialX = touch.clientX;
-          initialY = touch.clientY;
-        }
-      } else {
-        // Fallback
-        const anyEvent = activatorEvent as any;
-        if (anyEvent.clientX !== undefined) {
-          initialX = anyEvent.clientX;
-          initialY = anyEvent.clientY;
-        } else if (anyEvent.touches && anyEvent.touches[0]) {
-          initialX = anyEvent.touches[0].clientX;
-          initialY = anyEvent.touches[0].clientY;
-        }
-      }
-    }
-
-    if (initialX && initialY) {
-      cachedOffset = {
-        x: initialX - activeNodeRect.left,
-        y: initialY - activeNodeRect.top,
-      };
-    } else {
-      cachedOffset = null;
-    }
-  }
-
-  if (cachedOffset && activeNodeRect) {
-    const targetOffsetX = activeNodeRect.width / 2;
-    const targetOffsetY = 0; // Top border
-
-    const diffX = cachedOffset.x - targetOffsetX;
-    const diffY = cachedOffset.y - targetOffsetY;
-
-    return {
-      ...transform,
-      x: transform.x + diffX,
-      y: transform.y + diffY,
-    };
-  }
-
-  return transform;
-};
+const MemoizedDragOverlayCard = React.memo(function MemoizedDragOverlayCard({
+  task,
+  renderTaskCard,
+  dragCardRef,
+}: MemoizedDragOverlayCardProps) {
+  return (
+    <div 
+      className="w-full pointer-events-none select-none"
+      style={{ height: 150 }}
+    >
+      <div
+        ref={dragCardRef}
+        className="task-card-wrapper w-full h-full shadow-[0_30px_60px_-15px_rgba(0,0,0,0.55)]"
+        style={{ 
+          transform: `perspective(1000px) scale(1.04) rotateX(0deg) rotateY(0deg) rotateZ(0deg)`,
+          transformOrigin: "center center"
+         }}
+      >
+        {renderTaskCard(task.id, task.projectId, task.projectName, task.taskTitle, task.completedTasks, task.totalTasks, task.taskIndex, task.desc, "", true)}
+      </div>
+    </div>
+  );
+});
 
 class SmartMouseSensor extends MouseSensor {
   static activators = [
@@ -183,6 +156,7 @@ interface ColumnContainerProps {
   headerBgStyle: string;
   draggingTaskId: string | null;
   isHovered: boolean;
+  isAnyDropdownOpen?: boolean;
 }
 
 interface SortableTaskCardProps {
@@ -202,10 +176,11 @@ interface SortableTaskCardProps {
   ) => React.ReactNode;
   colId: string;
   draggingTaskId: string | null;
+  isDropdownOpen?: boolean;
 }
 
 // Contenedor Droppable para columnas vacías
-function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHovered }: ColumnContainerProps) {
+function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHovered, isAnyDropdownOpen }: ColumnContainerProps) {
   const { setNodeRef } = useDroppable({
     id: col.id,
   });
@@ -222,7 +197,7 @@ function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHover
           : "border border-transparent"
       }`}
       style={{
-        overflow: draggingTaskId ? "visible" : "hidden"
+        overflow: (draggingTaskId || isAnyDropdownOpen) ? "visible" : "hidden"
       }}
     >
       {children}
@@ -230,7 +205,7 @@ function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHover
   );
 }
 
-function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId }: SortableTaskCardProps) {
+function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId, isDropdownOpen }: SortableTaskCardProps) {
   const taskIdComposite = t.id.startsWith("kt-") ? t.id : `kt-${t.projectId}-${t.id}`;
 
   const {
@@ -255,7 +230,7 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId
 
   const style = {
     transform: isDragging ? undefined : CSS.Translate.toString(transform),
-    transition,
+    transition: isDragging ? undefined : transition,
   };
 
   const isAnyCardDragging = draggingTaskId !== null;
@@ -267,15 +242,15 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId
       style={style}
       {...attributes}
       {...listeners}
-      className={`task-card-wrapper relative shrink-0 transition-all duration-200 ${
+      className={`task-card-wrapper relative shrink-0 ${
         isDragging 
-          ? 'opacity-20 scale-95 border-2 border-dashed border-sky-500/35 rounded-[24px]' 
+          ? 'opacity-0 pointer-events-none' 
           : ''
       } ${
         isAnyCardDragging && !isCurrentDragging
           ? 'pointer-events-none'
           : ''
-      } ${extraClass}`}
+      } ${isDropdownOpen ? '!overflow-visible z-50' : ''} ${extraClass}`}
       data-task-id={taskIdComposite}
     >
       <div className="w-full h-full">
@@ -300,6 +275,8 @@ interface HomeDashboardProps {
   onUpdateProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   isHomeEditMode?: boolean;
   onDeleteProject?: (id: number) => void;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
 }
 
 
@@ -335,6 +312,8 @@ export function HomeDashboard({
   onUpdateProjects,
   isHomeEditMode = false,
   onDeleteProject,
+  searchQuery = "",
+  onSearchQueryChange,
 }: HomeDashboardProps) {
   const [dbSubView, setDbSubView] = useState<"proyectos" | "tareas">("proyectos");
   const [columnScrollIndices, setColumnScrollIndices] = useState<Record<string, number>>({});
@@ -371,6 +350,30 @@ export function HomeDashboard({
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
   const boardRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        activeStatusDropdownCardId !== null ||
+        activeFormatDropdownCardId !== null ||
+        activeTimeDropdownCardId !== null
+      ) {
+        if (!target.closest("[data-dropdown-container]")) {
+          setActiveStatusDropdownCardId(null);
+          setActiveFormatDropdownCardId(null);
+          setActiveTimeDropdownCardId(null);
+          setIsAddingNewFormat(false);
+          setIsAddingCustomTime(false);
+        }
+      }
+    };
+
+    window.addEventListener("click", handleOutsideClick);
+    return () => {
+      window.removeEventListener("click", handleOutsideClick);
+    };
+  }, [activeStatusDropdownCardId, activeFormatDropdownCardId, activeTimeDropdownCardId]);
 
 
   const formatLocalDate = (d: Date): string => {
@@ -525,7 +528,7 @@ export function HomeDashboard({
     setAvailableFormats(Array.from(formatsSet));
   }, [projects]);
 
-  const updateTaskProperty = (projId: string | number, tId: string | number, key: string, value: any) => {
+  const updateTaskProperty = React.useCallback((projId: string | number, tId: string | number, key: string, value: any) => {
     onUpdateProjects(prev => prev.map(p => {
       if (String(p.id) !== String(projId)) return p;
       return {
@@ -536,25 +539,7 @@ export function HomeDashboard({
         })
       };
     }));
-  };
-
-  // Status update that also syncs statusColor
-  const updateTaskStatus = (projId: string | number, tId: string | number, status: 'Pendiente' | 'En Proceso' | 'Completado') => {
-    const statusColor =
-      status === 'Completado' ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' :
-      status === 'En Proceso' ? 'bg-amber-500/20 border-amber-500/30 text-amber-400' :
-      'bg-white/5 border border-white/10 text-white/60';
-    onUpdateProjects(prev => prev.map(p => {
-      if (String(p.id) !== String(projId)) return p;
-      return {
-        ...p,
-        tasks: p.tasks?.map(t => {
-          if (String(t.id) !== String(tId)) return t;
-          return { ...t, status, statusColor };
-        })
-      };
-    }));
-  };
+  }, [onUpdateProjects]);
   useEffect(() => {
     if (expandedCardId === null) {
       setActiveStatusDropdownCardId(null);
@@ -568,18 +553,42 @@ export function HomeDashboard({
   }, [expandedCardId]);
 
 
+  // Helper to parse string representation of time to numerical hours
+  const parseTaskTimeToHours = (timeStr: string | undefined | null): number => {
+    if (!timeStr) return 0;
+    const clean = timeStr.trim().toLowerCase();
+    
+    // Handle formats like "15 min", "30 min"
+    if (clean.includes("min")) {
+      const minMatch = clean.match(/(\d+(?:\.\d+)?)/);
+      if (minMatch) {
+        return parseFloat(minMatch[1]) / 60;
+      }
+    }
+    
+    // Handle formats like "1.5h", "2h", "1 hora", "2 horas", "3 horas o más"
+    const hrMatch = clean.match(/(\d+(?:\.\d+)?)/);
+    if (hrMatch) {
+      return parseFloat(hrMatch[1]);
+    }
+    
+    return 0;
+  };
+
   // LED counter stats calculations
   const totalProjects = projects.length;
   const totalTasks = projects.reduce((acc, p) => acc + (p.tasks?.length || 0), 0);
+  const totalHours = projects.reduce((acc, p) => {
+    // Sum up only non-completed tasks' hours for this project
+    const pendingTasksSum = p.tasks?.reduce((sum, t) => {
+      if (t.status === "Completado") return sum;
+      const sessionsSum = t.sessions?.reduce((sAcc, s) => sAcc + s.hours, 0) || 0;
+      const parsedTime = parseTaskTimeToHours(t.time);
+      return sum + Math.max(sessionsSum, parsedTime);
+    }, 0) || 0;
 
-  // Home LED: solo suma horas de tareas NO completadas (carga de trabajo pendiente)
-  const pendingHoursRaw = projects.reduce((acc, p) => {
-    return acc + (p.tasks
-      ?.filter(t => t.status !== "Completado")
-      .reduce((tacc, t) => tacc + parseTaskTimeToMinutesHome((t as any).time || ""), 0) || 0);
+    return acc + pendingTasksSum;
   }, 0);
-
-  const totalHours = pendingHoursRaw === 0 ? 0 : Math.max(1, Math.round(pendingHoursRaw / 60));
 
   const kanbanTasks = React.useMemo(() => {
     const list: any[] = [];
@@ -682,6 +691,20 @@ export function HomeDashboard({
 
   const [localKanbanTasks, setLocalKanbanTasks] = useState<SynthesizedTask[]>([]);
   
+  const localKanbanTasksRef = React.useRef(localKanbanTasks);
+  localKanbanTasksRef.current = localKanbanTasks;
+
+  const groupingModeRef = React.useRef(groupingMode);
+  groupingModeRef.current = groupingMode;
+
+  const projectsRef = React.useRef(projects);
+  projectsRef.current = projects;
+
+  const hoveredColumnIdRef = React.useRef(hoveredColumnId);
+  hoveredColumnIdRef.current = hoveredColumnId;
+
+  const justFinishedDraggingRef = React.useRef(false);
+  
   const sensors = useSensors(
     useSensor(SmartMouseSensor, {
       activationConstraint: {
@@ -698,10 +721,7 @@ export function HomeDashboard({
 
   const lastOverId = useRef<string | null>(null);
 
-  const [dragRotation, setDragRotation] = useState(0);
-  const [dragTiltX, setDragTiltX] = useState(0);
-  const [dragScaleY, setDragScaleY] = useState(1);
-  const [dragScaleX, setDragScaleX] = useState(1);
+  const dragCardRef = useRef<HTMLDivElement>(null);
 
   const physicsRef = useRef({
     angle: 0,
@@ -718,6 +738,52 @@ export function HomeDashboard({
   const lastPointerXRef = useRef<number | null>(null);
   const pointerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const cachedOffsetRef = useRef<{ x: number; y: number } | null>(null);
+  const cachedWidthRef = useRef<number>(0);
+
+  const alignToTopCenter = React.useCallback<Modifier>(({ transform }) => {
+    if (cachedOffsetRef.current) {
+      const width = cachedWidthRef.current || 280;
+      const targetOffsetX = width / 2;
+      const targetOffsetY = 12; // Force the cursor to be exactly 12px below the top edge of the card
+
+      const diffX = cachedOffsetRef.current.x - targetOffsetX;
+      const diffY = cachedOffsetRef.current.y - targetOffsetY;
+
+      return {
+        ...transform,
+        x: transform.x + diffX,
+        y: transform.y + diffY,
+      };
+    }
+    return transform;
+  }, []);
+
+  const getTaskColumnId = React.useCallback((task: SynthesizedTask): string => {
+    if (groupingModeRef.current === "estado") {
+      return `status-${task.status || "Pendiente"}`;
+    }
+    if (groupingModeRef.current === "prioridad") {
+      const proj = projectsRef.current.find(p => p.id === task.projectId);
+      return `priority-${proj?.priority || "Sin Prioridad"}`;
+    }
+    if (groupingModeRef.current === "fecha") {
+      const diff = getCalendarDaysDiff(task.dueDate);
+      if (diff <= 0) return "hoy";
+      if (diff === 1) return "manana";
+      if (diff > 1 && diff <= 7) return "semana";
+      return "mes";
+    }
+    if (groupingModeRef.current === "cliente") {
+      const proj = projectsRef.current.find(p => p.id === task.projectId);
+      const client = proj?.client || "Cliente 1";
+      const uniqueClients = Array.from(new Set(projectsRef.current.map(p => p.client))).slice(0, 4);
+      const idx = uniqueClients.indexOf(client);
+      return `client-${idx !== -1 ? idx : 0}`;
+    }
+    return "";
+  }, []);
+
   const customCollisionDetection = React.useCallback(
     (args: any) => {
       // Filtrar el elemento que se está arrastrando de las colisiones
@@ -726,7 +792,7 @@ export function HomeDashboard({
 
       if (overId != null) {
         const taskIdStr = overId as string;
-        const task = localKanbanTasks.find(t => t.id === taskIdStr);
+        const task = localKanbanTasksRef.current.find(t => t.id === taskIdStr);
         const resolvedColId = task ? getTaskColumnId(task) : taskIdStr;
         
         lastOverId.current = resolvedColId;
@@ -738,7 +804,7 @@ export function HomeDashboard({
 
       if (overId != null) {
         const taskIdStr = overId as string;
-        const task = localKanbanTasks.find(t => t.id === taskIdStr);
+        const task = localKanbanTasksRef.current.find(t => t.id === taskIdStr);
         const resolvedColId = task ? getTaskColumnId(task) : taskIdStr;
         
         lastOverId.current = resolvedColId;
@@ -746,41 +812,50 @@ export function HomeDashboard({
       }
 
       if (lastOverId.current) {
+        if (boardRef.current && args.pointerCoordinates) {
+          const boardRect = boardRef.current.getBoundingClientRect();
+          const { x, y } = args.pointerCoordinates;
+          if (
+            y < boardRect.top || 
+            y > boardRect.bottom || 
+            x < boardRect.left || 
+            x > boardRect.right
+          ) {
+            return [];
+          }
+        }
         return [{ id: lastOverId.current }];
       }
 
       return [];
     },
-    [localKanbanTasks, projects, groupingMode]
+    [getTaskColumnId]
   );
 
   useEffect(() => {
+    if (draggingTaskId) return;
+    if (justFinishedDraggingRef.current) {
+      justFinishedDraggingRef.current = false;
+      return;
+    }
     setLocalKanbanTasks(filteredKanbanTasks);
-  }, [filteredKanbanTasks]);
+  }, [filteredKanbanTasks, draggingTaskId]);
 
-  const getTaskColumnId = (task: SynthesizedTask): string => {
-    if (groupingMode === "estado") {
-      return `status-${task.status || "Pendiente"}`;
-    }
-    if (groupingMode === "prioridad") {
-      const proj = projects.find(p => p.id === task.projectId);
-      return `priority-${proj?.priority || "Sin Prioridad"}`;
-    }
+  const isValidColumnId = (colId: string): boolean => {
+    if (!colId) return false;
     if (groupingMode === "fecha") {
-      const diff = getCalendarDaysDiff(task.dueDate);
-      if (diff <= 0) return "hoy";
-      if (diff === 1) return "manana";
-      if (diff > 1 && diff <= 7) return "semana";
-      return "mes";
+      return ["hoy", "manana", "semana", "mes"].includes(colId);
     }
     if (groupingMode === "cliente") {
-      const proj = projects.find(p => p.id === task.projectId);
-      const client = proj?.client || "Cliente 1";
-      const uniqueClients = Array.from(new Set(projects.map(p => p.client))).slice(0, 4);
-      const idx = uniqueClients.indexOf(client);
-      return `client-${idx !== -1 ? idx : 0}`;
+      return colId.startsWith("client-");
     }
-    return "";
+    if (groupingMode === "prioridad") {
+      return ["priority-Alta", "priority-Media", "priority-Normal", "priority-Baja"].includes(colId);
+    }
+    if (groupingMode === "estado") {
+      return ["status-Pendiente", "status-En Proceso", "status-Completado", "status-Revisión"].includes(colId);
+    }
+    return false;
   };
 
   const updateTaskColumn = (task: SynthesizedTask, newColumnId: string): SynthesizedTask => {
@@ -812,27 +887,63 @@ export function HomeDashboard({
       physicsRef.current.animationFrameId = null;
     }
     setDraggingTaskId(null);
+    hoveredColumnIdRef.current = null;
     setHoveredColumnId(null);
-    setDragRotation(0);
-    setDragTiltX(0);
-    setDragScaleY(1);
-    setDragScaleX(1);
     lastPointerXRef.current = null;
+    cachedOffsetRef.current = null;
+    cachedWidthRef.current = 0;
+    lastOverId.current = null;
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
+    lastOverId.current = null;
     setDraggingTaskId(active.id as string);
-    setHoveredColumnId(active.data.current?.colId || null);
+    const startColId = active.data.current?.colId || null;
+    hoveredColumnIdRef.current = startColId;
+    setHoveredColumnId(startColId);
     if (expandedCardId === active.id) {
       setExpandedCardId(null);
     }
     
     // Inicializar coordenadas para el efecto de gravedad y balanceo físico de la tarjeta
-    const activator = event.activatorEvent as PointerEvent | MouseEvent | null;
-    const initialX = activator?.clientX ?? null;
-    const initialY = activator?.clientY ?? null;
+    const activator = event.activatorEvent as any;
+    let clientX: number | null = null;
+    let clientY: number | null = null;
+
+    if (activator) {
+      if (typeof activator.clientX === "number") {
+        clientX = activator.clientX;
+        clientY = activator.clientY;
+      } else if (activator.touches && activator.touches[0]) {
+        clientX = activator.touches[0].clientX;
+        clientY = activator.touches[0].clientY;
+      } else if (activator.changedTouches && activator.changedTouches[0]) {
+        clientX = activator.changedTouches[0].clientX;
+        clientY = activator.changedTouches[0].clientY;
+      }
+    }
+
+    const initialX = clientX;
+    const initialY = clientY;
     lastPointerXRef.current = initialX;
+
+    // Calcular y guardar el offset de click preciso relativo a la tarjeta para el alineador
+    const rect = active.rect.current.initial;
+
+    if (rect && clientX !== null && clientY !== null) {
+      cachedOffsetRef.current = {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      };
+      cachedWidthRef.current = rect.width;
+    } else {
+      cachedOffsetRef.current = {
+        x: 140, // fallback central de la tarjeta (ancho 280 / 2)
+        y: 75,  // fallback central (alto 150 / 2)
+      };
+      cachedWidthRef.current = 280;
+    }
     
     // Configurar estado físico inicial de la simulación
     physicsRef.current = {
@@ -873,11 +984,10 @@ export function HomeDashboard({
       state.scaleY = 1 + Math.min(0.08, speed * 0.0045);
       state.scaleX = 1 - Math.min(0.04, speed * 0.0022); // Conservación del volumen de la tarjeta (Poisson)
 
-      // Actualizar estados sincronizados con el frame de renderizado del navegador
-      setDragRotation(state.angle);
-      setDragTiltX(state.angleX);
-      setDragScaleY(state.scaleY);
-      setDragScaleX(state.scaleX);
+      // Actualizar estilos del elemento directamente sin re-renderizar todo el componente padre
+      if (dragCardRef.current) {
+        dragCardRef.current.style.transform = `perspective(1000px) scale(${1.04 * state.scaleX}, ${1.04 * state.scaleY}) rotateX(${state.angleX}deg) rotateY(${state.angle * 0.18}deg) rotateZ(${state.angle}deg)`;
+      }
 
       // Siguiente frame
       state.animationFrameId = requestAnimationFrame(updatePhysics);
@@ -919,33 +1029,57 @@ export function HomeDashboard({
 
   const handleDragOver = (event: DragOverEvent) => {
     const { active, over } = event;
-    if (!over) return;
+    if (!over) {
+      if (hoveredColumnIdRef.current !== null) {
+        hoveredColumnIdRef.current = null;
+        setHoveredColumnId(null);
+      }
+      return;
+    }
 
     const activeId = active.id as string;
     const overId = over.id as string;
 
     if (activeId === overId) return;
 
-    const activeTask = localKanbanTasks.find(t => t.id === activeId);
-    if (!activeTask) return;
-
-    const activeColId = getTaskColumnId(activeTask);
-    
-    let overColId = overId;
+    // Determine the column we are hovering over outside the state updater
     const overTask = localKanbanTasks.find(t => t.id === overId);
-    if (overTask) {
-      overColId = getTaskColumnId(overTask);
+    let overColId = overTask ? getTaskColumnId(overTask) : overId;
+
+    if (!isValidColumnId(overColId)) return;
+
+    const activeTask = localKanbanTasks.find(t => t.id === activeId);
+    if (activeTask) {
+      const activeColId = getTaskColumnId(activeTask);
+      if (activeColId !== overColId) {
+        if (hoveredColumnIdRef.current !== overColId) {
+          hoveredColumnIdRef.current = overColId;
+          setHoveredColumnId(overColId);
+        }
+      }
     }
 
-    if (activeColId !== overColId) {
-      setHoveredColumnId(overColId);
-      setLocalKanbanTasks(prev => {
+    setLocalKanbanTasks(prev => {
+      const activeTaskInPrev = prev.find(t => t.id === activeId);
+      if (!activeTaskInPrev) return prev;
+
+      const activeColIdInPrev = getTaskColumnId(activeTaskInPrev);
+      
+      let overColIdInPrev = overId;
+      const overTaskInPrev = prev.find(t => t.id === overId);
+      if (overTaskInPrev) {
+        overColIdInPrev = getTaskColumnId(overTaskInPrev);
+      }
+
+      if (!isValidColumnId(overColIdInPrev)) return prev;
+
+      if (activeColIdInPrev !== overColIdInPrev) {
         const activeIdx = prev.findIndex(t => t.id === activeId);
         const overIdx = prev.findIndex(t => t.id === overId);
         
         const updatedTasks = prev.map(t => {
           if (t.id === activeId) {
-            return updateTaskColumn(t, overColId);
+            return updateTaskColumn(t, overColIdInPrev);
           }
           return t;
         });
@@ -954,15 +1088,15 @@ export function HomeDashboard({
           return arrayMove(updatedTasks, activeIdx, overIdx);
         }
         return updatedTasks;
-      });
-    } else {
-      // Reordenar en tiempo real dentro de la misma columna para que las tarjetas se aparten fluidamente
-      const activeIdx = localKanbanTasks.findIndex(t => t.id === activeId);
-      const overIdx = localKanbanTasks.findIndex(t => t.id === overId);
-      if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
-        setLocalKanbanTasks(prev => arrayMove(prev, activeIdx, overIdx));
+      } else {
+        const activeIdx = prev.findIndex(t => t.id === activeId);
+        const overIdx = prev.findIndex(t => t.id === overId);
+        if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
+          return arrayMove(prev, activeIdx, overIdx);
+        }
+        return prev;
       }
-    }
+    });
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -983,60 +1117,51 @@ export function HomeDashboard({
     }
 
     let overColId = overId;
-    let overIndex = -1;
-
     const overTask = localKanbanTasks.find(t => t.id === overId);
-    
-    // Obtener las tareas filtradas de la columna destino
-    const targetColTasks = localKanbanTasks.filter(t => {
-      let colId = getTaskColumnId(t);
-      if (overTask) {
-        return colId === getTaskColumnId(overTask);
-      }
-      return colId === overColId;
-    });
 
     if (overTask) {
       overColId = getTaskColumnId(overTask);
-      overIndex = targetColTasks.findIndex(t => t.id === overId);
-    } else {
-      overIndex = targetColTasks.length;
     }
 
-    setLocalKanbanTasks(prev => {
-      const activeIdxGlobal = prev.findIndex(t => t.id === activeId);
-      const overIdxGlobal = prev.findIndex(t => t.id === overId);
-
-      let updated = [...prev];
-      if (activeIdxGlobal !== -1 && overIdxGlobal !== -1) {
-        updated = arrayMove(prev, activeIdxGlobal, overIdxGlobal);
+    if (!isValidColumnId(overColId)) {
+      cleanupDrag();
+      return;
+    }
+    
+    // Deterministically build the final local tasks state
+    let finalTasksState = [...localKanbanTasks];
+    const activeIdx = finalTasksState.findIndex(t => t.id === activeId);
+    
+    if (activeIdx !== -1) {
+      // 1. Ensure the active task is assigned the correct target column id
+      const currentCol = getTaskColumnId(finalTasksState[activeIdx]);
+      if (currentCol !== overColId) {
+        finalTasksState[activeIdx] = updateTaskColumn(finalTasksState[activeIdx], overColId);
       }
-      return updated;
-    });
 
-    // Calcular el orderMap con incrementos de 10
-    const finalColTasks = localKanbanTasks.filter(t => getTaskColumnId(t) === overColId);
+      // 2. Move the active task exactly to where the over element was
+      const overIdx = finalTasksState.findIndex(t => t.id === overId);
+      if (overIdx !== -1 && activeIdx !== overIdx) {
+        finalTasksState = arrayMove(finalTasksState, activeIdx, overIdx);
+      }
+    }
+
+    // Set the state synchronously to reflect the correct visual order
+    setLocalKanbanTasks(finalTasksState);
+
+    // Filter tasks in the target column to construct the precise order map
+    const finalColTasks = finalTasksState.filter(t => getTaskColumnId(t) === overColId);
     const orderMap: Record<string, number> = {};
     
-    const orderedTaskIds = finalColTasks.map(t => t.id);
-    const activeIndexCol = orderedTaskIds.indexOf(activeId);
-    if (activeIndexCol !== -1) {
-      orderedTaskIds.splice(activeIndexCol, 1);
-    }
-    
-    let dropIndex = overIndex !== -1 ? overIndex : orderedTaskIds.length;
-    dropIndex = Math.max(0, Math.min(dropIndex, orderedTaskIds.length));
-    orderedTaskIds.splice(dropIndex, 0, activeId);
-
-    orderedTaskIds.forEach((id, index) => {
-      orderMap[id] = index * 10;
+    finalColTasks.forEach((t, index) => {
+      orderMap[t.id] = index * 10;
     });
 
     const parts = activeId.split("-");
     const projectId = parts[1];
     const taskNum = parts[2];
 
-    // Obtener oldColId buscando la tarea original
+    // Get oldColId based on original project data
     let oldColId: string | undefined = undefined;
     const project = projects.find(p => String(p.id) === String(projectId));
     const originalTask = project?.tasks?.find(t => String(t.id) === String(taskNum));
@@ -1062,6 +1187,7 @@ export function HomeDashboard({
     playSound(overColId !== oldColId ? 'whoosh' : 'pop');
     handleDropTask(activeId, projectId, oldColId, overColId, orderMap);
 
+    justFinishedDraggingRef.current = true;
     cleanupDrag();
   };
 
@@ -1075,7 +1201,7 @@ export function HomeDashboard({
     }
   }, [onViewChange]);
 
-  const renderTaskCard = (
+  const renderTaskCard = React.useCallback((
     taskId: string, 
     projectId: string | number, 
     projectName: string, 
@@ -1234,18 +1360,24 @@ export function HomeDashboard({
           }
           setExpandedCardId(prev => prev === taskId ? null : taskId);
         }}
-        className={`task-card w-full h-full rounded-[24px] bg-gradient-to-br from-[hsl(60_1.6%_9%)] to-[hsl(60_1.6%_7%)] border p-3.5 pb-3 flex flex-col justify-between transition-all duration-300 ease-out cursor-grab group relative select-text ${
-          activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId
-            ? 'overflow-visible z-50'
-            : 'overflow-hidden'
+        className={`task-card w-full h-full rounded-[24px] bg-[hsl(60_1.6%_8%)] border p-3.5 pb-3 flex flex-col justify-between cursor-grab group relative select-text ${
+          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId || activeTimeDropdownCardId === taskId) ? "!overflow-visible z-40" : "overflow-hidden"
         } ${
           isDragging 
-            ? "border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)] bg-slate-900" 
+            ? "border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]" 
             : isAnyCardDragging
               ? "border-white/[0.03]"
-              : "border-white/[0.03] hover:border-white/10 hover:scale-[1.02] active:scale-[0.99]"
+              : "border-white/[0.06] hover:border-white/15 hover:scale-[1.02] active:scale-[0.99]"
         } ${isHomeEditMode ? "home-edit-wiggle" : ""}`}
       >
+        
+        {/* Project gradient color overlay */}
+        {project?.gradient && (
+          <div
+            className={`absolute inset-0 rounded-[24px] bg-gradient-to-br ${project.gradient} pointer-events-none`}
+            style={{ opacity: 0.13 }}
+          />
+        )}
         
         {/* Circle X Delete Button on top right in Edit Mode */}
         {isHomeEditMode && (
@@ -1278,18 +1410,9 @@ export function HomeDashboard({
               {isExpanded ? formattedCreationDate : shortCreationDate}
             </span>
             {!isHomeEditMode && (
-              <button
-                data-no-dnd
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (onSelectProject) onSelectProject(projectId);
-                  onSelectTab('proyecto');
-                }}
-                className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0 p-0.5 rounded hover:bg-white/10 cursor-pointer"
-                title={`Ir a ${projName}`}
-              >
+              <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0">
                 <ExternalLink className="w-3.5 h-3.5 text-slate-400 hover:text-white transition-colors duration-200" />
-              </button>
+              </div>
             )}
           </div>
           
@@ -1327,12 +1450,12 @@ export function HomeDashboard({
 
           {/* Client & Project details & Description visible on hover */}
           <div className={`task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto z-20 ${
-            activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId ? 'overflow-visible' : ''
+            (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "!overflow-visible !max-h-none" : ""
           }`}>
             {/* Properties: Status and Format/Type */}
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-400">
               {/* 1. Status Pill (kept as the only true pill, made slightly smaller) */}
-              <div className="relative">
+              <div className="relative" data-dropdown-container>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1340,7 +1463,7 @@ export function HomeDashboard({
                     setActiveFormatDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold transition-all duration-200 select-none shadow-sm ${
+                  className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer ${
                     task.status === "Completado" 
                       ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" 
                       : task.status === "En Proceso"
@@ -1354,23 +1477,52 @@ export function HomeDashboard({
                 </button>
 
                 {activeStatusDropdownCardId === taskId && (
-                  <div className="absolute left-0 bottom-full mb-1.5 w-36 rounded-xl bg-slate-950 border border-white/10 shadow-2xl p-1.5 flex flex-col gap-0.5 z-40 animate-fadeIn">
-                    {(["Pendiente", "En Proceso", "Completado"] as const).map((st) => (
-                      <button
-                        key={st}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateTaskStatus(projectId, task.id, st);
-                          setActiveStatusDropdownCardId(null);
-                        }}
-                        className={`text-left px-3 py-1.5 text-[12px] font-bold rounded-lg flex items-center justify-between hover:bg-white/[0.06] transition-colors ${
-                          task.status === st ? "text-white bg-white/5" : "text-slate-400"
-                        }`}
-                      >
-                        <span>{st}</span>
-                        {task.status === st && <Check className="w-2.5 h-2.5 text-emerald-400" />}
-                      </button>
-                    ))}
+                  <div className="absolute top-0 left-0 min-w-[125px] w-full rounded-2xl bg-[#0e0e0c] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.85)] flex flex-col p-1 z-50 animate-fadeIn select-none overflow-hidden">
+                    {/* Active element at top */}
+                    <div className="px-1.5 py-1 flex items-center justify-between">
+                      <div className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold select-none ${
+                        task.status === "Completado" 
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                          : task.status === "En Proceso"
+                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                            : "bg-slate-500/10 border-slate-500/20 text-slate-400"
+                      }`}>
+                        <Flag className="w-2.5 h-2.5 shrink-0" />
+                        <span>{task.status}</span>
+                      </div>
+                      <ChevronUp className="w-2.5 h-2.5 text-slate-400 mr-1 opacity-80" />
+                    </div>
+
+                    <div className="border-t border-white/5 my-1" />
+
+                    {/* Rest of the options */}
+                    <div className="flex flex-col gap-0.5">
+                      {(["Pendiente", "En Proceso", "Completado"] as const)
+                        .filter((st) => st !== task.status)
+                        .map((st) => (
+                          <button
+                            key={st}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateTaskProperty(projectId, task.id, "status", st);
+                              setActiveStatusDropdownCardId(null);
+                            }}
+                            className="px-1.5 py-1 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer"
+                          >
+                            <div className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold select-none ${
+                              st === "Completado" 
+                                ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                : st === "En Proceso"
+                                  ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                  : "bg-slate-500/10 border-slate-500/20 text-slate-400"
+                            }`}>
+                              <Flag className="w-2.5 h-2.5 shrink-0" />
+                              <span>{st}</span>
+                            </div>
+                          </button>
+                        ))
+                      }
+                    </div>
                   </div>
                 )}
               </div>
@@ -1378,9 +1530,8 @@ export function HomeDashboard({
               {/* Separator Bullet */}
               <span className="text-slate-700 font-bold select-none pointer-events-none">•</span>
 
-              {/* 2. Format (Type) as selectable text */}
-              <div className="relative flex items-center gap-1 shrink-0">
-                <Layers className="w-3 h-3 text-slate-500 shrink-0 select-none pointer-events-none" />
+              {/* 2. Format Pill */}
+              <div className="relative" data-dropdown-container>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1388,70 +1539,89 @@ export function HomeDashboard({
                     setActiveStatusDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className="hover:underline hover:text-white text-[11px] font-semibold text-slate-400 transition-all duration-150 flex items-center gap-0.5 capitalize"
+                  className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 text-[10px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer capitalize"
                 >
+                  <Layers className="w-2.5 h-2.5 shrink-0" />
                   <span>{task.format || "Formato"}</span>
-                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                  <ChevronDown className="w-2 h-2 opacity-65" />
                 </button>
 
                 {activeFormatDropdownCardId === taskId && (
-                  <div className="absolute left-0 bottom-full mb-1.5 w-44 max-h-48 overflow-y-auto rounded-xl bg-slate-950 border border-white/10 shadow-2xl p-1.5 flex flex-col gap-0.5 z-40 animate-fadeIn hide-scrollbar">
-                    {availableFormats.map((fmt) => (
-                      <button
-                        key={fmt}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateTaskProperty(projectId, task.id, "format", fmt);
-                          setActiveFormatDropdownCardId(null);
-                        }}
-                        className={`text-left px-3 py-1.5 text-[12px] font-bold rounded-lg flex items-center justify-between hover:bg-white/[0.06] transition-colors ${
-                          task.format?.toLowerCase() === fmt.toLowerCase() ? "text-white bg-white/5" : "text-slate-400"
-                        }`}
-                      >
-                        <span className="capitalize">{fmt}</span>
-                        {task.format?.toLowerCase() === fmt.toLowerCase() && <Check className="w-2.5 h-2.5 text-emerald-400" />}
-                      </button>
-                    ))}
-                    <div className="border-t border-white/5 my-0.5" />
-                    
-                    {isAddingNewFormat ? (
-                      <div className="px-3 py-1.5 flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                        <input
-                          type="text"
-                          autoFocus
-                          value={newFormatValue}
-                          onChange={(e) => setNewFormatValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && newFormatValue.trim()) {
-                              e.stopPropagation();
-                              const val = newFormatValue.trim();
-                              updateTaskProperty(projectId, task.id, "format", val);
-                              if (!availableFormats.includes(val)) {
-                                setAvailableFormats(prev => [...prev, val]);
-                              }
-                              setNewFormatValue("");
-                              setIsAddingNewFormat(false);
-                              setActiveFormatDropdownCardId(null);
-                            } else if (e.key === "Escape") {
-                              setIsAddingNewFormat(false);
-                            }
-                          }}
-                          placeholder="Nuevo tipo..."
-                          className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[12px] text-white focus:outline-none focus:border-emerald-500 w-full"
-                        />
+                  <div className="absolute top-0 left-0 min-w-[135px] w-full rounded-2xl bg-[#0e0e0c] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.85)] flex flex-col p-1 z-50 animate-fadeIn select-none overflow-hidden">
+                    {/* Active element at top */}
+                    <div className="px-1.5 py-1 flex items-center justify-between">
+                      <div className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold capitalize select-none">
+                        <Layers className="w-2.5 h-2.5 shrink-0" />
+                        <span>{task.format || "Formato"}</span>
                       </div>
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setIsAddingNewFormat(true);
-                        }}
-                        className="text-left px-3 py-1.5 text-[12px] font-bold text-emerald-450 hover:bg-emerald-500/10 rounded-lg flex items-center gap-1 transition-colors"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>Agregar nuevo...</span>
-                      </button>
-                    )}
+                      <ChevronUp className="w-2.5 h-2.5 text-indigo-400 mr-1 opacity-85" />
+                    </div>
+
+                    <div className="border-t border-white/5 my-1" />
+
+                    {/* Rest of the options & add format option */}
+                    <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto hide-scrollbar">
+                      {availableFormats
+                        .filter(fmt => fmt.toLowerCase() !== (task.format || "").toLowerCase())
+                        .map((fmt) => (
+                          <button
+                            key={fmt}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateTaskProperty(projectId, task.id, "format", fmt);
+                              setActiveFormatDropdownCardId(null);
+                            }}
+                            className="px-1.5 py-1 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer"
+                          >
+                            <div className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-white/10 bg-white/5 text-slate-300 text-[10px] font-bold capitalize select-none hover:bg-white/10 transition-colors">
+                              <Layers className="w-2.5 h-2.5 shrink-0 text-slate-400" />
+                              <span>{fmt}</span>
+                            </div>
+                          </button>
+                        ))
+                      }
+                      
+                      <div className="border-t border-white/5 my-1" />
+                      
+                      {isAddingNewFormat ? (
+                        <div className="px-1.5 py-1 flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                          <input
+                            type="text"
+                            autoFocus
+                            value={newFormatValue}
+                            onChange={(e) => setNewFormatValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && newFormatValue.trim()) {
+                                e.stopPropagation();
+                                const val = newFormatValue.trim();
+                                updateTaskProperty(projectId, task.id, "format", val);
+                                if (!availableFormats.includes(val)) {
+                                  setAvailableFormats(prev => [...prev, val]);
+                                }
+                                setNewFormatValue("");
+                                setIsAddingNewFormat(false);
+                                setActiveFormatDropdownCardId(null);
+                              } else if (e.key === "Escape") {
+                                setIsAddingNewFormat(false);
+                              }
+                            }}
+                            placeholder="Nuevo tipo..."
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-indigo-500 w-full"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsAddingNewFormat(true);
+                          }}
+                          className="px-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer text-indigo-400/80 hover:text-indigo-400 text-[10px] font-bold pl-3"
+                        >
+                          <Plus className="w-3 h-3 shrink-0 mr-1" />
+                          <span>Nuevo formato</span>
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1752,7 +1922,34 @@ export function HomeDashboard({
         </div>
       </div>
     );
-  };
+  }, [
+    projects,
+    draggingTaskId,
+    expandedCardId,
+    isHomeEditMode,
+    columnScrollIndices,
+    onUpdateProjects,
+    setExpandedCardId,
+    setDeleteModalConfig,
+    playSound,
+    activeStatusDropdownCardId,
+    setActiveStatusDropdownCardId,
+    activeFormatDropdownCardId,
+    setActiveFormatDropdownCardId,
+    isAddingNewFormat,
+    setIsAddingNewFormat,
+    newFormatValue,
+    setNewFormatValue,
+    availableFormats,
+    setAvailableFormats,
+    activeTimeDropdownCardId,
+    setActiveTimeDropdownCardId,
+    isAddingCustomTime,
+    setIsAddingCustomTime,
+    customTimeValue,
+    setCustomTimeValue,
+    updateTaskProperty,
+  ]);
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
   const bgStyle = headerBgStyle;
@@ -1819,7 +2016,7 @@ export function HomeDashboard({
           overflow: hidden;
           border-radius: 24px;
           opacity: 1;
-          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
           will-change: height, opacity;
           scroll-snap-align: start;
           scroll-margin-top: 10px;
@@ -1835,29 +2032,78 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-1:hover,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-2:hover {
           height: 220px !important;
-          transition-delay: 180ms !important;
         }
 
-        /* Neighbors shrink by -35px each when hovering one of the visible cards, ONLY when NO card is expanded double */
+        /* Target specific hover states to set precise transform-origins and direction-aware layout alignment */
+        
+        /* 1. When hovering Card 1 (card-pos-0) */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-0 {
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-start !important;
+        }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2,
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 {
+          height: 115px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-end !important; /* Contract from top to bottom (pushed downwards) */
+        }
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card,
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card {
+          transform: translateY(6px) scale(0.97) !important; /* Elegant slide/contraction downwards */
+          padding: 12px 14px 12px 14px !important;
+        }
+
+        /* 2. When hovering Card 2 (card-pos-1 - middle card) */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-1 {
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: center !important;
+        }
+        /* Top card contracts bottom-to-top (pulled upwards) */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 {
+          height: 115px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-start !important;
+        }
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card {
+          transform: translateY(-6px) scale(0.97) !important; /* Elegant slide/contraction upwards */
+          padding: 12px 14px 12px 14px !important;
+        }
+        /* Bottom card contracts top-to-bottom (pushed downwards) */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 {
+          height: 115px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-end !important;
+        }
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card {
+          transform: translateY(6px) scale(0.97) !important; /* Elegant slide/contraction downwards */
+          padding: 12px 14px 12px 14px !important;
+        }
+
+        /* 3. When hovering Card 3 (card-pos-2) */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-2 {
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-end !important;
+        }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 {
           height: 115px !important;
-          transition-delay: 180ms !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-start !important; /* Contract from bottom to top (pulled upwards) */
         }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card {
+          transform: translateY(-6px) scale(0.97) !important; /* Elegant slide/contraction upwards */
           padding: 12px 14px 12px 14px !important;
-          transition-delay: 180ms !important;
         }
 
+        /* Hide details on all unhovered shrunk cards */
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card-details,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card-details,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card-details,
@@ -1869,8 +2115,8 @@ export function HomeDashboard({
 
         /* Inner card transitions */
         .task-card {
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out, background-color 0.3s ease-out !important;
-          will-change: transform, opacity;
+          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out, background-color 0.3s ease-out, padding 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          will-change: transform, opacity, padding;
         }
 
         /* Keep full opacity on all task cards */
@@ -1886,7 +2132,6 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card-title,
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card-title {
           transform: translateY(0px) !important;
-          transition-delay: 180ms !important;
         }
 
         /* Project title (base rules) */
@@ -1898,7 +2143,6 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
           opacity: 0 !important;
           transition: opacity 0.12s ease-out !important;
-          transition-delay: 180ms !important;
         }
 
         /* Task title (base rules) */
@@ -1922,17 +2166,6 @@ export function HomeDashboard({
           transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease-out !important;
           will-change: max-height, transform;
         }
-        /* Allow dropdown popups to escape overflow:hidden */
-        .task-card-details.overflow-visible {
-          overflow: visible !important;
-        }
-        .task-card-wrapper:has(.overflow-visible) {
-          z-index: 50 !important;
-        }
-        .task-card-details.overflow-visible {
-          overflow: visible !important;
-          clip-path: none !important;
-        }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-details {
           max-height: 105px !important;
           opacity: 1 !important;
@@ -1951,22 +2184,32 @@ export function HomeDashboard({
         /* Heights and visibility states for click expansion */
         .task-card-wrapper.is-expanded-double {
           height: 335px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: flex-start !important;
         }
         .task-card-wrapper.is-shrunk-sibling {
           height: 115px !important;
         }
+        
+        /* Hidden siblings will slide up/down and fade out beautifully */
         .task-card-wrapper.is-hidden-sibling {
           height: 0px !important;
           opacity: 0 !important;
           pointer-events: none !important;
           margin-top: 0 !important;
           margin-bottom: 0 !important;
+          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
         }
+        
+        /* Sibling above the expanded card slides up */
         .task-card-wrapper.is-hidden-sibling:has(~ .is-expanded-double) {
-          transform: translateY(-40px) !important;
+          transform: translateY(-50px) !important;
         }
+        
+        /* Sibling below the expanded card slides down */
         .is-expanded-double ~ .task-card-wrapper.is-hidden-sibling {
-          transform: translateY(40px) !important;
+          transform: translateY(50px) !important;
         }
 
         /* Inner card transitions under click expansion */
@@ -2006,39 +2249,124 @@ export function HomeDashboard({
           {/* Active View Content (Borderless) */}
           <div className={`w-full h-[550px] relative ${draggingTaskId ? "overflow-visible" : "overflow-hidden"}`}>
               {/* 0. SEARCH VIEW */}
-              {activeView === "buscar" && (
-                <div className="w-full h-full flex flex-col gap-4 pt-1 animate-fadeIn">
-                  <div className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl ${cardBgStyle} border border-white/5`}>
-                    <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                    <input
-                      type="text"
-                      placeholder="Buscar proyectos, tareas, archivos o recursos..."
-                      className="bg-transparent border-none outline-none text-xs text-white w-full placeholder:text-slate-500"
-                      autoFocus
-                    />
-                  </div>
+              {activeView === "buscar" && (() => {
+                const matchingProjects = projects.filter(
+                  p =>
+                    p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.client.toLowerCase().includes(searchQuery.toLowerCase())
+                );
 
-                  <div className="flex flex-col gap-2.5">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Búsquedas recientes</span>
-                    <div className="flex flex-col gap-2">
-                      <div className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}>
-                        <div className="flex items-center gap-3">
-                          <LayoutGrid className="w-4 h-4 text-orange-400 shrink-0" />
-                          <span className="text-xs font-semibold text-slate-300">Proyecto Brandex OS v3</span>
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Proyecto</span>
+                const matchingTasks: { id: string; title: string; projectTitle: string; status?: string }[] = [];
+                projects.forEach(p => {
+                  p.tasks?.forEach(t => {
+                    if (
+                      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      (t.desc && t.desc.toLowerCase().includes(searchQuery.toLowerCase()))
+                    ) {
+                      matchingTasks.push({
+                        id: String(t.id),
+                        title: t.title,
+                        projectTitle: p.title,
+                        status: t.status
+                      });
+                    }
+                  });
+                });
+
+                return (
+                  <div className="w-full h-full flex flex-col gap-4 pt-1 animate-fadeIn">
+                    {searchQuery ? (
+                      <div className="flex flex-col gap-5 max-h-[440px] overflow-y-auto pr-1 hide-scrollbar">
+                        {matchingProjects.length > 0 && (
+                          <div className="flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Proyectos encontrados ({matchingProjects.length})</span>
+                            <div className="flex flex-col gap-2">
+                              {matchingProjects.map((proj) => (
+                                <div
+                                  key={proj.id}
+                                  onClick={() => {
+                                    onSelectTab("proyectos");
+                                    onSelectProject?.(proj.id);
+                                  }}
+                                  className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <LayoutGrid className="w-4 h-4 text-orange-400 shrink-0" />
+                                    <span className="text-xs font-semibold text-slate-300">{proj.title}</span>
+                                    <span className="text-[10px] text-slate-500">({proj.client})</span>
+                                  </div>
+                                  <span className="text-[9px] font-bold text-orange-400 uppercase tracking-wider">Proyecto</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {matchingTasks.length > 0 && (
+                          <div className="flex flex-col gap-2">
+                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Tareas encontradas ({matchingTasks.length})</span>
+                            <div className="flex flex-col gap-2">
+                              {matchingTasks.map((t) => (
+                                <div
+                                  key={t.id}
+                                  className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <Check className="w-4 h-4 text-indigo-400 shrink-0" />
+                                    <span className="text-xs font-semibold text-slate-300">{t.title}</span>
+                                    <span className="text-[10px] text-slate-500">en {t.projectTitle}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {t.status && (
+                                      <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-bold ${
+                                        t.status === "Completado" 
+                                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                                          : t.status === "En Proceso"
+                                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                                            : "bg-slate-500/10 border-slate-500/20 text-slate-400"
+                                      }`}>
+                                        {t.status}
+                                      </span>
+                                    )}
+                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Tarea</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {matchingProjects.length === 0 && matchingTasks.length === 0 && (
+                          <div className="flex flex-col items-center justify-center py-10 text-center">
+                            <AlertTriangle className="w-8 h-8 text-slate-500 mb-2" />
+                            <p className="text-xs text-slate-400">No se encontraron resultados para "{searchQuery}"</p>
+                          </div>
+                        )}
                       </div>
-                      <div className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}>
-                        <div className="flex items-center gap-3">
-                          <Table className="w-4 h-4 text-blue-400 shrink-0" />
-                          <span className="text-xs font-semibold text-slate-300">Base de datos de Clientes</span>
+                    ) : (
+                      <div className="flex flex-col gap-2.5">
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-1">Búsquedas recientes</span>
+                        <div className="flex flex-col gap-2">
+                          <div className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}>
+                            <div className="flex items-center gap-3">
+                              <LayoutGrid className="w-4 h-4 text-orange-400 shrink-0" />
+                              <span className="text-xs font-semibold text-slate-300">Proyecto Brandex OS v3</span>
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Proyecto</span>
+                          </div>
+                          <div className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}>
+                            <div className="flex items-center gap-3">
+                              <Table className="w-4 h-4 text-blue-400 shrink-0" />
+                              <span className="text-xs font-semibold text-slate-300">Base de datos de Clientes</span>
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Tabla</span>
+                          </div>
                         </div>
-                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Tabla</span>
                       </div>
-                    </div>
+                    )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
               {/* 1. KANBAN VIEW */}
               {activeView === "kanban" && (() => {
                 const tasks = filteredKanbanTasks;
@@ -2174,12 +2502,13 @@ export function HomeDashboard({
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
                     onDragEnd={handleDragEnd}
+                    onDragCancel={cleanupDrag}
                     autoScroll={{ threshold: { x: 0, y: 0.2 }, acceleration: 10 }}
                   >
                     <div 
                       ref={boardRef}
                       className={`w-full h-full relative grid grid-cols-4 gap-5 pt-1 animate-fadeIn ${
-                        draggingTaskId ? "overflow-visible z-30 is-dragging-active" : "overflow-hidden"
+                        (draggingTaskId || activeStatusDropdownCardId !== null || activeFormatDropdownCardId !== null || activeTimeDropdownCardId !== null) ? "overflow-visible z-30 is-dragging-active" : "overflow-hidden"
                       }`}
                     >
                       {cols.map(col => {
@@ -2194,6 +2523,7 @@ export function HomeDashboard({
                             headerBgStyle={headerBgStyle}
                             draggingTaskId={draggingTaskId}
                             isHovered={isHovered}
+                            isAnyDropdownOpen={activeStatusDropdownCardId !== null || activeFormatDropdownCardId !== null || activeTimeDropdownCardId !== null}
                           >
                             <div className="flex items-center justify-between px-1 mb-1 shrink-0">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-white">{col.name}</span>
@@ -2208,14 +2538,11 @@ export function HomeDashboard({
                               <div 
                                 ref={(el) => {
                                   if (el) {
-                                    setTimeout(() => {
-                                      updateVisibleCards(el);
-                                    }, 0);
-                                    const topIndex = Math.round(el.scrollTop / 160);
-                                    setColumnScrollIndices(prev => {
-                                      if (prev[col.id] === topIndex) return prev;
-                                      return { ...prev, [col.id]: topIndex };
-                                    });
+                                    if (!draggingTaskId) {
+                                      setTimeout(() => {
+                                        updateVisibleCards(el);
+                                      }, 0);
+                                    }
                                   }
                                 }}
                                 className={`task-list-scroll relative h-[490px] hide-scrollbar flex flex-col gap-2.5 px-2 py-2.5 -mx-2 overflow-y-auto ${
@@ -2292,6 +2619,7 @@ export function HomeDashboard({
                                       renderTaskCard={renderTaskCard}
                                       colId={col.id}
                                       draggingTaskId={draggingTaskId}
+                                      isDropdownOpen={activeStatusDropdownCardId === t.id || activeFormatDropdownCardId === t.id || activeTimeDropdownCardId === t.id}
                                     />
                                   );
                                 })}
@@ -2302,28 +2630,22 @@ export function HomeDashboard({
                       })}
                     </div>
 
-                    <DragOverlay adjustScale={false} dropAnimation={dropAnimation} modifiers={[alignToTopCenter]}>
-                      {draggingTaskId ? (() => {
-                        const task = kanbanTasks.find(t => t.id === draggingTaskId);
-                        if (!task) return null;
-                        return (
-                          <div 
-                            className="w-full pointer-events-none select-none"
-                            style={{ height: 150 }}
-                          >
-                            <div
-                              className="task-card-wrapper w-full h-full shadow-[0_30px_60px_-15px_rgba(0,0,0,0.55)]"
-                              style={{ 
-                                transform: `perspective(1000px) scale(${1.04 * dragScaleX}, ${1.04 * dragScaleY}) rotateX(${dragTiltX}deg) rotateY(${dragRotation * 0.18}deg) rotateZ(${dragRotation}deg)`,
-                                transformOrigin: "center center"
-                               }}
-                            >
-                              {renderTaskCard(draggingTaskId, task.projectId, task.projectName, task.taskTitle, task.completedTasks, task.totalTasks, task.taskIndex, task.desc, "", true)}
-                            </div>
-                          </div>
-                        );
-                      })() : null}
-                    </DragOverlay>
+                    {draggingTaskId && typeof document !== "undefined" ? createPortal(
+                      <DragOverlay adjustScale={false} dropAnimation={dropAnimation} modifiers={[alignToTopCenter]}>
+                        {(() => {
+                          const task = kanbanTasks.find(t => t.id === draggingTaskId);
+                          if (!task) return null;
+                          return (
+                            <MemoizedDragOverlayCard 
+                              task={task}
+                              renderTaskCard={renderTaskCard}
+                              dragCardRef={dragCardRef}
+                            />
+                          );
+                        })()}
+                      </DragOverlay>,
+                      document.body
+                    ) : null}
                   </DndContext>
                 );
               })()}
@@ -2621,7 +2943,7 @@ export function HomeDashboard({
                         : '0 0 12px rgba(0,0,0,0.05)'
                     }}
                   >
-                    {String(totalHours).padStart(3, '0')}
+                    {String(Math.round(totalHours)).padStart(3, '0')}
                   </span>
                   <span className={`absolute top-0 right-0 px-1 py-0.5 rounded-full text-[6px] font-bold tracking-widest uppercase transition-all duration-500 border ${
                     isNightMode

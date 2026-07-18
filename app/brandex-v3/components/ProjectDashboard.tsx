@@ -79,25 +79,23 @@ const FULL_MONTH_NAMES = {
 };
 const WEEKDAYS_SPANISH = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
-// Shared helper: parse task time string → minutes
-export const parseTaskTimeToMinutes = (time: string): number => {
-  if (!time) return 0;
-  const t = time.toLowerCase().trim();
-  const horasMatch = t.match(/^(\d+(?:\.\d+)?)\s*hora/);
-  if (horasMatch) return Math.round(parseFloat(horasMatch[1]) * 60);
-  const minMatch = t.match(/^(\d+(?:\.\d+)?)\s*min/);
-  if (minMatch) return Math.round(parseFloat(minMatch[1]));
-  // fallback: plain numbers like "2h" or "40h" (from session tracker)
-  const hMatch = t.match(/^(\d+(?:\.\d+)?)h$/);
-  if (hMatch) return Math.round(parseFloat(hMatch[1]) * 60);
+const parseTaskTimeToHours = (timeStr: string | undefined | null): number => {
+  if (!timeStr) return 0;
+  const clean = timeStr.trim().toLowerCase();
+  
+  if (clean.includes("min")) {
+    const minMatch = clean.match(/(\d+(?:\.\d+)?)/);
+    if (minMatch) {
+      return parseFloat(minMatch[1]) / 60;
+    }
+  }
+  
+  const hrMatch = clean.match(/(\d+(?:\.\d+)?)/);
+  if (hrMatch) {
+    return parseFloat(hrMatch[1]);
+  }
+  
   return 0;
-};
-
-// Build a formatted burnRate string from tasks (total hours, all statuses)
-export const computeBurnRateFromTasks = (tasks: Task[]): string => {
-  const totalMinutes = tasks.reduce((acc, t) => acc + parseTaskTimeToMinutes(t.time), 0);
-  const totalHours = totalMinutes === 0 ? 0 : Math.max(1, Math.round(totalMinutes / 60));
-  return `${totalHours}h`;
 };
 
 function getFullDeadlineText(deadlineStr: string | undefined): string {
@@ -314,22 +312,48 @@ export function ProjectDashboard({
 
   const dynamicProgress = getDynamicProgress(project);
 
-  // Auto-sync burnRate from tasks whenever tasks change
-  useEffect(() => {
-    if (!project || !onUpdateBurnRate || tasks.length === 0) return;
-    const computed = computeBurnRateFromTasks(tasks);
-    // Only call if the value actually changed to avoid infinite loops
-    if (computed !== project.burnRate) {
-      onUpdateBurnRate(project.id, computed);
-    }
-  }, [tasks]);
-
   useEffect(() => {
     if (project && tasks.length > 0) {
       // Set all tasks as expanded by default (2x height) only on initial load or if not set yet
       setExpandedTaskIds(prev => prev.length === 0 ? tasks.map(t => t.id) : prev);
     }
   }, [project?.id]);
+
+  // Synchronize project burnRate (total spent hours) from all tasks' hours automatically
+  useEffect(() => {
+    if (!project || !onUpdateBurnRate) return;
+
+    // Sum of all tasks' hours (completed or not, since project total counts all)
+    const totalTasksHours = tasks.reduce((sum, t) => {
+      const sessionsSum = t.sessions?.reduce((sAcc, s) => sAcc + s.hours, 0) || 0;
+      const parsedTime = parseTaskTimeToHours(t.time);
+      return sum + Math.max(sessionsSum, parsedTime);
+    }, 0);
+
+    // Extract current planned hours from burnRate (the Y in Xh / Yh)
+    let plannedHours = 40;
+    if (project.burnRate) {
+      const parts = project.burnRate.split('/');
+      if (parts.length > 1) {
+        const plannedMatch = parts[1].match(/(\d+)/);
+        if (plannedMatch) {
+          plannedHours = parseInt(plannedMatch[1], 10);
+        }
+      } else {
+        const plannedMatch = project.burnRate.match(/(\d+)/);
+        if (plannedMatch) {
+          plannedHours = parseInt(plannedMatch[1], 10);
+        }
+      }
+    }
+
+    const calculatedSpent = Math.round(totalTasksHours);
+    const expectedBurnRate = `${calculatedSpent}h / ${plannedHours}h`;
+
+    if (project.burnRate !== expectedBurnRate) {
+      onUpdateBurnRate(project.id, expectedBurnRate);
+    }
+  }, [tasks, project?.burnRate, project?.id, onUpdateBurnRate]);
 
   const toggleTaskStatus = (taskId: number) => {
     playSound('pop');
@@ -882,9 +906,11 @@ export function ProjectDashboard({
             <div className="flex items-center gap-2 leading-none">
               <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
               <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Tiempo:</span>
-              <span className={`text-[13px] font-black inline-block leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`}>
-                {computeBurnRateFromTasks(tasks)}
-              </span>
+              <InlineEditable 
+                value={project.burnRate || "0h / 0h"} 
+                onSave={(val) => onUpdateBurnRate && onUpdateBurnRate(project.id, val)}
+                className={`text-[13px] font-black inline-block leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`} 
+              />
             </div>
           </motion.div>
 
