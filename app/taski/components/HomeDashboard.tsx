@@ -2305,6 +2305,17 @@ export function HomeDashboard({
           transition: none !important;
         }
 
+        /* Delay card hover changes slightly to prevent accidental triggers when passing by */
+        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-wrapper {
+          transition-delay: 150ms !important;
+        }
+        .task-list-scroll:has(.task-card-wrapper:hover) .project-title {
+          transition-delay: 150ms !important;
+        }
+        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-title {
+          transition-delay: 150ms !important;
+        }
+
 
         /* Hovered card expands to 220px (+70px from 150px baseline) ONLY when NO card is expanded double */
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-0:hover,
@@ -2422,6 +2433,7 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
           opacity: 0 !important;
           transition: opacity 0.12s ease-out !important;
+          transition-delay: 150ms !important;
         }
 
         /* Task title (base rules) */
@@ -2432,7 +2444,7 @@ export function HomeDashboard({
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
           transform: translateY(0px) !important;
-          transition-delay: 180ms !important;
+          transition-delay: 330ms !important;
         }
         /* Force neighbor card titles to 1 line when another card is hovered */
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
@@ -2457,7 +2469,7 @@ export function HomeDashboard({
           max-height: 105px !important;
           opacity: 1 !important;
           transform: translateY(0px) !important;
-          transition-delay: 180ms !important;
+          transition-delay: 330ms !important;
         }
 
         /* =====================================================
