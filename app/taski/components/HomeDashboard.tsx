@@ -172,11 +172,13 @@ interface SortableTaskCardProps {
     taskIndex?: number,
     desc?: string,
     columnId?: string,
-    forceCollapsed?: boolean
+    forceCollapsed?: boolean,
+    setDragDisabled?: (disabled: boolean) => void
   ) => React.ReactNode;
   colId: string;
   draggingTaskId: string | null;
   isDropdownOpen?: boolean;
+  isEditing?: boolean;
 }
 
 // Contenedor Droppable para columnas vacías
@@ -189,7 +191,7 @@ function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHover
     <div
       ref={setNodeRef}
       data-column-id={col.id}
-      className={`h-full relative rounded-2xl p-2.5 flex flex-col gap-2.5 transition-all duration-300 ${headerBgStyle} ${
+      className={`h-full relative rounded-[24px] p-2.5 flex flex-col gap-2.5 transition-all duration-300 ${headerBgStyle} ${
         draggingTaskId
           ? isHovered
             ? "z-50 shadow-[0_20px_50px_rgba(0,0,0,0.35)] border border-dashed border-sky-500/40 bg-sky-500/[0.02]"
@@ -205,8 +207,9 @@ function ColumnContainer({ col, children, headerBgStyle, draggingTaskId, isHover
   );
 }
 
-function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId, isDropdownOpen }: SortableTaskCardProps) {
+function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId, isDropdownOpen, isEditing }: SortableTaskCardProps) {
   const taskIdComposite = t.id.startsWith("kt-") ? t.id : `kt-${t.projectId}-${t.id}`;
+  const [dragDisabled, setDragDisabled] = useState(false);
 
   const {
     attributes,
@@ -225,7 +228,8 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId
     transition: {
       duration: 250,
       easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
-    }
+    },
+    disabled: dragDisabled || isEditing,
   });
 
   const style = {
@@ -241,7 +245,7 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId
       ref={setNodeRef}
       style={style}
       {...attributes}
-      {...listeners}
+      {...(dragDisabled || isEditing ? {} : listeners)}
       className={`task-card-wrapper relative shrink-0 ${
         isDragging 
           ? 'opacity-0 pointer-events-none' 
@@ -250,11 +254,13 @@ function SortableTaskCard({ t, extraClass, renderTaskCard, colId, draggingTaskId
         isAnyCardDragging && !isCurrentDragging
           ? 'pointer-events-none'
           : ''
-      } ${isDropdownOpen ? '!overflow-visible z-50' : ''} ${extraClass}`}
+      } ${isDropdownOpen ? '!overflow-visible z-50' : ''} ${
+        isEditing ? 'is-editing-card z-[45]' : ''
+      } ${extraClass}`}
       data-task-id={taskIdComposite}
     >
       <div className="w-full h-full">
-        {renderTaskCard(taskIdComposite, t.projectId, t.projectName, t.taskTitle, t.completedTasks, t.totalTasks, t.taskIndex, t.desc || "", colId)}
+        {renderTaskCard(taskIdComposite, t.projectId, t.projectName, t.taskTitle, t.completedTasks, t.totalTasks, t.taskIndex, t.desc || "", colId, false, setDragDisabled)}
       </div>
     </div>
   );
@@ -296,6 +302,63 @@ const updateVisibleCards = (container: HTMLDivElement) => {
     } else if (i === topVisibleIndex + 2) {
       child.classList.add("card-pos-2");
     }
+  }
+};
+
+const colorConfig: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+  "Predeterminado": {
+    bg: "bg-[hsl(60_1.6%_8%)]",
+    text: "text-white",
+    dot: "bg-slate-500",
+    label: "Predeterminado"
+  },
+  "Gris": {
+    bg: "bg-[#1d1d1f]",
+    text: "text-zinc-200",
+    dot: "bg-zinc-500",
+    label: "Gris"
+  },
+  "Naranja": {
+    bg: "bg-[#251710]",
+    text: "text-orange-200",
+    dot: "bg-orange-500",
+    label: "Naranja"
+  },
+  "Amarillo": {
+    bg: "bg-[#231e0f]",
+    text: "text-yellow-100",
+    dot: "bg-yellow-400",
+    label: "Amarillo"
+  },
+  "Verde": {
+    bg: "bg-[#0e2113]",
+    text: "text-emerald-300",
+    dot: "bg-emerald-500",
+    label: "Verde"
+  },
+  "Azul": {
+    bg: "bg-[#0f1d2e]",
+    text: "text-blue-300",
+    dot: "bg-blue-500",
+    label: "Azul"
+  },
+  "Morado": {
+    bg: "bg-[#1d112d]",
+    text: "text-purple-300",
+    dot: "bg-purple-500",
+    label: "Morado"
+  },
+  "Rosa": {
+    bg: "bg-[#280f1b]",
+    text: "text-pink-300",
+    dot: "bg-pink-500",
+    label: "Rosa"
+  },
+  "Rojo": {
+    bg: "bg-[#2b0c0c]",
+    text: "text-red-300",
+    dot: "bg-red-500",
+    label: "Rojo"
   }
 };
 
@@ -343,6 +406,32 @@ export function HomeDashboard({
   const [activeFormatDropdownCardId, setActiveFormatDropdownCardId] = useState<string | null>(null);
   const [isAddingNewFormat, setIsAddingNewFormat] = useState<boolean>(false);
   const [newFormatValue, setNewFormatValue] = useState<string>("");
+  const [activeColorSelectorCardId, setActiveColorSelectorCardId] = useState<string | null>(null);
+
+  const [editingTaskField, setEditingTaskField] = useState<{ taskId: string; field: "title" | "desc" } | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
+
+  const registerNativeEdit = React.useCallback((taskId: string, field: "title" | "desc", currentValue: string) => {
+    return (node: HTMLElement | null) => {
+      if (!node) return;
+      node.onmousedown = (e) => e.stopPropagation();
+      node.ontouchstart = (e) => e.stopPropagation();
+      node.onclick = (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        playSound('click');
+        setEditingTaskField({ taskId, field });
+        setEditingValue(currentValue || "");
+      };
+    };
+  }, []);
+
+  const registerNativeInput = React.useCallback((node: HTMLElement | null) => {
+    if (!node) return;
+    node.onmousedown = (e) => e.stopPropagation();
+    node.ontouchstart = (e) => e.stopPropagation();
+  }, []);
+
 
   const [activeTimeDropdownCardId, setActiveTimeDropdownCardId] = useState<string | null>(null);
   const [isAddingCustomTime, setIsAddingCustomTime] = useState<boolean>(false);
@@ -357,12 +446,14 @@ export function HomeDashboard({
       if (
         activeStatusDropdownCardId !== null ||
         activeFormatDropdownCardId !== null ||
-        activeTimeDropdownCardId !== null
+        activeTimeDropdownCardId !== null ||
+        activeColorSelectorCardId !== null
       ) {
         if (!target.closest("[data-dropdown-container]")) {
           setActiveStatusDropdownCardId(null);
           setActiveFormatDropdownCardId(null);
           setActiveTimeDropdownCardId(null);
+          setActiveColorSelectorCardId(null);
           setIsAddingNewFormat(false);
           setIsAddingCustomTime(false);
         }
@@ -373,7 +464,7 @@ export function HomeDashboard({
     return () => {
       window.removeEventListener("click", handleOutsideClick);
     };
-  }, [activeStatusDropdownCardId, activeFormatDropdownCardId, activeTimeDropdownCardId]);
+  }, [activeStatusDropdownCardId, activeFormatDropdownCardId, activeTimeDropdownCardId, activeColorSelectorCardId]);
 
 
   const formatLocalDate = (d: Date): string => {
@@ -540,6 +631,14 @@ export function HomeDashboard({
       };
     }));
   }, [onUpdateProjects]);
+
+  const saveEditing = React.useCallback((projectId: string | number, taskIdStr: string | number) => {
+    if (!editingTaskField) return;
+    const { field } = editingTaskField;
+    updateTaskProperty(projectId, taskIdStr, field === "title" ? "title" : "desc", editingValue);
+    setEditingTaskField(null);
+    setEditingValue("");
+  }, [editingTaskField, editingValue, updateTaskProperty]);
   useEffect(() => {
     if (expandedCardId === null) {
       setActiveStatusDropdownCardId(null);
@@ -549,6 +648,7 @@ export function HomeDashboard({
       setActiveTimeDropdownCardId(null);
       setIsAddingCustomTime(false);
       setCustomTimeValue("");
+      setActiveColorSelectorCardId(null);
     }
   }, [expandedCardId]);
 
@@ -1211,7 +1311,8 @@ export function HomeDashboard({
     taskIndex?: number, 
     desc?: string, 
     columnId?: string,
-    forceCollapsed?: boolean
+    forceCollapsed?: boolean,
+    setDragDisabled?: (disabled: boolean) => void
   ) => {
     const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
     
@@ -1320,6 +1421,7 @@ export function HomeDashboard({
     const isDragging = draggingTaskId === taskId && !forceCollapsed;
     const isAnyCardDragging = draggingTaskId !== null;
     const isExpanded = forceCollapsed ? false : (isDragging ? false : (expandedCardId === taskId));
+    const taskColor = task?.color || "Predeterminado";
 
     return (
       <div
@@ -1360,24 +1462,16 @@ export function HomeDashboard({
           }
           setExpandedCardId(prev => prev === taskId ? null : taskId);
         }}
-        className={`task-card w-full h-full rounded-[24px] bg-[hsl(60_1.6%_8%)] border p-3.5 pb-3 flex flex-col justify-between cursor-grab group relative select-text ${
-          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId || activeTimeDropdownCardId === taskId) ? "!overflow-visible z-40" : "overflow-hidden"
+        className={`task-card w-full h-full rounded-[24px] ${colorConfig[taskColor]?.bg || "bg-[hsl(60_1.6%_8%)]"} p-3.5 pb-3 flex flex-col justify-between cursor-grab group relative select-text ${
+          !(colorConfig[taskColor]?.bg || "").includes("border") ? "border border-transparent !border-transparent" : ""
+        } ${
+          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId || activeTimeDropdownCardId === taskId || activeColorSelectorCardId === taskId) ? "!overflow-visible z-40" : "overflow-hidden"
         } ${
           isDragging 
-            ? "border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]" 
-            : isAnyCardDragging
-              ? "border-white/[0.03]"
-              : "border-white/[0.06] hover:border-white/15 hover:scale-[1.02] active:scale-[0.99]"
+            ? "!border-sky-500/30 shadow-[0_0_15px_rgba(14,165,233,0.15)]" 
+            : "hover:scale-[1.02] active:scale-[0.99]"
         } ${isHomeEditMode ? "home-edit-wiggle" : ""}`}
       >
-        
-        {/* Project gradient color overlay */}
-        {project?.gradient && (
-          <div
-            className={`absolute inset-0 rounded-[24px] bg-gradient-to-br ${project.gradient} pointer-events-none`}
-            style={{ opacity: 0.13 }}
-          />
-        )}
         
         {/* Circle X Delete Button on top right in Edit Mode */}
         {isHomeEditMode && (
@@ -1404,9 +1498,9 @@ export function HomeDashboard({
         )}
 
         {/* Top Group: Project Title & Icon & Task Title */}
-        <div className="flex flex-col relative z-10">
+        <div className={`flex flex-col relative ${activeColorSelectorCardId === taskId ? "z-30" : "z-10"}`}>
           <div className="flex items-center justify-between w-full">
-            <span className="text-[10px] font-semibold text-slate-500 select-none truncate max-w-[85%]">
+            <span className={`text-[12px] font-normal select-none truncate max-w-[85%] ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>
               {isExpanded ? formattedCreationDate : shortCreationDate}
             </span>
             {!isHomeEditMode && (
@@ -1440,22 +1534,99 @@ export function HomeDashboard({
                   });
                 });
               }}
-              className="task-card-title text-[15px] font-bold text-white bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 mt-1.5 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left"
+              className="task-card-title text-[16px] font-bold text-white bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 mt-1.5 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left"
             />
           ) : (
-            <h4 className="task-card-title text-[15px] font-bold text-white tracking-normal leading-snug mt-1 line-clamp-2">
-              {taskTitle}
-            </h4>
+            <div className={`flex items-center gap-2 mt-1 relative ${activeColorSelectorCardId === taskId ? "z-30" : ""}`}>
+              {isExpanded && (
+                <div className="relative z-50" data-dropdown-container>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      playSound('click');
+                      setActiveColorSelectorCardId(prev => prev === taskId ? null : taskId);
+                    }}
+                    className={`w-4 h-4 rounded-full ${colorConfig[taskColor]?.dot || 'bg-slate-500'} cursor-pointer border border-white/20 transition-all hover:scale-110 active:scale-90 shrink-0`}
+                    title="Personalizar color"
+                  />
+                </div>
+              )}
+              {editingTaskField?.taskId === taskId && editingTaskField?.field === "title" ? (
+                <input
+                  type="text"
+                  autoFocus
+                  data-no-dnd
+                  value={editingValue}
+                  onChange={(e) => setEditingValue(e.target.value)}
+                  onBlur={() => {
+                    saveEditing(projectId, task.id);
+                    setDragDisabled?.(false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveEditing(projectId, task.id);
+                      setDragDisabled?.(false);
+                    } else if (e.key === "Escape") {
+                      setEditingTaskField(null);
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  className={`task-card-title text-[16px] font-bold bg-transparent border-none p-0 mt-0.5 focus:outline-none focus:ring-0 w-full pointer-events-auto z-45 text-left ${colorConfig[taskColor]?.text || 'text-white'}`}
+                />
+              ) : (
+                <h4 
+                  data-no-dnd
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playSound('click');
+                    setEditingTaskField({ taskId, field: "title" });
+                    setEditingValue(taskTitle || "");
+                    setDragDisabled?.(true);
+                  }}
+                  onMouseEnter={() => setDragDisabled?.(true)}
+                  onMouseLeave={() => {
+                    if (editingTaskField?.taskId !== taskId) {
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  className={`task-card-title text-[16px] font-bold tracking-normal leading-snug line-clamp-2 cursor-text hover:opacity-80 transition-all pointer-events-auto ${colorConfig[taskColor]?.text || 'text-white'}`}
+                  title="Haz clic para editar título"
+                >
+                  {taskTitle}
+                </h4>
+              )}
+
+              {/* Color selector popover aligned to card width */}
+              {activeColorSelectorCardId === taskId && (
+                <div className="absolute top-7 left-0 right-0 bg-slate-950/95 border border-white/10 rounded-2xl p-2 flex justify-between z-55 shadow-2xl items-center animate-fadeIn pointer-events-auto" data-dropdown-container>
+                  {Object.entries(colorConfig).map(([key, config]) => (
+                    <button
+                      key={key}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playSound('pop');
+                        updateTaskProperty(projectId, task.id, "color", key);
+                        setActiveColorSelectorCardId(null);
+                      }}
+                      className={`w-5 h-5 rounded-full ${config.dot} cursor-pointer border border-white/15 transition-all hover:scale-125 hover:border-white/50 active:scale-90 relative ${taskColor === key ? 'ring-2 ring-sky-500 ring-offset-2 ring-offset-slate-950 z-10' : ''}`}
+                      title={config.label}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Client & Project details & Description visible on hover */}
-          <div className={`task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto z-20 ${
+          <div className={`task-card-details flex flex-col gap-2 mt-1.5 select-none pointer-events-auto relative ${activeColorSelectorCardId === taskId ? "z-0" : "z-20"} ${
             (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "!overflow-visible !max-h-none" : ""
           }`}>
             {/* Properties: Status and Format/Type */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-400">
-              {/* 1. Status Pill (kept as the only true pill, made slightly smaller) */}
-              <div className="relative" data-dropdown-container>
+            <div className="flex items-center gap-2 w-full text-[11px] font-semibold text-slate-400">
+              {/* 1. Status Pill */}
+              <div className="relative flex-1" data-dropdown-container>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1463,7 +1634,7 @@ export function HomeDashboard({
                     setActiveFormatDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer ${
+                  className={`w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border text-[12px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer ${
                     task.status === "Completado" 
                       ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20" 
                       : task.status === "En Proceso"
@@ -1471,26 +1642,37 @@ export function HomeDashboard({
                         : "bg-slate-500/10 border-slate-500/20 text-slate-400 hover:bg-slate-500/20"
                   }`}
                 >
-                  <Flag className="w-2.5 h-2.5 shrink-0" />
-                  <span>{task.status}</span>
-                  <ChevronDown className="w-2 h-2 opacity-65" />
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    task.status === "Completado" 
+                      ? "bg-emerald-400" 
+                      : task.status === "En Proceso"
+                        ? "bg-amber-400"
+                        : "bg-slate-400"
+                  }`} />
+                  <span className="truncate">{task.status}</span>
                 </button>
 
                 {activeStatusDropdownCardId === taskId && (
                   <div className="absolute top-0 left-0 min-w-[125px] w-full rounded-2xl bg-[#0e0e0c] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.85)] flex flex-col p-1 z-50 animate-fadeIn select-none overflow-hidden">
                     {/* Active element at top */}
                     <div className="px-1.5 py-1 flex items-center justify-between">
-                      <div className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold select-none ${
+                      <div className={`w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border text-[12px] font-bold select-none ${
                         task.status === "Completado" 
                           ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
                           : task.status === "En Proceso"
                             ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
                             : "bg-slate-500/10 border-slate-500/20 text-slate-400"
                       }`}>
-                        <Flag className="w-2.5 h-2.5 shrink-0" />
-                        <span>{task.status}</span>
+                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                          task.status === "Completado" 
+                            ? "bg-emerald-400" 
+                            : task.status === "En Proceso"
+                              ? "bg-amber-400"
+                              : "bg-slate-400"
+                        }`} />
+                        <span className="truncate">{task.status}</span>
                       </div>
-                      <ChevronUp className="w-2.5 h-2.5 text-slate-400 mr-1 opacity-80" />
+                      <ChevronUp className="w-2.5 h-2.5 text-slate-400 mr-1 opacity-80 shrink-0" />
                     </div>
 
                     <div className="border-t border-white/5 my-1" />
@@ -1509,15 +1691,21 @@ export function HomeDashboard({
                             }}
                             className="px-1.5 py-1 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer"
                           >
-                            <div className={`flex items-center gap-1 h-5.5 px-2 rounded-full border text-[10px] font-bold select-none ${
+                            <div className={`w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border text-[12px] font-bold select-none ${
                               st === "Completado" 
                                 ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
                                 : st === "En Proceso"
                                   ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
                                   : "bg-slate-500/10 border-slate-500/20 text-slate-400"
                             }`}>
-                              <Flag className="w-2.5 h-2.5 shrink-0" />
-                              <span>{st}</span>
+                              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                                st === "Completado" 
+                                  ? "bg-emerald-400" 
+                                  : st === "En Proceso"
+                                    ? "bg-amber-400"
+                                    : "bg-slate-400"
+                              }`} />
+                              <span className="truncate">{st}</span>
                             </div>
                           </button>
                         ))
@@ -1527,11 +1715,8 @@ export function HomeDashboard({
                 )}
               </div>
 
-              {/* Separator Bullet */}
-              <span className="text-slate-700 font-bold select-none pointer-events-none">•</span>
-
               {/* 2. Format Pill */}
-              <div className="relative" data-dropdown-container>
+              <div className="relative flex-1" data-dropdown-container>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1539,22 +1724,21 @@ export function HomeDashboard({
                     setActiveStatusDropdownCardId(null);
                     setIsAddingNewFormat(false);
                   }}
-                  className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 text-[10px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer capitalize"
+                  className="w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 text-[12px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer capitalize"
                 >
-                  <Layers className="w-2.5 h-2.5 shrink-0" />
-                  <span>{task.format || "Formato"}</span>
-                  <ChevronDown className="w-2 h-2 opacity-65" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                  <span className="truncate">{task.format || "Formato"}</span>
                 </button>
 
                 {activeFormatDropdownCardId === taskId && (
                   <div className="absolute top-0 left-0 min-w-[135px] w-full rounded-2xl bg-[#0e0e0c] border border-white/10 shadow-[0_12px_30px_rgba(0,0,0,0.85)] flex flex-col p-1 z-50 animate-fadeIn select-none overflow-hidden">
                     {/* Active element at top */}
                     <div className="px-1.5 py-1 flex items-center justify-between">
-                      <div className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-[10px] font-bold capitalize select-none">
-                        <Layers className="w-2.5 h-2.5 shrink-0" />
-                        <span>{task.format || "Formato"}</span>
+                      <div className="w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 text-[12px] font-bold capitalize select-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
+                        <span className="truncate">{task.format || "Formato"}</span>
                       </div>
-                      <ChevronUp className="w-2.5 h-2.5 text-indigo-400 mr-1 opacity-85" />
+                      <ChevronUp className="w-2.5 h-2.5 text-indigo-400 mr-1 opacity-85 shrink-0" />
                     </div>
 
                     <div className="border-t border-white/5 my-1" />
@@ -1573,9 +1757,9 @@ export function HomeDashboard({
                             }}
                             className="px-1.5 py-1 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer"
                           >
-                            <div className="flex items-center gap-1 h-5.5 px-2 rounded-full border border-white/10 bg-white/5 text-slate-300 text-[10px] font-bold capitalize select-none hover:bg-white/10 transition-colors">
-                              <Layers className="w-2.5 h-2.5 shrink-0 text-slate-400" />
-                              <span>{fmt}</span>
+                            <div className="w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border border-white/10 bg-white/5 text-slate-300 text-[12px] font-bold capitalize select-none hover:bg-white/10 transition-colors">
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                              <span className="truncate">{fmt}</span>
                             </div>
                           </button>
                         ))
@@ -1606,7 +1790,7 @@ export function HomeDashboard({
                               }
                             }}
                             placeholder="Nuevo tipo..."
-                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[10px] text-white focus:outline-none focus:border-indigo-500 w-full"
+                            className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-[12px] text-white focus:outline-none focus:border-indigo-500 w-full"
                           />
                         </div>
                       ) : (
@@ -1615,7 +1799,7 @@ export function HomeDashboard({
                             e.stopPropagation();
                             setIsAddingNewFormat(true);
                           }}
-                          className="px-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer text-indigo-400/80 hover:text-indigo-400 text-[10px] font-bold pl-3"
+                          className="px-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors flex items-center justify-start text-left w-full cursor-pointer text-indigo-400/80 hover:text-indigo-400 text-[12px] font-bold pl-3"
                         >
                           <Plus className="w-3 h-3 shrink-0 mr-1" />
                           <span>Nuevo formato</span>
@@ -1628,9 +1812,100 @@ export function HomeDashboard({
             </div>
 
             {desc && (
-              <p className="text-[12px] text-white/90 font-medium leading-[18px] line-clamp-3 max-w-[95%] mt-0.5">
-                {desc}
-              </p>
+              editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
+                <textarea
+                  autoFocus
+                  data-no-dnd
+                  value={editingValue}
+                  onChange={(e) => setEditingValue(e.target.value)}
+                  onBlur={() => {
+                    saveEditing(projectId, task.id);
+                    setDragDisabled?.(false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      saveEditing(projectId, task.id);
+                      setDragDisabled?.(false);
+                    } else if (e.key === "Escape") {
+                      setEditingTaskField(null);
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  className={`task-card-desc text-[14px] bg-transparent border-none p-0 mt-1 focus:outline-none focus:ring-0 w-full min-h-[60px] pointer-events-auto z-45 text-left resize-none ${colorConfig[taskColor]?.text || 'text-slate-400'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}
+                />
+              ) : (
+                <p 
+                  data-no-dnd
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playSound('click');
+                    setEditingTaskField({ taskId, field: "desc" });
+                    setEditingValue(desc || "");
+                    setDragDisabled?.(true);
+                  }}
+                  onMouseEnter={() => setDragDisabled?.(true)}
+                  onMouseLeave={() => {
+                    if (editingTaskField?.taskId !== taskId) {
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  className={`task-card-desc text-[14px] mt-1 line-clamp-3 leading-relaxed cursor-text hover:opacity-80 transition-all pointer-events-auto ${colorConfig[taskColor]?.text || 'text-slate-400'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}
+                  title="Haz clic para editar descripción"
+                >
+                  {desc}
+                </p>
+              )
+            )}
+
+            {isExpanded && !desc && (
+              editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
+                <textarea
+                  autoFocus
+                  data-no-dnd
+                  value={editingValue}
+                  onChange={(e) => setEditingValue(e.target.value)}
+                  onBlur={() => {
+                    saveEditing(projectId, task.id);
+                    setDragDisabled?.(false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      saveEditing(projectId, task.id);
+                      setDragDisabled?.(false);
+                    } else if (e.key === "Escape") {
+                      setEditingTaskField(null);
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  placeholder="Escribe la descripción de la tarea..."
+                  className={`task-card-desc text-[14px] bg-transparent border-none p-0 mt-1 focus:outline-none focus:ring-0 w-full min-h-[60px] pointer-events-auto z-45 text-left resize-none ${colorConfig[taskColor]?.text || 'text-slate-400'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}
+                />
+              ) : (
+                <p 
+                  data-no-dnd
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playSound('click');
+                    setEditingTaskField({ taskId, field: "desc" });
+                    setEditingValue("");
+                    setDragDisabled?.(true);
+                  }}
+                  onMouseEnter={() => setDragDisabled?.(true)}
+                  onMouseLeave={() => {
+                    if (editingTaskField?.taskId !== taskId) {
+                      setDragDisabled?.(false);
+                    }
+                  }}
+                  className={`task-card-desc text-[14px] mt-1.5 italic cursor-text hover:opacity-80 transition-all pointer-events-auto ${colorConfig[taskColor]?.text || 'text-slate-500'} opacity-50`}
+                  title="Haz clic para agregar descripción"
+                >
+                  + Agregar descripción...
+                </p>
+              )
             )}
           </div>
         </div>
@@ -1642,7 +1917,7 @@ export function HomeDashboard({
             <div className="mt-2.5 pt-2.5 border-t border-white/[0.04] flex flex-col gap-1 text-[12px] z-30 pointer-events-auto relative">
               {/* Row 0: Tiempo */}
               <div className="flex justify-between items-center relative">
-                <span className="text-slate-500 font-semibold select-none">Tiempo</span>
+                <span className={`font-normal select-none ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>Tiempo</span>
                 <div className="relative">
                   <button
                     onClick={(e) => {
@@ -1652,11 +1927,10 @@ export function HomeDashboard({
                       setActiveFormatDropdownCardId(null);
                       setIsAddingCustomTime(false);
                     }}
-                    className="hover:underline hover:text-white text-[12px] font-semibold text-slate-300 hover:underline transition-all duration-150 flex items-center gap-1"
+                    className="flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border border-slate-500/20 bg-slate-500/10 text-slate-400 hover:bg-slate-500/20 text-[12px] font-bold transition-all duration-200 select-none shadow-sm cursor-pointer capitalize"
                   >
-                    <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0 select-none pointer-events-none" />
-                    <span>{task.time || "Tiempo"}</span>
-                    <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
+                    <span className="truncate">{task.time || "Tiempo"}</span>
                   </button>
 
                   {activeTimeDropdownCardId === taskId && (
@@ -1720,7 +1994,7 @@ export function HomeDashboard({
               </div>
               {/* Row 1: Programada */}
               <div className="flex justify-between items-center relative">
-                <span className="text-slate-500 font-semibold select-none">Programada</span>
+                <span className={`font-normal select-none ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>Programada</span>
                 <div className="relative">
                   <input
                     type="date"
@@ -1741,7 +2015,7 @@ export function HomeDashboard({
                         else picker.click();
                       }
                     }}
-                    className="text-slate-300 hover:text-white hover:underline transition-colors font-semibold"
+                    className={`hover:underline transition-colors font-semibold ${colorConfig[taskColor]?.text || 'text-slate-300'} ${taskColor !== 'Predeterminado' ? 'hover:opacity-100' : 'hover:text-white'}`}
                   >
                     {relativeProgLabel} • {formattedProgDate}
                   </button>
@@ -1750,7 +2024,7 @@ export function HomeDashboard({
 
               {/* Row 2: Entrega */}
               <div className="flex justify-between items-center relative">
-                <span className="text-slate-500 font-semibold select-none">Entrega</span>
+                <span className={`font-normal select-none ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>Entrega</span>
                 <div className="relative">
                   <input
                     type="date"
@@ -1775,8 +2049,8 @@ export function HomeDashboard({
                       diffLimitDays < 0 
                         ? "text-rose-450 hover:text-rose-350"
                         : diffLimitDays === 0
-                          ? "text-amber-450 hover:text-amber-350"
-                          : "text-slate-300 hover:text-white"
+                           ? "text-amber-450 hover:text-amber-350"
+                           : `${colorConfig[taskColor]?.text || 'text-slate-300'} ${taskColor !== 'Predeterminado' ? 'hover:opacity-100' : 'hover:text-white'}`
                     }`}
                   >
                     {relativeLimitLabel} • {formattedLimitDate}
@@ -1791,7 +2065,7 @@ export function HomeDashboard({
         {/* Bottom Group: Progress Bar */}
         <div className="flex flex-col gap-1.5 mt-auto relative z-10">
           {/* Project & Client Row */}
-          <div className="flex justify-between items-center text-[10px] font-semibold text-slate-500 mb-0.5 select-none pointer-events-auto z-20">
+          <div className={`flex justify-between items-center text-[12px] font-normal mb-0.5 select-none pointer-events-auto z-20 ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>
             <span 
               data-no-dnd
               onClick={(e) => {
@@ -1799,7 +2073,7 @@ export function HomeDashboard({
                 onSelectProject?.(projectId);
                 onSelectTab("proyectos");
               }}
-              className="hover:underline hover:text-white cursor-pointer transition-colors duration-150 truncate max-w-[65%]"
+              className={`cursor-pointer transition-colors duration-150 truncate max-w-[65%] ${taskColor !== 'Predeterminado' ? 'hover:opacity-100' : 'hover:underline hover:text-white'}`}
             >
               {projName}
             </span>
@@ -1809,7 +2083,7 @@ export function HomeDashboard({
                 e.stopPropagation();
                 onSelectTab("clientes");
               }}
-              className="hover:underline hover:text-white cursor-pointer transition-colors duration-150 truncate max-w-[32%] text-right"
+              className={`cursor-pointer transition-colors duration-150 truncate max-w-[32%] text-right ${taskColor !== 'Predeterminado' ? 'hover:opacity-100' : 'hover:underline hover:text-white'}`}
             >
               {clientName}
             </span>
@@ -1863,7 +2137,7 @@ export function HomeDashboard({
                   />
 
                   {/* Elegant floating tooltip on hover */}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[10px] font-bold text-white flex items-center gap-2">
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[12px] font-bold text-white flex items-center gap-2">
                     <span className={`w-1.5 h-1.5 rounded-full ${
                       tk.status === "Completado"
                         ? "bg-emerald-500"
@@ -1879,7 +2153,7 @@ export function HomeDashboard({
             })}
           </div>
           {/* Progress Percent Text */}
-          <div className="progress-text-row flex items-center justify-between w-full text-[10px] text-slate-500 font-semibold select-none pointer-events-none mt-0.5">
+          <div className={`progress-text-row flex items-center justify-between w-full text-[12px] font-normal select-none pointer-events-none mt-0.5 ${colorConfig[taskColor]?.text || 'text-slate-500'} ${taskColor !== 'Predeterminado' ? 'opacity-70' : ''}`}>
             <span className="capitalize">tarea {taskIndex || completedTasks} de {totalTasks}</span>
             <span>{progressPercent}%</span>
           </div>
@@ -1912,7 +2186,7 @@ export function HomeDashboard({
                   });
                   playSound('click');
                 }}
-                className="w-full flex items-center justify-center gap-1 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 active:scale-98 transition-all text-[10px] font-bold uppercase tracking-wider cursor-pointer"
+                className="w-full flex items-center justify-center gap-1 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 hover:bg-amber-500/20 active:scale-98 transition-all text-[12px] font-bold uppercase tracking-wider cursor-pointer"
               >
                 <Plus className="w-2.5 h-2.5" />
                 <span>Agregar tarea rápida</span>
@@ -1949,6 +2223,11 @@ export function HomeDashboard({
     customTimeValue,
     setCustomTimeValue,
     updateTaskProperty,
+    activeColorSelectorCardId,
+    setActiveColorSelectorCardId,
+    editingTaskField,
+    editingValue,
+    saveEditing,
   ]);
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
@@ -2147,14 +2426,22 @@ export function HomeDashboard({
 
         /* Task title (base rules) */
         .task-card-title {
-          transform: translateY(12px) !important;
+          transform: translateY(0px) !important;
           transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease-out !important;
           will-change: transform;
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
           transform: translateY(0px) !important;
-          color: #ffffff !important;
           transition-delay: 180ms !important;
+        }
+        /* Force neighbor card titles to 1 line when another card is hovered */
+        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
+          display: -webkit-box !important;
+          -webkit-line-clamp: 1 !important;
+          -webkit-box-orient: vertical !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
         }
 
         /* Details group (base rules) */
@@ -2215,7 +2502,6 @@ export function HomeDashboard({
         /* Inner card transitions under click expansion */
         .is-expanded-double .task-card-title {
           transform: translateY(0px) !important;
-          color: #ffffff !important;
         }
         .is-expanded-double .task-card-details {
           max-height: 220px !important;
@@ -2228,6 +2514,12 @@ export function HomeDashboard({
         }
         .is-shrunk-sibling .task-card-title {
           transform: translateY(0px) !important;
+          display: -webkit-box !important;
+          -webkit-line-clamp: 1 !important;
+          -webkit-box-orient: vertical !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
         }
         .is-shrunk-sibling .task-card-details {
           display: none !important;
@@ -2239,6 +2531,46 @@ export function HomeDashboard({
         }
         .task-list-scroll:has(.is-expanded-double) .is-expanded-double .task-card {
           cursor: pointer !important;
+        }
+
+        /* =====================================================
+           TASK CARD EDITING STATE STYLES
+           ===================================================== */
+        /* Disable scroll-snap during editing to prevent browser snapping fight */
+        .task-list-scroll:has(.is-editing-card) {
+          scroll-snap-type: none !important;
+        }
+
+        /* Heights and visibility states for task editing card (mirroring hover state) */
+        .task-card-wrapper.is-editing-card:not(.is-expanded-double) {
+          height: 220px !important;
+        }
+        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .project-title {
+          opacity: 0 !important;
+          transition: opacity 0.12s ease-out !important;
+        }
+        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-title {
+          transform: translateY(0px) !important;
+        }
+        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-details {
+          max-height: 105px !important;
+          opacity: 1 !important;
+          transform: translateY(0px) !important;
+        }
+
+        /* Keep other cards shrunk in the same list when a card is in edit mode */
+        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) {
+          height: 115px !important;
+        }
+        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card {
+          transform: scale(0.97) !important;
+          padding: 12px 14px 12px 14px !important;
+        }
+        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-details {
+          display: none !important;
+        }
+        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-title {
+          transform: translateY(0px) !important;
         }
       `}</style>
       {/* 5 Expanded Clean Simple Rectangles Grid */}
@@ -2525,9 +2857,9 @@ export function HomeDashboard({
                             isHovered={isHovered}
                             isAnyDropdownOpen={activeStatusDropdownCardId !== null || activeFormatDropdownCardId !== null || activeTimeDropdownCardId !== null}
                           >
-                            <div className="flex items-center justify-between px-1 mb-1 shrink-0">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-white">{col.name}</span>
-                              <span className="w-4 h-4 rounded-full bg-white/10 text-[9px] text-white flex items-center justify-center font-mono font-bold">{colTasks.length}</span>
+                            <div className="flex items-center justify-between px-5 pt-1.5 pb-1.5 shrink-0">
+                              <span className="text-[12px] font-bold uppercase tracking-wider text-white">{col.name}</span>
+                              <span className="w-5 h-5 rounded-full bg-white/10 text-[10px] text-white flex items-center justify-center font-mono font-bold shrink-0">{colTasks.length}</span>
                             </div>
                             
                             <SortableContext
@@ -2619,7 +2951,8 @@ export function HomeDashboard({
                                       renderTaskCard={renderTaskCard}
                                       colId={col.id}
                                       draggingTaskId={draggingTaskId}
-                                      isDropdownOpen={activeStatusDropdownCardId === t.id || activeFormatDropdownCardId === t.id || activeTimeDropdownCardId === t.id}
+                                      isDropdownOpen={activeStatusDropdownCardId === t.id || activeFormatDropdownCardId === t.id || activeTimeDropdownCardId === t.id || activeColorSelectorCardId === t.id}
+                                      isEditing={editingTaskField?.taskId === (t.id.startsWith("kt-") ? t.id : `kt-${t.projectId}-${t.id}`)}
                                     />
                                   );
                                 })}
@@ -2873,16 +3206,16 @@ export function HomeDashboard({
             className={`w-full h-[550px] rounded-[28px] ${bgStyle} p-5 flex flex-col items-center justify-between overflow-hidden relative`}
           >
             {/* KPIs container */}
-            <div className="w-full flex flex-col gap-4 items-center mt-1">
+            <div className="w-full flex flex-col gap-3 items-center mt-1">
               {/* Row 1: LED Counters */}
-              <div className="flex items-center justify-around w-full px-1">
+              <div className="flex items-center justify-center gap-4 w-full px-1">
                 {/* Counter 1: Projects */}
                 <div className="relative flex items-center pr-8">
                   <span 
                     className="tracking-tight transition-colors duration-500"
                     style={{ 
                       fontFamily: "'LedCounter', monospace", 
-                      fontSize: "32px",
+                      fontSize: "40px",
                       color: isNightMode ? '#fafafa' : '#0f172a',
                       textShadow: isNightMode
                         ? '0 0 16px rgba(255,255,255,0.2)'
@@ -2909,7 +3242,7 @@ export function HomeDashboard({
                     className="tracking-tight transition-colors duration-500"
                     style={{ 
                       fontFamily: "'LedCounter', monospace", 
-                      fontSize: "32px",
+                      fontSize: "40px",
                       color: isNightMode ? '#fafafa' : '#0f172a',
                       textShadow: isNightMode
                         ? '0 0 16px rgba(255,255,255,0.2)'
@@ -2936,7 +3269,7 @@ export function HomeDashboard({
                     className="tracking-tight transition-colors duration-500"
                     style={{ 
                       fontFamily: "'LedCounter', monospace", 
-                      fontSize: "32px",
+                      fontSize: "40px",
                       color: isNightMode ? '#fafafa' : '#0f172a',
                       textShadow: isNightMode
                         ? '0 0 16px rgba(255,255,255,0.2)'
@@ -2956,7 +3289,7 @@ export function HomeDashboard({
               </div>
 
               {/* Row 2: Financial Stats Bar */}
-              <div className="grid grid-cols-2 gap-x-2 gap-y-2 w-full text-[9px] font-medium tracking-tight px-1.5 mt-0.5">
+              <div className="flex items-center justify-between w-full text-[8.5px] font-semibold tracking-tight px-1 mt-0.5">
                 {/* Metric 1: MRR Facturación */}
                 <div className="flex items-center gap-1 shrink-0" title="Ingresos Mensuales Recurrentes">
                   <TrendingUp className="w-3 h-3 text-emerald-500 shrink-0" />

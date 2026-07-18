@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Pencil, Loader2, X } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
@@ -525,53 +525,7 @@ export default function BrandexV3Page() {
 
   return (
     <main className={`relative w-screen h-screen overflow-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#111113] text-neutral-100' : 'bg-[#f8fafc] text-slate-900'}`}>
-      {/* Loading Screen Overlay */}
-      <AnimatePresence>
-        {!isLoaded && (
-          <motion.div
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0, transition: { duration: 0.4 } }}
-            className="absolute inset-0 z-[1000] flex flex-col items-center justify-center bg-[#111113]"
-          >
-            {/* Ambient background glow */}
-            <div className="absolute w-[400px] h-[400px] bg-indigo-500/10 rounded-full blur-[80px]" />
-            <div className="absolute w-[300px] h-[300px] bg-cyan-500/10 rounded-full blur-[60px]" />
 
-            <div className="relative flex flex-col items-center text-center px-4 max-w-sm">
-              {/* Spinning tech loader */}
-              <div className="relative w-16 h-16 mb-6">
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-0 rounded-full border-t-2 border-r-2 border-indigo-500"
-                />
-                <motion.div
-                  animate={{ rotate: -360 }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className="absolute inset-2 rounded-full border-b-2 border-l-2 border-cyan-400 opacity-60"
-                />
-                <div className="absolute inset-4 rounded-full bg-[#111113] border border-white/5 flex items-center justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin text-white/40" />
-                </div>
-              </div>
-
-              <h2 className="text-sm font-black uppercase tracking-[0.2em] text-white leading-relaxed">
-                Braindex OS
-              </h2>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500 mt-2">
-                Sincronizando Lienzo v3...
-              </p>
-              <div className="w-32 h-1 bg-zinc-900 rounded-full mt-4 overflow-hidden relative">
-                <motion.div
-                  animate={{ left: ["-100%", "100%"] }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
-                  className="absolute top-0 bottom-0 w-1/2 bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full"
-                />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Background Container */}
       <div className="absolute inset-0 overflow-hidden z-0 bg-transparent pointer-events-none">
@@ -582,7 +536,7 @@ export default function BrandexV3Page() {
       <div className="absolute top-[28px] left-3.5 w-10 h-14 flex items-center justify-center z-50">
         <Link href="/taski" className="group flex items-center justify-center">
           <Image 
-            src="/TASKI%20ICON.png" 
+            src="/taski-icon.png?v=3" 
             alt="Taski Icon" 
             width={28} 
             height={28} 
@@ -595,80 +549,80 @@ export default function BrandexV3Page() {
       {/* Dynamic 2-line Title next to Logo + Home KPIs & TimeHeatmap */}
       {/* Dynamic Header Wrapper aligned with the 12-column grid */}
       <div className="absolute top-[20px] left-[216px] right-[40px] h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
-        <div className={`col-span-9 flex items-center ${isSearchActive ? "justify-start gap-3" : "justify-between"} h-full relative`}>
-          {/* Title on the left */}
-          <motion.div 
-            animate={{ 
-              opacity: isSearchActive ? 0 : 1,
-            }}
-            style={{
-              pointerEvents: isSearchActive ? "none" : "auto",
-              display: isSearchActive ? "none" : "flex"
-            }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="flex items-center shrink-0 overflow-hidden mr-5"
-          >
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: -6, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: 6, filter: "blur(4px)" }}
-                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                className="flex flex-row items-center h-[64px] gap-2.5 leading-tight shrink-0 select-none"
-              >
-                <span className={`text-xl md:text-2xl font-extrabold tracking-tight transition-colors duration-500 ${
-                  isNightMode ? 'text-slate-50' : 'text-slate-900'
-                }`}>
-                  {activeTab === "proyectos" ? "Panel de Proyectos" :
-                   activeTab === "equipo" ? "Espacio de Equipo" :
-                   activeTab === "clientes" ? "Directorio de Clientes" :
-                   activeTab === "finanzas" ? "Métricas Financieras" :
-                   activeTab === "ajustes" ? "Ajustes del Sistema" : "Buenos días"}
-                </span>
-                <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
-                  isNightMode ? 'text-slate-400' : 'text-slate-600'
-                }`}>
-                  {activeTab === "proyectos" ? "flujo y entregables activos" :
-                   activeTab === "equipo" ? "colaboradores y carga de trabajo" :
-                   activeTab === "clientes" ? "marcas asociadas y contratos" :
-                   activeTab === "finanzas" ? "facturación y margen operativo" :
-                   activeTab === "ajustes" ? "configuración y preferencias" : "bienvenido de nuevo"}
-                </span>
-              </motion.div>
-            </AnimatePresence>
-          </motion.div>
+        <div className="col-span-9 flex items-center h-full">
+          {/* LEFT ZONE: Title */}
+          <div className="flex-1 basis-0 flex items-center min-w-0">
+            <motion.div 
+              animate={{ 
+                opacity: isSearchActive ? 0 : 1,
+              }}
+              style={{
+                pointerEvents: isSearchActive ? "none" : "auto",
+                display: isSearchActive ? "none" : "flex"
+              }}
+              transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+              className="flex items-center shrink-0 overflow-hidden"
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                  exit={{ opacity: 0, y: 6, filter: "blur(4px)" }}
+                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  className="flex flex-row items-center h-[64px] gap-2.5 leading-tight shrink-0 select-none"
+                >
+                  <span className={`text-xl md:text-2xl font-extrabold tracking-tight transition-colors duration-500 ${
+                    isNightMode ? 'text-slate-50' : 'text-slate-900'
+                  }`}>
+                    {activeTab === "proyectos" ? "Panel de Proyectos" :
+                     activeTab === "equipo" ? "Espacio de Equipo" :
+                     activeTab === "clientes" ? "Directorio de Clientes" :
+                     activeTab === "finanzas" ? "Métricas Financieras" :
+                     activeTab === "ajustes" ? "Ajustes del Sistema" : "Buenos días"}
+                  </span>
+                  <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
+                    isNightMode ? 'text-slate-400' : 'text-slate-600'
+                  }`}>
+                    {activeTab === "proyectos" ? "flujo y entregables activos" :
+                     activeTab === "equipo" ? "colaboradores y carga de trabajo" :
+                     activeTab === "clientes" ? "marcas asociadas y contratos" :
+                     activeTab === "finanzas" ? "facturación y margen operativo" :
+                     activeTab === "ajustes" ? "configuración y preferencias" : "bienvenido de nuevo"}
+                  </span>
+                </motion.div>
+              </AnimatePresence>
+            </motion.div>
+          </div>
+
+          {/* CENTER ZONE: View Switcher — always geometrically centered in col-span-9 */}
+          <div className="flex-none flex items-center justify-center">
 
           {/* Close Search Button */}
           <AnimatePresence>
             {isSearchActive && (
               <motion.button
-                initial={{ opacity: 0, scale: 0.8, x: -10 }}
-                animate={{ opacity: 1, scale: 1, x: 0 }}
-                exit={{ opacity: 0, scale: 0.8, x: -10 }}
+                initial={{ opacity: 0, scale: 0.8, width: 0, marginRight: 0 }}
+                animate={{ opacity: 1, scale: 1, width: 32, marginRight: 8 }}
+                exit={{ opacity: 0, scale: 0.8, width: 0, marginRight: 0 }}
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 type="button"
                 onClick={() => {
                   setHomeView(previousHomeView);
                   playSound('click');
                 }}
-                className="flex items-center justify-center w-8 h-8 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 cursor-pointer shrink-0 z-50"
+                className="flex items-center justify-center h-8 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 dark:bg-white/[0.04] dark:hover:bg-white/[0.08] text-slate-400 hover:text-slate-200 cursor-pointer shrink-0 z-50"
+                style={{ overflow: "hidden" }}
                 title="Cerrar búsqueda"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 shrink-0" />
               </motion.button>
             )}
           </AnimatePresence>
-
-          {/* View Switcher centered inside col-span-9 */}
           {activeTab === "home" && (
             <motion.div 
               layout
-              animate={{
-                marginLeft: isSearchActive ? 0 : (hoveredTab === "buscar" ? -35 : 0)
-              }}
-              transition={{ type: "spring", stiffness: 350, damping: 28 }}
-              className="relative flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0"
+              className="flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0"
             >
               {/* Search Tab */}
               <motion.button
@@ -832,27 +786,13 @@ export default function BrandexV3Page() {
               </motion.button>
             </motion.div>
           )}
+          </div>{/* END CENTER ZONE */}
 
-          {/* Quick Action Buttons on the right side of col-span-9 */}
+          {/* RIGHT ZONE: Action Buttons */}
+          <div className="flex-1 basis-0 flex items-center justify-end">
           {activeTab === "home" && (
-            <div className="flex items-center gap-3 shrink-0 ml-auto">
-              {/* 1. Pencil Edit Mode Toggle Button */}
-              <button
-                onClick={() => {
-                  playSound('click');
-                  setIsHomeEditMode(!isHomeEditMode);
-                }}
-                className={`flex items-center justify-center w-8 h-8 rounded-full border text-xs font-bold transition-all duration-200 shadow-sm shrink-0 ${
-                  isHomeEditMode
-                    ? "bg-amber-500/20 border-amber-500/30 text-amber-400 hover:bg-amber-500/30 animate-[subtle-pulse_1.5s_infinite]"
-                    : isNightMode
-                      ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
-                      : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
-                }`}
-                title={isHomeEditMode ? "Salir de modo edición" : "Entrar a modo edición"}
-              >
-                <Pencil className="w-4 h-4" />
-              </button>
+            <div className="flex items-center gap-3 shrink-0">
+
 
               {/* 2. Agrupar Dropdown Button next to pencil */}
               <div className="relative">
@@ -985,6 +925,7 @@ export default function BrandexV3Page() {
               </button>
             </div>
           )}
+          </div>{/* END RIGHT ZONE */}
         </div>
       </div>
 
@@ -1128,7 +1069,7 @@ export default function BrandexV3Page() {
                       transition={{ type: "spring", stiffness: 100, damping: 15 }}
                       className="w-9 h-9 rounded-full bg-black/20 border border-white/5 flex items-center justify-center shadow-inner cursor-pointer hover:scale-105 active:scale-95 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_12px_rgba(255,255,255,0.15)] transition-all duration-300"
                     >
-                      <Image src="/TASKI%20ICON.png?v=2" alt="Taski Icon" width={20} height={20} className="object-contain opacity-90" />
+                      <Image src="/taski-icon.png?v=3" alt="Taski Icon" width={20} height={20} className="object-contain opacity-90" />
                     </motion.div>
                     
                     {/* Tooltip for hover affordance (placed outside the rotating motion.div) */}

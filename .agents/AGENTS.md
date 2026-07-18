@@ -17,21 +17,6 @@ To prevent desynchronization errors and 404 resource crashes in the Next.js deve
      - Clean the Next.js cache directory: `rm -rf .next`
      - Restart the server: `npm run dev`
 
-## Automated Visual QA & Walkthrough Protocol
-
-For medium and large features/plans implemented by Antigravity:
-1. **Automated Screenshot & Visual Progression (1920x1080 Full HD)**:
-   - Antigravity MUST capture the post-implementation ("Después") screenshot using CLI screenshot automation at standard Full HD resolution:
-     `npx playwright screenshot --viewport-size=1920,1080 --wait-for-timeout=2000 http://localhost:3000/taski <path>`
-   - The previous state's screenshot automatically serves as the **"Antes"** baseline for incremental UI changes, avoiding redundant captures and accelerating workflow.
-2. **Walkthrough Artifact (`walkthrough.md`)**:
-   - Create or update `walkthrough.md` in the conversation artifacts directory.
-   - Embed the **Antes** (previous baseline) and **Después** (new capture) 1080p screenshots sequentially for permanent visual tracking.
-   - **Visual Element Inventory (Descripción de Elementos Observados)**: List and label each visible UI component/region (e.g., *Rectángulo Grande Izquierda*, *Rectángulo 1 Arriba-Izquierda Derecha*, *Encabezado KPIs*) so the user can easily reference and target any specific element without writing long descriptions.
-   - Include design intent, code diffs summary, and verification checklist.
-3. **Scope**:
-   - Mandatory for medium and large UI/design modifications and new feature plans.
-   - Not required for minor single-line fixes or trivial refactors.
 
 
 ## Figma Integration Protocol

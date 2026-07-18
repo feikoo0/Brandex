@@ -30,6 +30,7 @@ export interface Task {
   cliente_ids: string[];
   created: string;
   url: string;
+  color?: string;
 }
 
 export interface Project {

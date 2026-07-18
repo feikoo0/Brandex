@@ -38,7 +38,7 @@ export const INITIAL_PROJECT_TASKS: Record<number, Task[]> = {
       time: "5h", 
       status: "Pendiente", 
       statusColor: "bg-white/5 border-white/10 text-white/60",
-      attachmentUrl: "/TASKI ICON.png",
+      attachmentUrl: "/taski-icon.png",
       subtasks: [
         { id: 1, text: "Crear variables de ruido y gradientes", done: false },
         { id: 2, text: "Aplicar backdrop-blur-3xl a modales", done: false },

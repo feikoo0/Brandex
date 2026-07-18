@@ -17,6 +17,7 @@ export interface Task {
   attachmentUrl?: string;
   fecha_creacion?: string;
   kanbanOrders?: Record<string, number>;
+  color?: string;
 }
 
 export interface ProjectData {
