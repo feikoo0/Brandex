@@ -90,7 +90,7 @@ export function AgentCanvas() {
         {agentMessages.length === 0 && (
           <div className="bg-white/5 border border-white/10 p-6 rounded-2xl">
             <p className="text-sm text-white/60 leading-relaxed">
-              Hola, soy el agente inteligente de Brandex OS. Puedo ayudarte a crear proyectos, organizar tareas y gestionar clientes usando lenguaje natural.
+              Hola, soy el agente inteligente de Taski. Puedo ayudarte a crear proyectos, organizar tareas y gestionar clientes usando lenguaje natural.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {["Crea un proyecto para Coca Cola", "Planifica 5 tareas de diseño", "Nuevo cliente: Apple"].map(t => (

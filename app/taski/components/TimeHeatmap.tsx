@@ -30,7 +30,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
   // 1. Capacity config (Monday-Friday 8h, Saturday 4h, Sunday 0h default)
   const [capacity, setCapacity] = useState<Record<number, number>>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('brandex_heatmap_capacity');
+      const saved = localStorage.getItem('taski_heatmap_capacity');
       if (saved) {
         try {
           return JSON.parse(saved);
@@ -45,7 +45,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
   // 2. Metric mode preference (default: combined)
   const [metricMode, setMetricMode] = useState<MetricMode>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('brandex_heatmap_metric_mode');
+      const saved = localStorage.getItem('taski_heatmap_metric_mode');
       if (saved && ['rendimiento', 'cumplimiento', 'volumen', 'combinado'].includes(saved)) {
         return saved as MetricMode;
       }
@@ -56,7 +56,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
   // 3. View mode preference (Day vs Week)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('brandex_heatmap_view_mode');
+      const saved = localStorage.getItem('taski_heatmap_view_mode');
       if (saved && ['dia', 'semana'].includes(saved)) {
         return saved as ViewMode;
       }
@@ -68,7 +68,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
     const newCap = { ...capacity, [dayIndex]: val };
     setCapacity(newCap);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('brandex_heatmap_capacity', JSON.stringify(newCap));
+      localStorage.setItem('taski_heatmap_capacity', JSON.stringify(newCap));
     }
   };
 
@@ -78,7 +78,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
     const nextMode = modes[(idx + 1) % modes.length];
     setMetricMode(nextMode);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('brandex_heatmap_metric_mode', nextMode);
+      localStorage.setItem('taski_heatmap_metric_mode', nextMode);
     }
   };
 
@@ -95,7 +95,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
     const nextView = viewMode === 'dia' ? 'semana' : 'dia';
     setViewMode(nextView);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('brandex_heatmap_view_mode', nextView);
+      localStorage.setItem('taski_heatmap_view_mode', nextView);
     }
   };
 
@@ -537,7 +537,7 @@ export default function TimeHeatmap({ tasks, isNeumorphic = false, isNightMode =
               onClick={() => {
                 const standardCap = { 1: 8, 2: 8, 3: 8, 4: 8, 5: 8, 6: 4, 0: 0 };
                 setCapacity(standardCap);
-                localStorage.setItem('brandex_heatmap_capacity', JSON.stringify(standardCap));
+                localStorage.setItem('taski_heatmap_capacity', JSON.stringify(standardCap));
               }}
               className="text-[7px] text-emerald-400 hover:underline uppercase font-extrabold"
             >

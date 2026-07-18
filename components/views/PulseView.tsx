@@ -27,7 +27,7 @@ export function PulseView() {
   // Load persistence client-side
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("brandex_timeline_collapsed");
+      const saved = localStorage.getItem("taski_timeline_collapsed");
       if (saved !== null) {
         setIsTimelineCollapsed(saved === "true");
       }
@@ -37,7 +37,7 @@ export function PulseView() {
   const toggleTimeline = () => {
     const nextVal = !isTimelineCollapsed;
     setIsTimelineCollapsed(nextVal);
-    localStorage.setItem("brandex_timeline_collapsed", String(nextVal));
+    localStorage.setItem("taski_timeline_collapsed", String(nextVal));
   };
 
   const currentView = viewStack[viewStack.length - 1];

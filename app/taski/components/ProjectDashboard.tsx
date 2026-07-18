@@ -379,7 +379,7 @@ export function ProjectDashboard({
     if (!onUpdateTasks || !project) return;
     const newTasks = tasks.map(t => {
       if (t.id === taskId) {
-        return { ...t, attachmentUrl: t.attachmentUrl ? undefined : "/BRANDEX%20ICON.png" };
+        return { ...t, attachmentUrl: t.attachmentUrl ? undefined : "/TASKI%20ICON.png" };
       }
       return t;
     });
@@ -1082,7 +1082,7 @@ export function ProjectDashboard({
                           className={`absolute inset-0 ${isNeumorphic ? 'bg-slate-200' : 'bg-zinc-800'}`} 
                         />
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <Image src="/BRANDEX%20ICON.png" alt="Adjunto" width={22} height={22} className="object-contain opacity-80" />
+                          <Image src="/TASKI%20ICON.png" alt="Adjunto" width={22} height={22} className="object-contain opacity-80" />
                         </div>
                         <div className="absolute inset-0 bg-black/70 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-10">
                           <span className="text-[8px] font-bold text-rose-400 uppercase tracking-widest">Quitar</span>

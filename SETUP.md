@@ -16,15 +16,15 @@ Si no tienes Node.js, descárgalo de: https://nodejs.org (elige la versión LTS)
 
 ## 1. Mueve los archivos del proyecto
 
-Coloca esta carpeta `braindex-os/` donde prefieras, por ejemplo:
+Coloca esta carpeta `taski/` donde prefieras, por ejemplo:
 ```
-~/Documentos/braindex-os/
+~/Documentos/taski/
 ```
 
 Tu `server.py` debe estar **en la carpeta padre** (un nivel arriba), así:
 ```
 ~/Documentos/
-  braindex-os/     ← este proyecto Next.js
+  taski/     ← este proyecto Next.js
   server.py        ← tu backend Python existente
   .env.example
 ```
@@ -34,7 +34,7 @@ Tu `server.py` debe estar **en la carpeta padre** (un nivel arriba), así:
 ## 2. Instala dependencias de Node.js
 
 ```bash
-cd braindex-os
+cd taski
 npm install
 ```
 
@@ -85,7 +85,7 @@ python3 server.py
 
 ### Terminal 2 — Next.js frontend
 ```bash
-cd braindex-os
+cd taski
 npm run dev
 # abre http://localhost:3000
 ```
@@ -104,7 +104,7 @@ en tu base de datos de Notion (los mismos que usabas antes).
 ## Estructura del proyecto
 
 ```
-braindex-os/
+taski/
 ├── app/
 │   ├── page.tsx                  # Login / role picker
 │   ├── layout.tsx                # Root layout + providers

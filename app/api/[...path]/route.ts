@@ -257,7 +257,7 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
     const messages = data.messages || [];
     const systemPrompt = {
       role: "system",
-      content: `Eres el Agente Inteligente de Brandex OS. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes de forma local y segura.
+      content: `Eres el Agente Inteligente de Taski. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes de forma local y segura.
 ESTRUCTURA DE DATOS:
 - Proyectos: nombre, cliente_id, estadoProyecto, prioridad, area, formato, fechaInicio, fechaFin, descripcion.
 - Tareas: titulo, proyecto_id, estado, prioridad, area, formato, esfuerzo, asignado, contenido.

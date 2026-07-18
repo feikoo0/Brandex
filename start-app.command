@@ -10,7 +10,7 @@ fi
 
 clear
 echo "=========================================="
-echo "  BRANDEX OS — Iniciando..."
+echo "  Taski — Iniciando..."
 echo "=========================================="
 
 # Matar procesos previos en los puertos
@@ -26,14 +26,14 @@ BACKEND_PID=$!
 
 # Iniciar frontend Next.js en background
 echo "Iniciando frontend..."
-npm run dev > /tmp/brandex-frontend.log 2>&1 &
+npm run dev > /tmp/taski-frontend.log 2>&1 &
 FRONTEND_PID=$!
 
 # Esperar a que Next.js esté listo (máx 60 seg)
 echo "Esperando a que la app esté lista..."
 READY=0
 for i in $(seq 1 60); do
-    if grep -q "Ready" /tmp/brandex-frontend.log 2>/dev/null; then
+    if grep -q "Ready" /tmp/taski-frontend.log 2>/dev/null; then
         READY=1
         break
     fi

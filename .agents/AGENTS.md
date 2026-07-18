@@ -1,4 +1,4 @@
-# Rules for Brandex OS Development
+# Rules for Taski Development
 
 ## Dev Server & Build Management
 
@@ -22,7 +22,7 @@ To prevent desynchronization errors and 404 resource crashes in the Next.js deve
 For medium and large features/plans implemented by Antigravity:
 1. **Automated Screenshot & Visual Progression (1920x1080 Full HD)**:
    - Antigravity MUST capture the post-implementation ("Después") screenshot using CLI screenshot automation at standard Full HD resolution:
-     `npx playwright screenshot --viewport-size=1920,1080 --wait-for-timeout=2000 http://localhost:3000/brandex-v3 <path>`
+     `npx playwright screenshot --viewport-size=1920,1080 --wait-for-timeout=2000 http://localhost:3000/taski <path>`
    - The previous state's screenshot automatically serves as the **"Antes"** baseline for incremental UI changes, avoiding redundant captures and accelerating workflow.
 2. **Walkthrough Artifact (`walkthrough.md`)**:
    - Create or update `walkthrough.md` in the conversation artifacts directory.

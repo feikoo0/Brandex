@@ -75,7 +75,7 @@ export function Topbar() {
     <header className="h-20 flex items-center justify-between px-10 bg-[#0a0a0c] border-b border-white/[0.05] relative z-50">
       {/* Left: Larger Logo */}
       <div className="flex items-center">
-        <Image src="/brandex-logo.png" alt="Brandex" width={100} height={40} className="object-contain" />
+        <Image src="/taski-logo.png" alt="Brandex" width={100} height={40} className="object-contain" />
       </div>
 
       {/* Right: Navigation & User */}

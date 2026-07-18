@@ -7,7 +7,7 @@ interface TimelineProps {
   projectName?: string;
 }
 
-export default function Timeline({ projectName = "BRANDEX OS" }: TimelineProps) {
+export default function Timeline({ projectName = "Taski" }: TimelineProps) {
   // Helper to get current minutes since midnight
   const getMinutesNow = () => {
     const now = new Date();

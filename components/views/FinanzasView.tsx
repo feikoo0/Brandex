@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { PACKAGES, CONTRACTS, PHOTO_SESSIONS } from "@/lib/brandex-data";
+import { PACKAGES, CONTRACTS, PHOTO_SESSIONS } from "@/lib/taski-data";
 import { Calculator, Package, TrendingUp, DollarSign, Wallet } from "lucide-react";
 
 export function FinanzasView() {

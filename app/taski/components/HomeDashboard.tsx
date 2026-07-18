@@ -2350,7 +2350,7 @@ export function HomeDashboard({
                           <div className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}>
                             <div className="flex items-center gap-3">
                               <LayoutGrid className="w-4 h-4 text-orange-400 shrink-0" />
-                              <span className="text-xs font-semibold text-slate-300">Proyecto Brandex OS v3</span>
+                              <span className="text-xs font-semibold text-slate-300">Proyecto Taski</span>
                             </div>
                             <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Proyecto</span>
                           </div>
@@ -2806,11 +2806,11 @@ export function HomeDashboard({
 
                   {/* Timeline Project Rows */}
                   <div className="flex flex-col gap-2.5">
-                    {/* Row 1: Diseño Brandex OS (Semana 1 - Semana 2) */}
+                    {/* Row 1: Diseño Taski (Semana 1 - Semana 2) */}
                     <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
                       <div className="w-1/4 flex items-center gap-2 pr-2">
                         <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-200 truncate">Diseño Brandex</span>
+                        <span className="text-[10px] font-bold text-slate-200 truncate">Diseño Taski</span>
                       </div>
                       <div className="w-3/4 h-full relative flex items-center border-l border-white/5">
                         <div className="absolute left-[2%] w-[46%] h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between px-2 cursor-pointer hover:bg-emerald-500/20 transition-colors" onClick={() => onSelectTab("proyectos")}>

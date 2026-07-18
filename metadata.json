@@ -1,5 +1,5 @@
 {
-  "name": "Brandex OS",
+  "name": "Taski",
   "description": "Dashboard en tiempo real con Notion para gestión de proyectos, tareas y clientes",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

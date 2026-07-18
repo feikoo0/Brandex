@@ -221,7 +221,7 @@ export default function BrandexV3Page() {
         
         let alreadySeededInLocal = false;
         if (typeof window !== "undefined") {
-          alreadySeededInLocal = localStorage.getItem("brandex_v3_seeded") === "true";
+          alreadySeededInLocal = localStorage.getItem("taski_seeded") === "true";
         }
 
         const isAlreadySeeded = alreadySeededInFirestore || alreadySeededInLocal;
@@ -244,7 +244,7 @@ export default function BrandexV3Page() {
             console.error("Failed to write seed_status to Firestore settings:", metaErr);
           }
           if (typeof window !== "undefined") {
-            localStorage.setItem("brandex_v3_seeded", "true");
+            localStorage.setItem("taski_seeded", "true");
           }
           
           setProjects(seedData);
@@ -257,7 +257,7 @@ export default function BrandexV3Page() {
               console.error("Failed to write seed_status to Firestore settings:", metaErr);
             }
             if (typeof window !== "undefined") {
-              localStorage.setItem("brandex_v3_seeded", "true");
+              localStorage.setItem("taski_seeded", "true");
             }
           }
           
@@ -271,13 +271,13 @@ export default function BrandexV3Page() {
         setIsLoaded(true);
       } catch (err) {
         console.error("Firestore load error, falling back to localStorage:", err);
-        const savedProjects = localStorage.getItem('brandex_v3_projects');
+        const savedProjects = localStorage.getItem('taski_projects');
         if (savedProjects) {
           try {
             const parsed = JSON.parse(savedProjects);
             const isNotionData = parsed.some((p: any) => typeof p.id === 'string');
             if (isNotionData) {
-              localStorage.removeItem('brandex_v3_projects');
+              localStorage.removeItem('taski_projects');
               setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
             } else {
               setProjects(seedProjectsWithSessions(parsed));
@@ -287,7 +287,7 @@ export default function BrandexV3Page() {
           }
         } else {
           // If we fallback and don't have local projects, but we did seed in the past, keep empty array
-          const wasSeeded = typeof window !== "undefined" && localStorage.getItem("brandex_v3_seeded") === "true";
+          const wasSeeded = typeof window !== "undefined" && localStorage.getItem("taski_seeded") === "true";
           if (wasSeeded) {
             setProjects([]);
           } else {
@@ -304,9 +304,9 @@ export default function BrandexV3Page() {
   // Save to Firestore and localStorage when projects change
   useEffect(() => {
     if (isClient && isLoaded) {
-      localStorage.setItem('brandex_v3_projects', JSON.stringify(projects));
+      localStorage.setItem('taski_projects', JSON.stringify(projects));
       if (typeof window !== "undefined" && projects.length > 0) {
-        localStorage.setItem("brandex_v3_seeded", "true");
+        localStorage.setItem("taski_seeded", "true");
       }
       
       // Save each project to Firestore asynchronously
@@ -397,7 +397,7 @@ export default function BrandexV3Page() {
             setActiveProject("");
           }
         }
-        localStorage.setItem('brandex_v3_projects', JSON.stringify(next));
+        localStorage.setItem('taski_projects', JSON.stringify(next));
         return next;
       });
       playSound('trash');
@@ -580,10 +580,10 @@ export default function BrandexV3Page() {
 
       {/* Top Left Logo Wrapper */}
       <div className="absolute top-[28px] left-3.5 w-10 h-14 flex items-center justify-center z-50">
-        <Link href="/brandex-v3" className="group flex items-center justify-center">
+        <Link href="/taski" className="group flex items-center justify-center">
           <Image 
-            src="/BRANDEX%20ICON.png" 
-            alt="Brandex Icon" 
+            src="/TASKI%20ICON.png" 
+            alt="Taski Icon" 
             width={28} 
             height={28} 
             referrerPolicy="no-referrer"
@@ -1018,7 +1018,7 @@ export default function BrandexV3Page() {
         }`}>
           <div className="relative w-5 h-5 rounded-full overflow-hidden flex-shrink-0 border border-slate-400/30 bg-slate-950 flex items-center justify-center">
             <Image 
-              src="/BRANDEX%20ICON.png" 
+              src="/TASKI%20ICON.png" 
               alt="User Profile" 
               width={14} 
               height={14} 
@@ -1027,7 +1027,7 @@ export default function BrandexV3Page() {
             <span className="absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
           </div>
           <span className="text-[12px] font-bold tracking-tight">
-            Brandex Admin
+            Taski Admin
           </span>
         </div>
 
@@ -1128,7 +1128,7 @@ export default function BrandexV3Page() {
                       transition={{ type: "spring", stiffness: 100, damping: 15 }}
                       className="w-9 h-9 rounded-full bg-black/20 border border-white/5 flex items-center justify-center shadow-inner cursor-pointer hover:scale-105 active:scale-95 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_12px_rgba(255,255,255,0.15)] transition-all duration-300"
                     >
-                      <Image src="/BRANDEX%20ICON.png?v=2" alt="Brandex Icon" width={20} height={20} className="object-contain opacity-90" />
+                      <Image src="/TASKI%20ICON.png?v=2" alt="Taski Icon" width={20} height={20} className="object-contain opacity-90" />
                     </motion.div>
                     
                     {/* Tooltip for hover affordance (placed outside the rotating motion.div) */}
@@ -1618,7 +1618,7 @@ export default function BrandexV3Page() {
                 <div className={`flex items-center justify-between text-[9px] uppercase tracking-[0.15em] font-bold mt-4 transition-colors duration-500 ${
                   isNeumorphic ? "text-slate-400" : "text-white/30"
                 }`}>
-                  <span>Brandex Engine v3.0.0</span>
+                  <span>Taski Engine v1.0.0</span>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                     <span>Lienzo Listo</span>

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useData } from "@/hooks/useData";
 import { Loader2, Plus, User, Search, LayoutGrid, List } from "lucide-react";
 import { useUIStore } from "@/lib/store";
-import { PACKAGES } from "@/lib/brandex-data";
+import { PACKAGES } from "@/lib/taski-data";
 
 export function ClientsView() {
   const { data, isLoading } = useData();

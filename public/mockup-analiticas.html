@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brandex OS - CEO Dashboard Mockup</title>
+    <title>Taski - CEO Dashboard Mockup</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
@@ -324,7 +324,7 @@
         <header class="h-[44px] flex-shrink-0 flex items-center justify-between px-6 border-b border-dark-border bg-dark-bg/60 backdrop-blur-md z-10">
             <div class="flex items-center gap-2">
                 <span class="w-2.5 h-2.5 rounded-full bg-brand-500 pulse-dot"></span>
-                <span class="type-card-title text-white">Brandex OS</span>
+                <span class="type-card-title text-white">Taski</span>
                 <span class="type-metadata text-neutral-500 ml-2">Semana 25</span>
             </div>
             
@@ -2172,9 +2172,9 @@
             const titleSpan = document.querySelector('header span:nth-child(2)');
             if (titleSpan) {
                 if (pageId === 'home') {
-                    titleSpan.innerText = 'Brandex OS';
+                    titleSpan.innerText = 'Taski';
                 } else {
-                    titleSpan.innerText = `Brandex OS / ${pageId.charAt(0).toUpperCase() + pageId.slice(1)}`;
+                    titleSpan.innerText = `Taski / ${pageId.charAt(0).toUpperCase() + pageId.slice(1)}`;
                 }
             }
             
@@ -2301,7 +2301,7 @@
                     "Procesando intención del prompt...",
                     "Buscando registros relacionales..."
                 ];
-                responseText = "He recibido tu instrucción. Como asistente de Brandex OS, puedo ayudarte a balancear las cargas de trabajo de tu equipo, calcular predicciones financieras, o automatizar flujos de plantillas en Notion. Prueba escribiendo: **'Optimizar Edwin'** o **'Analizar MRR'**.";
+                responseText = "He recibido tu instrucción. Como asistente de Taski, puedo ayudarte a balancear las cargas de trabajo de tu equipo, calcular predicciones financieras, o automatizar flujos de plantillas en Notion. Prueba escribiendo: **'Optimizar Edwin'** o **'Analizar MRR'**.";
                 confidence = 90;
             }
 
