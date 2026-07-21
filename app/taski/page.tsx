@@ -12,11 +12,13 @@ import { db } from "@/lib/firebase";
 import { ProjectDashboard, Project, Task } from "./components/ProjectDashboard";
 import NewProjectModal, { ProjectData } from "./components/NewProjectModal";
 import { playSound } from "./utils/audio";
-import { INITIAL_PROJECTS, getDynamicProgress } from "./utils/data";
+import { INITIAL_PROJECTS, getDynamicProgress, autoEvaluateProjectStatus } from "./utils/data";
 import TimeHeatmap from "./components/TimeHeatmap";
 import { TeamDashboard } from "./components/TeamDashboard";
 import { ClientsDashboard } from "./components/ClientsDashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { SaveStatusBadge } from "./components/SaveStatusBadge";
+import { persistProjectUpdate } from "./utils/persist";
 
 interface TaskSession {
   id: number;
@@ -266,34 +268,13 @@ export default function BrandexV3Page() {
             list.push(docSnap.data() as Project);
           });
           list.sort((a, b) => Number(a.id) - Number(b.id));
-          setProjects(list);
+          const evaluated = list.map(autoEvaluateProjectStatus);
+          setProjects(evaluated);
         }
         setIsLoaded(true);
       } catch (err) {
-        console.error("Firestore load error, falling back to localStorage:", err);
-        const savedProjects = localStorage.getItem('taski_projects');
-        if (savedProjects) {
-          try {
-            const parsed = JSON.parse(savedProjects);
-            const isNotionData = parsed.some((p: any) => typeof p.id === 'string');
-            if (isNotionData) {
-              localStorage.removeItem('taski_projects');
-              setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
-            } else {
-              setProjects(seedProjectsWithSessions(parsed));
-            }
-          } catch (e) {
-            setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
-          }
-        } else {
-          // If we fallback and don't have local projects, but we did seed in the past, keep empty array
-          const wasSeeded = typeof window !== "undefined" && localStorage.getItem("taski_seeded") === "true";
-          if (wasSeeded) {
-            setProjects([]);
-          } else {
-            setProjects(seedProjectsWithSessions(INITIAL_PROJECTS));
-          }
-        }
+        console.error("Firestore load error:", err);
+        setProjects(seedProjectsWithSessions(INITIAL_PROJECTS).map(autoEvaluateProjectStatus));
         setIsLoaded(true);
       }
     };
@@ -301,85 +282,96 @@ export default function BrandexV3Page() {
     loadFromFirestore();
   }, []);
 
-  // Save to Firestore and localStorage when projects change
-  useEffect(() => {
-    if (isClient && isLoaded) {
-      localStorage.setItem('taski_projects', JSON.stringify(projects));
-      if (typeof window !== "undefined" && projects.length > 0) {
-        localStorage.setItem("taski_seeded", "true");
-      }
-      
-      // Save each project to Firestore asynchronously
-      projects.forEach(async (p) => {
-        try {
-          await setDoc(doc(db, "v3_projects", String(p.id)), p);
-        } catch (err) {
-          console.error("Error saving project to Firestore:", err);
-        }
-      });
-    }
-  }, [projects, isLoaded, isClient]);
-
   const updatePriority = (id: number, priority: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, priority } : p));
+    persistProjectUpdate(id, { priority });
   };
 
   const [editingColorProjectId, setEditingColorProjectId] = useState<number | null>(null);
 
   const updateProjectColor = (id: number, h: number, s: number, l: number = 55) => {
+    const customGradientStyle = `linear-gradient(135deg, hsl(${h}, ${s}%, 55%) 0%, hsl(${(h + 40) % 360}, ${Math.max(s - 10, 0)}%, 45%) 100%)`;
+    const customGlowStyle = `hsl(${h}, ${s}%, 50%)`;
+    const customColor = { h, s, l };
+
     setProjects(prev => prev.map(p => {
       if (p.id === id) {
-        const customGradientStyle = `linear-gradient(135deg, hsl(${h}, ${s}%, 55%) 0%, hsl(${(h + 40) % 360}, ${Math.max(s - 10, 0)}%, 45%) 100%)`;
-        const customGlowStyle = `hsl(${h}, ${s}%, 50%)`;
         return {
           ...p,
-          customColor: { h, s, l },
+          customColor,
           customGradientStyle,
           customGlowStyle
         };
       }
       return p;
     }));
+    persistProjectUpdate(id, { customColor, customGradientStyle, customGlowStyle });
   };
 
   const updateTitle = (id: number, title: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, title } : p));
+    persistProjectUpdate(id, { title });
   };
 
   const updateBriefCore = (id: number, briefCore: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, briefCore } : p));
+    persistProjectUpdate(id, { briefCore });
   };
 
   const updateDates = (id: number, startDate: string, deadline: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, startDate, deadline } : p));
+    persistProjectUpdate(id, { startDate, deadline });
   };
 
   const updateTasks = (id: number, tasks: Task[]) => {
-    setProjects(prev => prev.map(p => p.id === id ? { ...p, tasks } : p));
+    let updatedPartial: Partial<Project> | null = null;
+    setProjects(prev => prev.map(p => {
+      if (p.id === id) {
+        const evalProj = autoEvaluateProjectStatus({ ...p, tasks });
+        updatedPartial = {
+          tasks: evalProj.tasks,
+          status: evalProj.status,
+          statusColor: evalProj.statusColor,
+          progress: evalProj.progress,
+          percent: evalProj.percent
+        };
+        return evalProj;
+      }
+      return p;
+    }));
+    if (updatedPartial) {
+      persistProjectUpdate(id, updatedPartial);
+    }
   };
 
   const updateClient = (id: number, client: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, client } : p));
+    persistProjectUpdate(id, { client });
   };
 
   const updatePackage = (id: number, packageStr: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, package: packageStr } : p));
+    persistProjectUpdate(id, { package: packageStr });
   };
 
   const updateCost = (id: number, cost: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, cost } : p));
+    persistProjectUpdate(id, { cost });
   };
 
   const updateDaysRemaining = (id: number, daysRemaining: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, daysRemaining } : p));
+    persistProjectUpdate(id, { daysRemaining });
   };
 
   const updateBurnRate = (id: number, burnRate: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, burnRate } : p));
+    persistProjectUpdate(id, { burnRate });
   };
 
   const updateStatus = (id: number, status: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+    persistProjectUpdate(id, { status });
   };
 
   const deleteProject = async (id: number) => {
@@ -406,7 +398,7 @@ export default function BrandexV3Page() {
     }
   };
 
-  const addProject = () => {
+  const addProject = async () => {
     const newId = Math.max(...projects.map(p => p.id), 0) + 1;
     const today = new Date();
     const dayStr = today.getDate().toString().padStart(2, '0');
@@ -438,9 +430,15 @@ export default function BrandexV3Page() {
     setProjects(prev => [newProject, ...prev]);
     setActiveProject(newId);
     playSound('pop');
+
+    try {
+      await setDoc(doc(db, "v3_projects", String(newId)), newProject);
+    } catch (e) {
+      console.error("Error creating project in Firestore:", e);
+    }
   };
 
-  const addNewProjectFromModal = (data: ProjectData) => {
+  const addNewProjectFromModal = async (data: ProjectData) => {
     const newId = Math.max(...projects.map(p => p.id), 0) + 1;
     
     let statusColor = "bg-sky-500/10 border-sky-500/30 text-sky-500";
@@ -479,18 +477,27 @@ export default function BrandexV3Page() {
           ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
           : t.status === "En Proceso"
             ? "bg-amber-500/20 border-amber-500/30 text-amber-400"
-            : "bg-white/5 border border-white/10 text-white/60"
+            : t.status === "En Revisión" || (t.status as any) === "Revisión"
+              ? "bg-purple-500/20 border-purple-500/30 text-purple-400"
+              : "bg-slate-500/20 border-slate-500/30 text-slate-300"
       }))
     };
     
     setProjects(prev => [newProject, ...prev]);
     setActiveProject(newId);
+
+    try {
+      await setDoc(doc(db, "v3_projects", String(newId)), newProject);
+    } catch (e) {
+      console.error("Error creating project in Firestore:", e);
+    }
+    
     setShowNewProjectModal(false);
     playSound('pop');
   };
 
   const menuItems = [
-    { id: "home", label: "Home", path: "/" },
+    { id: "home", label: "Inicio", path: "/" },
     { id: "proyectos", label: "Proyectos", path: "/proyectos" },
     { id: "equipo", label: "Equipo", path: "/equipo" },
     { id: "clientes", label: "Clientes", path: "/cliente" },
@@ -643,8 +650,8 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 text-xs font-bold transition-colors duration-200 ${
                   isSearchActive
-                    ? "text-white px-3"
-                    : "text-slate-400 hover:text-slate-200 cursor-pointer px-0"
+                    ? isNightMode ? "text-white px-3" : "text-slate-900 px-3"
+                    : isNightMode ? "text-slate-400 hover:text-slate-200 cursor-pointer px-0" : "text-slate-600 hover:text-slate-900 cursor-pointer px-0"
                 }`}
                 style={{
                   display: "inline-flex",
@@ -653,18 +660,18 @@ export default function BrandexV3Page() {
                 {homeView === "buscar" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/10 dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-white/10"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {!isSearchActive && hoveredTab === "buscar" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Search className="w-4 h-4 shrink-0 text-slate-400 relative z-10" />
+                <Search className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-slate-400" : "text-slate-900"}`} />
                 {isSearchActive ? (
                   <input
                     type="text"
@@ -672,7 +679,7 @@ export default function BrandexV3Page() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
                     placeholder="Buscar proyectos o tareas..."
-                    className="bg-transparent border-none outline-none text-xs text-white w-full placeholder:text-slate-500 focus:ring-0 focus:outline-none relative z-10"
+                    className={`bg-transparent border-none outline-none text-xs w-full relative z-10 ${isNightMode ? "text-white placeholder:text-slate-500" : "text-slate-900 font-semibold placeholder:text-slate-400"}`}
                     autoFocus
                   />
                 ) : (
@@ -693,25 +700,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "kanban"
-                    ? "text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? isNightMode ? "text-white" : "text-slate-900"
+                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "kanban" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/10 dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-white/10"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "kanban" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <LayoutGrid className="w-4 h-4 shrink-0 relative z-10" />
+                <LayoutGrid className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "kanban" ? "text-white" : "text-slate-400") : (homeView === "kanban" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Kanban</span>
               </motion.button>
 
@@ -728,25 +735,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "tabla"
-                    ? "text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? isNightMode ? "text-white" : "text-slate-900"
+                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "tabla" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/10 dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-white/10"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "tabla" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Table className="w-4 h-4 shrink-0 relative z-10" />
+                <Table className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "tabla" ? "text-white" : "text-slate-400") : (homeView === "tabla" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Base de datos</span>
               </motion.button>
 
@@ -763,25 +770,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "timeline"
-                    ? "text-white"
-                    : "text-slate-400 hover:text-slate-200"
+                    ? isNightMode ? "text-white" : "text-slate-900"
+                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "timeline" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/10 dark:bg-white/[0.08] shadow-[0_1px_3px_rgba(0,0,0,0.2)] border border-white/10"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "timeline" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className="absolute inset-0 rounded-full bg-white/5 dark:bg-white/[0.04] border border-white/5 shadow-[0_1px_2px_rgba(0,0,0,0.1)]"
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <CalendarDays className="w-4 h-4 shrink-0 relative z-10" />
+                <CalendarDays className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "timeline" ? "text-white" : "text-slate-400") : (homeView === "timeline" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Timeline</span>
               </motion.button>
             </motion.div>
@@ -807,7 +814,7 @@ export default function BrandexV3Page() {
                       : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <Layers className="w-3.5 h-3.5 text-slate-400" />
+                  <Layers className={`w-3.5 h-3.5 ${isNightMode ? "text-slate-400" : "text-slate-900"}`} />
                   <span>
                     {
                       groupingMode === "fecha" ? "Fecha" :
@@ -815,7 +822,7 @@ export default function BrandexV3Page() {
                       groupingMode === "prioridad" ? "Prioridad" : "Estado"
                     }
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                  <ChevronDown className={`w-3.5 h-3.5 ${isNightMode ? "opacity-60 text-slate-400" : "opacity-80 text-slate-900"}`} />
                 </button>
 
                 {/* Dropdown Menu */}
@@ -929,8 +936,9 @@ export default function BrandexV3Page() {
         </div>
       </div>
 
-      {/* Top Right Controls: Notification Bell, User Profile Pill & Single Circular Day ☀️ / Night 🌙 Toggle Button */}
+      {/* Top Right Controls: SaveStatusBadge, Notification Bell, User Profile Pill */}
       <div className="absolute top-[20px] right-8 z-[100] flex items-center gap-2.5 pointer-events-auto select-none">
+        <SaveStatusBadge isNightMode={isNightMode} />
         {/* Notification Bell Icon Button with Red Badge */}
         {activeTab === "home" && (
           <button
@@ -941,10 +949,10 @@ export default function BrandexV3Page() {
             className={`relative flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-300 shadow-sm shrink-0 ${
               isNightMode
                 ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
-                : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
+                : "bg-white border-slate-200 text-slate-900 hover:text-black hover:border-slate-300"
             }`}
           >
-            <Bell className="w-3.5 h-3.5" />
+            <Bell className={`w-3.5 h-3.5 ${isNightMode ? "text-slate-350" : "text-slate-900"}`} />
             {notificationCount > 0 && (
               <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] animate-pulse" />
             )}
@@ -982,13 +990,13 @@ export default function BrandexV3Page() {
           className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300 cursor-pointer shadow-sm ${
             isNightMode
               ? "bg-slate-900 border-slate-800 text-amber-400 hover:bg-slate-800 hover:border-slate-700"
-              : "bg-white border-slate-200 text-indigo-600 hover:bg-slate-100 hover:border-slate-300"
+              : "bg-white border-slate-200 text-slate-900 hover:bg-slate-100 hover:border-slate-300"
           }`}
         >
           {isNightMode ? (
             <Sun className="w-3.5 h-3.5 fill-amber-400/20" />
           ) : (
-            <Moon className="w-3.5 h-3.5 fill-indigo-600/20" />
+            <Moon className="w-3.5 h-3.5 fill-slate-900/20 text-slate-900" />
           )}
         </button>
       </div>
@@ -1031,6 +1039,7 @@ export default function BrandexV3Page() {
             return (
             <div 
               key={card.id}
+              onMouseEnter={() => playSound('click')}
               onClick={() => {
                 if (isEditingColor) return;
                 setActiveProject(card.id);
@@ -1382,10 +1391,10 @@ export default function BrandexV3Page() {
                         animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
                         exit={{ opacity: 0, x: -6, filter: "blur(4px)" }}
                         transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className={`text-[11px] uppercase tracking-widest whitespace-nowrap select-none pr-3 ${
+                        className={`text-[13px] whitespace-nowrap select-none pr-3 ${
                           isActive 
-                            ? isNightMode ? "font-black opacity-100 text-indigo-400" : "font-black opacity-100 text-slate-900" 
-                            : isNightMode ? "font-semibold opacity-70 text-zinc-400" : "font-semibold opacity-60 text-slate-600"
+                            ? isNightMode ? "font-bold opacity-100 text-white" : "font-bold opacity-100 text-slate-900" 
+                            : isNightMode ? "font-medium opacity-80 text-zinc-300 hover:text-white" : "font-medium opacity-70 text-slate-600 hover:text-slate-900"
                         }`}
                       >
                         {item.label}

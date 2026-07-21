@@ -92,3 +92,143 @@ export function parseEsfuerzoMins(esfuerzo: string): number {
   if (s.includes("maratón") || s.includes("+3")) return 180;
   return 0;
 }
+
+export function parseTimeToHours(timeStr: string | undefined | null): number {
+  if (!timeStr) return 0;
+  const clean = timeStr.trim().toLowerCase();
+  
+  // Handle formats like "15 min", "30 min"
+  if (clean.includes("min")) {
+    const minMatch = clean.match(/(\d+(?:\.\d+)?)/);
+    if (minMatch) {
+      return parseFloat(minMatch[1]) / 60;
+    }
+  }
+  
+  // Handle formats like "1.5h", "2h", "1 hora", "2 horas", "3 horas o más"
+  const hrMatch = clean.match(/(\d+(?:\.\d+)?)/);
+  if (hrMatch) {
+    return parseFloat(hrMatch[1]);
+  }
+  
+  return 0;
+}
+
+export interface CardColorTheme {
+  bg: string;
+  title: string;
+  desc: string;
+  muted: string;
+  dot: string;
+  label: string;
+  panelBg: string;
+}
+
+export const CARD_COLOR_KEYS = [
+  "Predeterminado",
+  "Gris",
+  "Naranja",
+  "Amarillo",
+  "Verde",
+  "Azul",
+  "Morado",
+  "Rosa",
+  "Rojo",
+] as const;
+
+export function getCardColorTheme(colorName: string = "Predeterminado", _isNightMode: boolean = true): CardColorTheme {
+  const key = colorName || "Predeterminado";
+
+  switch (key) {
+    case "Gris":
+      return {
+        bg: "bg-[#334155] border border-slate-400/30 shadow-md",
+        panelBg: "bg-[#1e293b]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#334155]",
+        label: "Gris"
+      };
+    case "Naranja":
+      return {
+        bg: "bg-[#ea580c] border border-orange-400/30 shadow-md",
+        panelBg: "bg-[#9a3412]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#ea580c]",
+        label: "Naranja"
+      };
+    case "Amarillo":
+      return {
+        bg: "bg-[#d97706] border border-amber-400/30 shadow-md",
+        panelBg: "bg-[#92400e]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#d97706]",
+        label: "Amarillo"
+      };
+    case "Verde":
+      return {
+        bg: "bg-[#059669] border border-emerald-400/30 shadow-md",
+        panelBg: "bg-[#065f46]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#059669]",
+        label: "Verde"
+      };
+    case "Azul":
+      return {
+        bg: "bg-[#2563eb] border border-blue-400/30 shadow-md",
+        panelBg: "bg-[#1e40af]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#2563eb]",
+        label: "Azul"
+      };
+    case "Morado":
+      return {
+        bg: "bg-[#7c3aed] border border-violet-400/30 shadow-md",
+        panelBg: "bg-[#5b21b6]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#7c3aed]",
+        label: "Morado"
+      };
+    case "Rosa":
+      return {
+        bg: "bg-[#db2777] border border-pink-400/30 shadow-md",
+        panelBg: "bg-[#9d174d]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#db2777]",
+        label: "Rosa"
+      };
+    case "Rojo":
+      return {
+        bg: "bg-[#dc2626] border border-red-400/30 shadow-md",
+        panelBg: "bg-[#991b1b]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#dc2626]",
+        label: "Rojo"
+      };
+    default: // Predeterminado
+      return {
+        bg: "bg-[#18181b] border border-zinc-700/70 shadow-md",
+        panelBg: "bg-[#09090b]",
+        title: "text-white font-bold",
+        desc: "text-white/90 font-normal",
+        muted: "text-white/70",
+        dot: "bg-[#18181b]",
+        label: "Predeterminado"
+      };
+  }
+}

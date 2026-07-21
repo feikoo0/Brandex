@@ -198,7 +198,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
           desc: "Definición de requerimientos y entregables clave con el cliente.",
           format: "Reunión",
           time: "2h",
-          status: "Pendiente",
+          status: "Planificado",
           statusColor: "bg-white/5 border-white/10 text-white/60",
           subtasks: [
             { id: 1, text: "Aprobar cronograma de trabajo", done: false },
@@ -272,6 +272,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
                   setActiveClientId(client.id);
                   playSound('click');
                 }}
+                onMouseEnter={() => playSound('click')}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={`p-4 rounded-2xl cursor-pointer transition-all duration-300 relative border flex flex-col gap-3 ${
@@ -442,6 +443,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
                   key={project.id}
                   whileHover={{ scale: 1.015, y: -2 }}
                   whileTap={{ scale: 0.985 }}
+                  onMouseEnter={() => playSound('click')}
                   className={`rounded-2xl p-5 flex flex-col justify-between shrink-0 select-none cursor-pointer transition-all duration-200 relative w-[340px] h-[320px] group/card border ${
                     isNightMode
                       ? "bg-slate-900 border-slate-800 text-slate-50 shadow-sm"

@@ -36,7 +36,7 @@ export const INITIAL_PROJECT_TASKS: Record<number, Task[]> = {
       desc: "Ajustar backdrop-filters, opacidades y bordes radiales para lograr el efecto de cristal oscuro premium.", 
       format: "Tailwind CSS", 
       time: "5h", 
-      status: "Pendiente", 
+      status: "Planificado", 
       statusColor: "bg-white/5 border-white/10 text-white/60",
       attachmentUrl: "/taski-icon.png",
       subtasks: [
@@ -140,7 +140,7 @@ export const getFallbackTasks = (projectId: number): Task[] => [
     desc: "Pruebas de calidad en múltiples dispositivos y verificación de accesibilidad.", 
     format: "Testing", 
     time: "2h", 
-    status: "Pendiente", 
+    status: "Planificado", 
     statusColor: "bg-white/5 border-white/10 text-white/60",
     subtasks: [
       { id: 1, text: "Test en dispositivos móviles", done: false },
@@ -180,5 +180,90 @@ export const getDynamicProgress = (project: Project | null) => {
   return {
     progress: `${doneSubtasks} de ${totalSubtasks} tareas`,
     percent: `${Math.round((doneSubtasks / totalSubtasks) * 100)}%`
+  };
+};
+
+const formatLocalDateHelper = (d: Date): string => {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+export const autoEvaluateProjectStatus = <T extends { tasks?: any[]; status?: string; statusColor?: string; progress?: string; percent?: string }>(project: T): T => {
+  if (!project.tasks || project.tasks.length === 0) return project;
+
+  // Migrate any legacy "Pendiente" task statuses to "Planificado" & lock stable dates/colors
+  const migratedTasks = project.tasks.map((t: any) => {
+    let status = t.status;
+    if (status === "Pendiente" || !status) {
+      status = "Planificado";
+    }
+
+    let statusColor = t.statusColor;
+    if (!statusColor || statusColor.includes("white/5") || statusColor === "bg-white") {
+      if (status === "Completado") statusColor = "bg-emerald-500/20 border-emerald-500/30 text-emerald-400";
+      else if (status === "En Proceso") statusColor = "bg-amber-500/20 border-amber-500/30 text-amber-400";
+      else if (status === "En Revisión" || status === "Revisión") statusColor = "bg-purple-500/20 border-purple-500/30 text-purple-400";
+      else statusColor = "bg-slate-500/20 border-slate-500/30 text-slate-300";
+    }
+
+    let fecha_programada = t.fecha_programada;
+    if (!fecha_programada) {
+      let offset = 0;
+      if (status === "Completado") offset = 12;
+      else if (status === "En Proceso") offset = 0;
+      else {
+        const numId = Number(t.id) || 0;
+        if (numId % 3 === 0) offset = 1;
+        else if (numId % 3 === 1) offset = 4;
+        else offset = 15;
+      }
+      const d = new Date();
+      d.setDate(d.getDate() + offset);
+      fecha_programada = formatLocalDateHelper(d);
+    }
+
+    return {
+      ...t,
+      status,
+      statusColor,
+      fecha_programada
+    };
+  });
+
+  const totalTasks = migratedTasks.length;
+  const completedTasks = migratedTasks.filter(
+    (t: any) => t.status === "Completado" || t.status === "Completada"
+  ).length;
+
+  const isAllTasksCompleted = totalTasks > 0 && completedTasks === totalTasks;
+
+  const progress = `${completedTasks} de ${totalTasks} tareas`;
+  const percent = `${Math.round((completedTasks / totalTasks) * 100)}%`;
+
+  if (isAllTasksCompleted) {
+    return {
+      ...project,
+      tasks: migratedTasks,
+      status: "Completado",
+      statusColor: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
+      progress,
+      percent: "100%"
+    };
+  } else if (project.status === "Completado") {
+    // Revert project status if a task was changed from completed back to in-process/planned
+    return {
+      ...project,
+      tasks: migratedTasks,
+      status: "Activo",
+      statusColor: "bg-violet-500/10 border-violet-500/30 text-violet-400",
+      progress,
+      percent
+    };
+  }
+
+  return {
+    ...project,
+    tasks: migratedTasks,
+    progress,
+    percent
   };
 };

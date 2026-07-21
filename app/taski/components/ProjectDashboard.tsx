@@ -14,7 +14,7 @@ export interface Task {
   desc: string;
   format: string;
   time: string;
-  status: 'Pendiente' | 'En Proceso' | 'Completado';
+  status: 'Planificado' | 'En Proceso' | 'En Revisión' | 'Completado';
   statusColor: string;
   attachmentUrl?: string;
   subtasks: { id: number; text: string; done: boolean }[];
@@ -23,6 +23,8 @@ export interface Task {
   fecha_programada?: string;
   fecha_limite?: string;
   fecha_creacion?: string;
+  fecha_hora_completado?: string;
+  hora_inicio?: string;
   kanbanOrders?: Record<string, number>;
   color?: string;
 }
@@ -360,19 +362,27 @@ export function ProjectDashboard({
     playSound('pop');
     setTasks(prev => prev.map(t => {
       if (t.id !== taskId) return t;
-      let nextStatus: 'Pendiente' | 'En Proceso' | 'Completado';
+      let nextStatus: 'Planificado' | 'En Proceso' | 'En Revisión' | 'Completado';
       let nextColor: string;
-      if (t.status === 'Pendiente') {
+      if (t.status === 'Planificado' || t.status === ('Pendiente' as any)) {
         nextStatus = 'En Proceso';
-        nextColor = "bg-orange-500/10 border-orange-500/30 text-orange-400";
+        nextColor = "bg-amber-500/10 border-amber-500/30 text-amber-400";
       } else if (t.status === 'En Proceso') {
+        nextStatus = 'En Revisión';
+        nextColor = "bg-purple-500/10 border-purple-500/30 text-purple-400";
+      } else if (t.status === 'En Revisión' || (t.status as any) === 'Revisión') {
         nextStatus = 'Completado';
         nextColor = "bg-emerald-500/10 border-emerald-500/30 text-emerald-400";
       } else {
-        nextStatus = 'Pendiente';
-        nextColor = "bg-white/5 border border-white/10 text-white/60";
+        nextStatus = 'Planificado';
+        nextColor = "bg-slate-500/10 border-slate-500/30 text-slate-300";
       }
-      return { ...t, status: nextStatus, statusColor: nextColor };
+      return { 
+        ...t, 
+        status: nextStatus, 
+        statusColor: nextColor,
+        fecha_hora_completado: nextStatus === 'Completado' ? new Date().toISOString() : undefined 
+      };
     }));
   };
 
@@ -445,7 +455,7 @@ export function ProjectDashboard({
       desc: "Descripción de la tarea...",
       format: "Formato",
       time: "0H",
-      status: "Pendiente",
+      status: "Planificado",
       statusColor: "bg-white",
       subtasks: [],
       fecha_creacion
@@ -490,7 +500,7 @@ export function ProjectDashboard({
       desc: "Descripción de la nueva tarea. Clic en el cuadro de la izquierda para adjuntar imagen.",
       format: "Formato Web",
       time: "2h",
-      status: "Pendiente" as const,
+      status: "Planificado" as const,
       statusColor: "bg-white/5 border border-white/10 text-white/60",
       attachmentUrl: "",
       subtasks: [
@@ -1043,7 +1053,7 @@ export function ProjectDashboard({
                 {/* Radial Glow (Clipped to card shape) */}
                 {!isNeumorphic && (
                   <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
-                    <div className={`absolute -top-8 -left-8 w-28 h-28 ${taskGlow} ${task.status === 'Pendiente' ? 'opacity-[0.15]' : 'opacity-[0.60]'} rounded-full blur-[25px] transition-all duration-500`} />
+                    <div className={`absolute -top-8 -left-8 w-28 h-28 ${taskGlow} ${task.status === 'Planificado' || (task.status as any) === 'Pendiente' ? 'opacity-[0.15]' : 'opacity-[0.60]'} rounded-full blur-[25px] transition-all duration-500`} />
                   </div>
                 )}
                 
