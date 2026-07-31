@@ -1,6 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // Regla explícita para la colección /sessions
+    match /sessions/{sessionId} {
+      allow read: if request.auth != null || true; // Permitir lectura autenticada / app local
+      allow create, update: if (request.resource.data.origin in ['manual', 'agent_self', 'agent_research', 'agent_qa_visual'])
+                           && (request.resource.data.status in ['en_curso', 'completada', 'completada_forzada']);
+      allow delete: if request.auth != null;
+    }
+
+    // Regla por defecto para el resto de colecciones
     match /{document=**} {
       allow read, write: if true;
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import SortableTaskCard from "./TaskCard";
@@ -117,6 +117,25 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   taskCardSharedProps,
 }) => {
   const colTasks = col.tasks;
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevDraggingRef = useRef<string | null>(null);
+
+  // After drag ends, re-assign card-pos-* classes and remove hover-disabled
+  useEffect(() => {
+    const wasDragging = prevDraggingRef.current !== null;
+    const isNowIdle = draggingTaskId === null;
+    prevDraggingRef.current = draggingTaskId;
+
+    if (wasDragging && isNowIdle && scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      // Remove stale drag state classes
+      container.classList.remove("hover-disabled", "is-scrolling");
+      // Re-assign card-pos-* classes after DOM settles
+      requestAnimationFrame(() => {
+        updateVisibleCards(container);
+      });
+    }
+  }, [draggingTaskId, updateVisibleCards]);
 
   return (
     <ColumnContainer
@@ -128,7 +147,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       isAnyDropdownOpen={
         activeStatusDropdownCardId !== null ||
         activeFormatDropdownCardId !== null ||
-        activeTimeDropdownCardId !== null
+        activeTimeDropdownCardId !== null ||
+        taskCardSharedProps?.activeCardMenuId !== null
       }
     >
       {/* Header of Column */}
@@ -156,6 +176,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       >
         <div
           ref={(el) => {
+            scrollContainerRef.current = el;
             if (el) {
               if (!draggingTaskId) {
                 setTimeout(() => {
@@ -245,7 +266,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
                   activeStatusDropdownCardId === t.id ||
                   activeFormatDropdownCardId === t.id ||
                   activeTimeDropdownCardId === t.id ||
-                  activeColorSelectorCardId === t.id
+                  activeColorSelectorCardId === t.id ||
+                  taskCardSharedProps?.activeCardMenuId === t.id
                 }
                 isEditing={
                   editingTaskField?.taskId ===

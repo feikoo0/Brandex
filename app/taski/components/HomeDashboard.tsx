@@ -10,10 +10,15 @@ import TimelineDiario from "./TimelineDiario";
 import KanbanBoard from "./KanbanBoard";
 import TaskTableView from "./TaskTableView";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
+import { useRecentSessions } from "@/hooks/useSessions";
 import { playSound } from "../utils/audio";
 import { parseTimeToHours, getCardColorTheme, CARD_COLOR_KEYS } from "@/lib/utils";
 import { autoEvaluateProjectStatus } from "../utils/data";
 import { persistProjectUpdate } from "../utils/persist";
+import { doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useTaskCardInteractions } from "../hooks/useTaskCardInteractions";
 
 interface SynthesizedTask {
   id: string;
@@ -121,75 +126,39 @@ export function HomeDashboard({
     "Branding"
   ]);
 
-  const [activeStatusDropdownCardId, setActiveStatusDropdownCardId] = useState<string | null>(null);
-  const [activeFormatDropdownCardId, setActiveFormatDropdownCardId] = useState<string | null>(null);
-  const [isAddingNewFormat, setIsAddingNewFormat] = useState<boolean>(false);
-  const [newFormatValue, setNewFormatValue] = useState<string>("");
-  const [activeColorSelectorCardId, setActiveColorSelectorCardId] = useState<string | null>(null);
+  const {
+    activeStatusDropdownCardId,
+    setActiveStatusDropdownCardId,
+    activeFormatDropdownCardId,
+    setActiveFormatDropdownCardId,
+    activeTimeDropdownCardId,
+    setActiveTimeDropdownCardId,
+    activeColorSelectorCardId,
+    setActiveColorSelectorCardId,
+    activeCardMenuId,
+    setActiveCardMenuId,
+    editingTaskField,
+    setEditingTaskField,
+    editingValue,
+    setEditingValue,
+    hoveredStatusOptionCard,
+    setHoveredStatusOptionCard,
+    hoveredFormatOptionCard,
+    setHoveredFormatOptionCard,
+    isAddingNewFormat,
+    setIsAddingNewFormat,
+    newFormatValue,
+    setNewFormatValue,
+    isAddingCustomTime,
+    setIsAddingCustomTime,
+    customTimeValue,
+    setCustomTimeValue,
+    getStatusPillConfig,
+    getFormatPillConfig,
+  } = useTaskCardInteractions();
 
-  const [hoveredStatusOptionCard, setHoveredStatusOptionCard] = useState<{ taskId: string; status: string } | null>(null);
-  const [hoveredFormatOptionCard, setHoveredFormatOptionCard] = useState<{ taskId: string; format: string } | null>(null);
-
-  const getStatusPillConfig = React.useCallback((st: string) => {
-    switch (st) {
-      case "Completado":
-        return {
-          activeBgClass: "bg-[#10b981] border-none",
-          hoverBgClass: "bg-[#34d399] border-none",
-          textActiveColor: "text-emerald-100 font-bold",
-          textHoverColor: "text-emerald-50 font-bold",
-          dotClass: "bg-emerald-100",
-        };
-      case "En Proceso":
-        return {
-          activeBgClass: "bg-[#f59e0b] border-none",
-          hoverBgClass: "bg-[#fbbf24] border-none",
-          textActiveColor: "text-amber-100 font-bold",
-          textHoverColor: "text-amber-50 font-bold",
-          dotClass: "bg-amber-100",
-        };
-      case "En Revisión":
-      case "Revisión":
-        return {
-          activeBgClass: "bg-[#8b5cf6] border-none",
-          hoverBgClass: "bg-[#a78bfa] border-none",
-          textActiveColor: "text-purple-100 font-bold",
-          textHoverColor: "text-purple-50 font-bold",
-          dotClass: "bg-purple-100",
-        };
-      case "Planificado":
-      case "Pendiente":
-      default:
-        return {
-          activeBgClass: "bg-slate-600 border-none",
-          hoverBgClass: "bg-slate-500 border-none",
-          textActiveColor: "text-slate-100 font-bold",
-          textHoverColor: "text-slate-50 font-bold",
-          dotClass: "bg-slate-100",
-        };
-    }
-  }, []);
-
-  const getFormatPillConfig = React.useCallback((fmt: string, index: number) => {
-    const colors = [
-      { active: "bg-indigo-500", hover: "bg-indigo-400", text: "text-indigo-100", dot: "bg-indigo-100" },
-      { active: "bg-violet-500", hover: "bg-violet-400", text: "text-violet-100", dot: "bg-violet-100" },
-      { active: "bg-teal-500", hover: "bg-teal-400", text: "text-teal-100", dot: "bg-teal-100" },
-      { active: "bg-sky-500", hover: "bg-sky-400", text: "text-sky-100", dot: "bg-sky-100" },
-      { active: "bg-pink-500", hover: "bg-pink-400", text: "text-pink-100", dot: "bg-pink-100" },
-    ];
-    const c = colors[Math.abs(index) % colors.length];
-    return {
-      activeBgClass: `${c.active} border-none`,
-      hoverBgClass: `${c.hover} border-none`,
-      textActiveColor: `${c.text} font-bold`,
-      textHoverColor: `${c.text} font-bold`,
-      dotClass: c.dot,
-    };
-  }, []);
-
-  const [editingTaskField, setEditingTaskField] = useState<{ taskId: string; field: "title" | "desc" } | null>(null);
-  const [editingValue, setEditingValue] = useState<string>("");
+  const [sortBy, setSortBy] = useState<"alfabetico" | "creacion" | "visto">("visto");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
   const registerNativeEdit = React.useCallback((taskId: string, field: "title" | "desc", currentValue: string) => {
     return (node: HTMLElement | null) => {
@@ -204,7 +173,7 @@ export function HomeDashboard({
         setEditingValue(currentValue || "");
       };
     };
-  }, []);
+  }, [setEditingTaskField, setEditingValue]);
 
   const registerNativeInput = React.useCallback((node: HTMLElement | null) => {
     if (!node) return;
@@ -212,39 +181,9 @@ export function HomeDashboard({
     node.ontouchstart = (e) => e.stopPropagation();
   }, []);
 
-
-  const [activeTimeDropdownCardId, setActiveTimeDropdownCardId] = useState<string | null>(null);
-  const [isAddingCustomTime, setIsAddingCustomTime] = useState<boolean>(false);
-  const [customTimeValue, setCustomTimeValue] = useState<string>("");
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
   const boardRef = React.useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (
-        activeStatusDropdownCardId !== null ||
-        activeFormatDropdownCardId !== null ||
-        activeTimeDropdownCardId !== null ||
-        activeColorSelectorCardId !== null
-      ) {
-        if (!target.closest("[data-dropdown-container]")) {
-          setActiveStatusDropdownCardId(null);
-          setActiveFormatDropdownCardId(null);
-          setActiveTimeDropdownCardId(null);
-          setActiveColorSelectorCardId(null);
-          setIsAddingNewFormat(false);
-          setIsAddingCustomTime(false);
-        }
-      }
-    };
-
-    window.addEventListener("click", handleOutsideClick);
-    return () => {
-      window.removeEventListener("click", handleOutsideClick);
-    };
-  }, [activeStatusDropdownCardId, activeFormatDropdownCardId, activeTimeDropdownCardId, activeColorSelectorCardId]);
 
 
   const formatLocalDate = (d: Date): string => {
@@ -285,6 +224,12 @@ export function HomeDashboard({
                 ? new Date().toISOString()
                 : undefined
             };
+
+            // Persistencia en la colección nativa /tasks
+            updateDoc(doc(db, "tasks", String(taskIdStr)), {
+              estado: status,
+              updatedAt: new Date().toISOString()
+            }).catch(err => console.error("Error actualizando /tasks:", err));
           }
 
           return updatedTask;
@@ -292,8 +237,8 @@ export function HomeDashboard({
 
         const evalProj = autoEvaluateProjectStatus({
           ...p,
-          status: (p.id === projectId && status === "Revisión") ? "En Revisión Interna" : p.status,
-          statusColor: (p.id === projectId && status === "Revisión") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" : p.statusColor,
+          status: (String(p.id) === String(projectId) && status === "Revisión") ? "En Revisión Interna" : p.status,
+          statusColor: (String(p.id) === String(projectId) && status === "Revisión") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" : p.statusColor,
           tasks: updatedTasks
         });
 
@@ -358,6 +303,12 @@ export function HomeDashboard({
 
           if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
             updatedTask = { ...updatedTask, fecha_programada: dateStr };
+
+            // Persistencia en la colección nativa /tasks
+            updateDoc(doc(db, "tasks", String(taskIdStr)), {
+              fechaProg: dateStr,
+              updatedAt: new Date().toISOString()
+            }).catch(err => console.error("Error actualizando fechaProg en /tasks:", err));
           }
           
           return updatedTask;
@@ -424,24 +375,8 @@ export function HomeDashboard({
       const updatedTasks = p.tasks?.map(t => {
         if (String(t.id) !== String(tId)) return t;
 
-        // Preserve stable due date even if dynamically generated previously
-        const existingProgDate = t.fecha_programada || (() => {
-          let offset = 0;
-          if (t.status === "Completado") offset = 12;
-          else if (t.status === "En Proceso") offset = 0;
-          else {
-            if (Number(t.id) % 3 === 0) offset = 1;
-            else if (Number(t.id) % 3 === 1) offset = 4;
-            else offset = 15;
-          }
-          const d = new Date();
-          d.setDate(d.getDate() + offset);
-          return formatLocalDate(d);
-        })();
-
         const updated = { 
           ...t, 
-          fecha_programada: t.fecha_programada || existingProgDate,
           [key]: value 
         };
 
@@ -494,6 +429,7 @@ export function HomeDashboard({
       setIsAddingCustomTime(false);
       setCustomTimeValue("");
       setActiveColorSelectorCardId(null);
+      setActiveCardMenuId(null);
     }
   }, [expandedCardId]);
 
@@ -523,112 +459,9 @@ export function HomeDashboard({
     return 8;
   });
 
-  // Vertical Navbar Pill State
-  const [isVerticalNavExpanded, setIsVerticalNavExpanded] = useState(false);
-  const [selectedVerticalOption, setSelectedVerticalOption] = useState("opcion1");
-  const [hoveredVerticalOption, setHoveredVerticalOption] = useState<string | null>(null);
 
-  const verticalNavOptions = React.useMemo(() => [
-    { 
-      id: "opcion1", 
-      label: "Opción 1", 
-      activeBgClass: "bg-[#10b981] border-none",
-      hoverBgClass: "bg-[#34d399] border-none",
-      textActiveColor: "text-slate-950 font-extrabold",
-      textHoverColor: "text-slate-950 font-bold",
-      dotClass: "bg-slate-950"
-    },
-    { 
-      id: "opcion2", 
-      label: "Opción 2", 
-      activeBgClass: "bg-[#0ea5e9] border-none",
-      hoverBgClass: "bg-[#38bdf8] border-none",
-      textActiveColor: "text-slate-950 font-extrabold",
-      textHoverColor: "text-slate-950 font-bold",
-      dotClass: "bg-slate-950"
-    },
-    { 
-      id: "opcion3", 
-      label: "Opción 3", 
-      activeBgClass: "bg-[#f59e0b] border-none",
-      hoverBgClass: "bg-[#fbbf24] border-none",
-      textActiveColor: "text-slate-950 font-extrabold",
-      textHoverColor: "text-slate-950 font-bold",
-      dotClass: "bg-slate-950"
-    },
-    { 
-      id: "opcion4", 
-      label: "Opción 4", 
-      activeBgClass: "bg-[#a855f7] border-none",
-      hoverBgClass: "bg-[#c084fc] border-none",
-      textActiveColor: "text-white font-extrabold",
-      textHoverColor: "text-white font-bold",
-      dotClass: "bg-white"
-    },
-  ], []);
 
-  // Cálculo del esfuerzo diario
-  const todayEffort = React.useMemo<{
-    verde: number;
-    naranja: number;
-    gris: number;
-    excedente: number;
-    maxVal: number;
-    verdeCount: number;
-    naranjaCount: number;
-    nextTask: { title: string; hours: number } | null;
-    total: number;
-    tasksVerde: { id: number; title: string; hours: number; kanbanOrders?: any }[];
-    tasksNaranja: { id: number; title: string; hours: number; kanbanOrders?: any }[];
-  }>(() => {
-    const hoy = formatLocalDate(new Date());
-    let verde = 0, naranja = 0, verdeCount = 0, naranjaCount = 0;
-    const tasksVerde: { id: number; title: string; hours: number; kanbanOrders?: any }[] = [];
-    const tasksNaranja: { id: number; title: string; hours: number; kanbanOrders?: any }[] = [];
 
-    projects.forEach(p => {
-      (p.tasks || []).forEach(t => {
-        const isToday = t.fecha_programada === hoy;
-        const completedToday = t.status === "Completado"
-          && t.fecha_hora_completado?.startsWith(hoy);
-
-        if (!isToday && !completedToday) return;
-
-        const hours = parseTimeToHours(t.time);
-
-        if (t.status === "Completado" && (completedToday || (isToday && !t.fecha_hora_completado))) {
-          verde += hours;
-          verdeCount++;
-          tasksVerde.push({ id: t.id, title: t.title, hours, kanbanOrders: t.kanbanOrders });
-        } else if (t.status !== "Completado" && isToday) {
-          naranja += hours;
-          naranjaCount++;
-          tasksNaranja.push({ id: t.id, title: t.title, hours, kanbanOrders: t.kanbanOrders });
-        }
-      });
-    });
-
-    const sortFn = (a: any, b: any) => {
-      const orderA = a.kanbanOrders?.[groupingMode] ?? Infinity;
-      const orderB = b.kanbanOrders?.[groupingMode] ?? Infinity;
-      if (orderA === Infinity && orderB === Infinity) {
-        return a.id - b.id;
-      }
-      return orderA - orderB;
-    };
-    
-    tasksVerde.sort(sortFn);
-    tasksNaranja.sort(sortFn);
-
-    const nextTask = tasksNaranja.length > 0 ? { title: tasksNaranja[0].title, hours: tasksNaranja[0].hours } : null;
-
-    const total = verde + naranja;
-    const excedente = Math.max(0, total - limiteHorasDia);
-    const gris = Math.max(0, limiteHorasDia - total);
-    const maxVal = Math.max(limiteHorasDia, total);
-
-    return { verde, naranja, gris, excedente, maxVal, verdeCount, naranjaCount, nextTask, total, tasksVerde, tasksNaranja };
-  }, [projects, limiteHorasDia, groupingMode]);
 
   const kanbanTasks = React.useMemo(() => {
     const list: any[] = [];
@@ -641,15 +474,13 @@ export function HomeDashboard({
           const completedCount = p.tasks?.filter(tk => tk.status === "Completado").length || 0;
           const totalCount = p.tasks?.length || 0;
 
-          // Dynamically distribute due dates based on task status or task ID if not set:
+          // Dynamically distribute due dates based on task ID if not set:
           const progDateStr = t.fecha_programada || (() => {
             let offset = 0;
             if (t.status === "Completado") {
               offset = 12; // Completado -> Este mes
-            } else if (t.status === "En Proceso") {
-              offset = 0; // En proceso -> Hoy
             } else {
-              // Pending tasks are distributed:
+              // Stable distribution based strictly on task ID:
               if (t.id % 3 === 0) offset = 1; // Tomorrow
               else if (t.id % 3 === 1) offset = 4; // This Week
               else offset = 15; // This Month
@@ -677,7 +508,7 @@ export function HomeDashboard({
             taskTitle: t.title,
             completedTasks: completedCount,
             totalTasks: totalCount,
-            taskIndex: index + 1,
+            taskIndex: index,
             dueDate,
             fecha_programada: progDateStr,
             fecha_limite: limitDateStr,
@@ -692,21 +523,29 @@ export function HomeDashboard({
       }
     });
 
-    // Ordenar globalmente por la vista actual (groupingMode)
+    // Ordenar globalmente por la vista actual (groupingMode) y criterios de ordenación (sortBy, sortOrder)
     list.sort((a, b) => {
-      // Usamos Infinity para que las tareas viejas sin reordenar queden al final en lugar de colarse en medio.
-      // Si ambas son Infinity, las ordenamos por ID/índice para que el renderizado sea estable.
-      const orderA = a.kanbanOrders?.[groupingMode] ?? Infinity;
-      const orderB = b.kanbanOrders?.[groupingMode] ?? Infinity;
-      
-      if (orderA === Infinity && orderB === Infinity) {
-        return a.taskIndex - b.taskIndex;
+      let cmp = 0;
+      if (sortBy === "alfabetico") {
+        cmp = (a.taskTitle || "").localeCompare(b.taskTitle || "", "es", { sensitivity: "base" });
+      } else if (sortBy === "creacion") {
+        const dateA = new Date((a.fecha_creacion || "") + "T00:00:00").getTime();
+        const dateB = new Date((b.fecha_creacion || "") + "T00:00:00").getTime();
+        cmp = dateA - dateB;
+      } else {
+        const orderA = a.kanbanOrders?.[groupingMode] ?? Infinity;
+        const orderB = b.kanbanOrders?.[groupingMode] ?? Infinity;
+        if (orderA === Infinity && orderB === Infinity) {
+          return a.taskIndex - b.taskIndex;
+        } else {
+          return orderA - orderB;
+        }
       }
-      return orderA - orderB;
+      return sortOrder === "asc" ? cmp : -cmp;
     });
 
     return list;
-  }, [projects, groupingMode]);
+  }, [projects, groupingMode, sortBy, sortOrder]);
 
   const filteredKanbanTasks = React.useMemo(() => {
     let result = kanbanTasks;
@@ -736,6 +575,111 @@ export function HomeDashboard({
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
+  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora
+  const { sessions: recentSessions } = useRecentSessions(100);
+
+  // Cálculo del esfuerzo diario sincronizado 1:1 con las tarjetas exactas de la columna "Hoy" en el Kanban
+  const todayEffort = React.useMemo<{
+    verde: number;
+    naranja: number;
+    gris: number;
+    excedente: number;
+    maxVal: number;
+    verdeCount: number;
+    naranjaCount: number;
+    nextTask: { title: string; hours: number } | null;
+    total: number;
+    tasksVerde: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
+    tasksNaranja: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
+    allTodayTasks: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
+  }>(() => {
+    // Leemos estrictamente las tareas que corresponden a la columna "Hoy" del Kanban
+    const todayKanbanList = (filteredKanbanTasks || []).filter(t => {
+      return getCalendarDaysDiff(t.dueDate) <= 0;
+    });
+
+    let verde = 0, naranja = 0, verdeCount = 0, naranjaCount = 0;
+    const tasksVerde: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[] = [];
+    const tasksNaranja: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[] = [];
+    const allTodayTasks: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[] = [];
+
+    todayKanbanList.forEach(t => {
+      const hours = parseTimeToHours(t.time);
+      const isCompleted = t.status === "Completado" || t.status === "Completada";
+      const title = t.taskTitle || t.title || "Tarea sin título";
+
+      const rawId = String(t.id);
+      const cleanId = rawId.includes("kt-") ? rawId.split("-")[2] : rawId;
+
+      // Calcular todos los minutos acumulados en sesiones para esta tarea (mantiene el avance marcado)
+      const taskSessions = (recentSessions || []).filter(s => {
+        const sTaskId = String(s.task_id || "");
+        return sTaskId === cleanId || sTaskId === rawId;
+      });
+
+      const executedMins = taskSessions.reduce((sum, s) => {
+        if (s.status === "en_curso") {
+          const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+          const elapsed = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+          return sum + elapsed;
+        }
+        return sum + (s.durationMins || 0);
+      }, 0);
+
+      if (isCompleted) {
+        verde += hours;
+        verdeCount++;
+        tasksVerde.push({ id: t.id, title, hours, isCompleted: true, executedMins });
+      } else {
+        naranja += hours;
+        naranjaCount++;
+        tasksNaranja.push({ id: t.id, title, hours, isCompleted: false, executedMins });
+      }
+
+      allTodayTasks.push({
+        id: t.id,
+        title,
+        hours,
+        isCompleted,
+        executedMins
+      });
+    });
+
+    const nextTask = tasksNaranja.length > 0 ? { title: tasksNaranja[0].title, hours: tasksNaranja[0].hours } : null;
+    const total = verde + naranja;
+    const excedente = Math.max(0, total - limiteHorasDia);
+    const gris = Math.max(0, limiteHorasDia - total);
+    const maxVal = Math.max(limiteHorasDia, total);
+
+    return { verde, naranja, gris, excedente, maxVal, verdeCount, naranjaCount, nextTask, total, tasksVerde, tasksNaranja, allTodayTasks };
+  }, [filteredKanbanTasks, limiteHorasDia, getCalendarDaysDiff, recentSessions]);
+
+  const handleUpdateTaskStatus = React.useCallback((projId: string | number, taskId: string | number, status: string) => {
+    onUpdateProjects(prev => prev.map(p => {
+      if (String(p.id) !== String(projId)) return p;
+      const updatedTasks = (p.tasks || []).map(t => {
+        if (String(t.id) !== String(taskId)) return t;
+        return {
+          ...t,
+          status: status as any,
+          statusColor: status === "Completado" 
+            ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+            : "bg-slate-500/20 border-slate-500/30 text-slate-300",
+          fecha_hora_completado: status === "Completado" ? new Date().toISOString() : undefined
+        };
+      });
+      const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
+      persistProjectUpdate(p.id, {
+        tasks: evalProj.tasks,
+        status: evalProj.status,
+        statusColor: evalProj.statusColor,
+        progress: evalProj.progress,
+        percent: evalProj.percent
+      });
+      return evalProj;
+    }));
+  }, [onUpdateProjects, autoEvaluateProjectStatus, persistProjectUpdate]);
+
 
 
   useEffect(() => {
@@ -748,9 +692,124 @@ export function HomeDashboard({
     }
   }, [onViewChange]);
 
+  const handleAddTaskToProject = React.useCallback((projId: string | number) => {
+    playSound("pop");
+    onUpdateProjects((prev) =>
+      prev.map((p) => {
+        if (String(p.id) !== String(projId)) return p;
+        const existingTasks = p.tasks || [];
+        const maxId = existingTasks.reduce((max, t) => {
+          const num = typeof t.id === "number" ? t.id : parseInt(String(t.id).replace(/\D/g, ""), 10) || 0;
+          return Math.max(max, num);
+        }, 0);
+        const newId = maxId + 1;
+        const defaultDeadline = (p as any).fecha_limite || ((p as any).deadlineRaw) || ((p as any).deadline && /^\d{4}-\d{2}-\d{2}$/.test((p as any).deadline) ? (p as any).deadline : undefined);
+        const newTask: Task = {
+          id: newId,
+          title: "Nueva tarea",
+          status: "Planificado",
+          statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+          subtasks: [],
+          time: "30 min",
+          desc: "",
+          format: "Post",
+          fecha_programada: formatLocalDate(new Date()),
+          fecha_creacion: formatLocalDate(new Date()),
+          fecha_limite: defaultDeadline,
+          deadline: defaultDeadline,
+        };
+
+        // Guardar la nueva tarea en la colección /tasks de Firestore
+        setDoc(doc(db, "tasks", String(newId)), {
+          id: newId,
+          titulo: newTask.title,
+          contenido: "",
+          formato: newTask.format,
+          tiempoEstimado: newTask.time,
+          estado: newTask.status,
+          proyecto_id: p.id,
+          fechaProg: newTask.fecha_programada,
+          fechaEntrega: defaultDeadline || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }).catch((err) => console.error("Error al guardar tarea en /tasks:", err));
+
+        const updatedTasks = [...existingTasks, newTask];
+        const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
+        persistProjectUpdate(p.id, {
+          tasks: evalProj.tasks,
+          status: evalProj.status,
+          statusColor: evalProj.statusColor,
+          progress: evalProj.progress,
+          percent: evalProj.percent,
+        });
+        return evalProj;
+      })
+    );
+  }, [onUpdateProjects, formatLocalDate]);
+
+  const handleChangeProjectColor = React.useCallback((projId: string | number) => {
+    playSound("click");
+    const COLOR_MAP: Record<string, { h: number; s: number; l: number; colorStr: string; gradient: string }> = {
+      "Azul": { h: 217, s: 91, l: 60, colorStr: "hsl(217, 91%, 60%)", gradient: "bg-blue-600" },
+      "Naranja": { h: 38, s: 92, l: 50, colorStr: "hsl(38, 92%, 50%)", gradient: "bg-amber-500" },
+      "Morado": { h: 271, s: 81, l: 60, colorStr: "hsl(271, 81%, 60%)", gradient: "bg-purple-600" },
+      "Verde": { h: 160, s: 84, l: 40, colorStr: "hsl(160, 84%, 40%)", gradient: "bg-emerald-600" },
+      "Índigo": { h: 239, s: 84, l: 55, colorStr: "hsl(239, 84%, 55%)", gradient: "bg-indigo-600" },
+      "Rosa": { h: 333, s: 71, l: 52, colorStr: "hsl(333, 71%, 52%)", gradient: "bg-pink-600" },
+      "Menta": { h: 175, s: 77, l: 40, colorStr: "hsl(175, 77%, 40%)", gradient: "bg-teal-600" },
+      "Gris": { h: 215, s: 14, l: 40, colorStr: "hsl(215, 14%, 40%)", gradient: "bg-slate-700" }
+    };
+    const keys = Object.keys(COLOR_MAP);
+
+    onUpdateProjects((prev) =>
+      prev.map((p) => {
+        if (String(p.id) !== String(projId)) return p;
+        
+        let currIdx = -1;
+        if ((p as any).color && keys.includes((p as any).color)) {
+          currIdx = keys.indexOf((p as any).color);
+        } else if (p.customColor && typeof p.customColor.h === "number") {
+          currIdx = keys.findIndex((k) => Math.abs(COLOR_MAP[k].h - p.customColor!.h) < 15);
+        }
+
+        const nextIdx = currIdx >= 0 ? (currIdx + 1) % keys.length : 1;
+        const nextColorName = keys[nextIdx];
+        const cfg = COLOR_MAP[nextColorName];
+
+        const updatedTasks = p.tasks?.map((t) => ({
+          ...t,
+          color: nextColorName
+        })) || [];
+
+        const updated = { 
+          ...p, 
+          color: nextColorName,
+          customColor: { h: cfg.h, s: cfg.s, l: cfg.l },
+          customGradientStyle: cfg.colorStr,
+          customGlowStyle: cfg.colorStr,
+          gradient: cfg.gradient,
+          tasks: updatedTasks
+        };
+        persistProjectUpdate(p.id, { 
+          color: nextColorName,
+          customColor: { h: cfg.h, s: cfg.s, l: cfg.l },
+          customGradientStyle: cfg.colorStr,
+          customGlowStyle: cfg.colorStr,
+          gradient: cfg.gradient,
+          tasks: updatedTasks
+        } as any);
+        return updated;
+      })
+    );
+  }, [onUpdateProjects]);
+
   const taskCardSharedProps = {
     projects,
     setProjects: onUpdateProjects,
+    onSelectProject,
+    onAddTaskToProject: handleAddTaskToProject,
+    onChangeProjectColor: handleChangeProjectColor,
     colorConfig,
     getStatusPillConfig,
     getFormatPillConfig,
@@ -763,6 +822,12 @@ export function HomeDashboard({
     setActiveTimeDropdownCardId,
     activeColorSelectorCardId,
     setActiveColorSelectorCardId,
+    activeCardMenuId,
+    setActiveCardMenuId,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
     hoveredStatusOptionCard,
     setHoveredStatusOptionCard,
     hoveredFormatOptionCard,
@@ -782,12 +847,12 @@ export function HomeDashboard({
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
   const bgStyle = headerBgStyle;
-  const r1BgStyle = isNightMode ? "bg-[#111113]" : "bg-[#f8fafc]";
+  const r1BgStyle = isNightMode ? "bg-[#111113]" : "bg-[#fffce2]";
   const r1BorderStyle = isNightMode ? "border border-white/10" : "border border-slate-200";
   const cardBgStyle = isNightMode ? "bg-white/[0.04]" : "bg-black/[0.04]";
 
   return (
-    <div className={`w-full h-full flex flex-col gap-5 hide-scrollbar pb-6 pr-2 pt-1 ${
+    <div className={`w-full h-full flex flex-col gap-5 hide-scrollbar pb-6 pr-2 pt-1 overflow-x-hidden ${
       draggingTaskId ? "overflow-visible is-dragging-active" : "overflow-y-auto"
     }`}>
       <style>{`
@@ -826,7 +891,7 @@ export function HomeDashboard({
         /* Reset card internals to defaults during scroll/cooldown */
         .task-list-scroll.is-scrolling .task-card-title,
         .task-list-scroll.hover-disabled .task-card-title {
-          transform: translateY(12px) !important;
+          transform: translateY(0px) !important;
         }
         .task-list-scroll.is-scrolling .project-title,
         .task-list-scroll.hover-disabled .project-title {
@@ -847,7 +912,6 @@ export function HomeDashboard({
           transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
           will-change: height, opacity;
           scroll-snap-align: start;
-          scroll-margin-top: 10px;
           touch-action: none;
         }
         .task-card-wrapper.is-dragging-card {
@@ -856,16 +920,16 @@ export function HomeDashboard({
 
         /* Delay card hover changes to prevent accidental triggers when passing cursor by */
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card-wrapper {
-          transition-delay: 280ms !important;
+          transition-delay: 450ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card {
-          transition-delay: 280ms !important;
+          transition-delay: 450ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .project-title {
-          transition-delay: 280ms !important;
+          transition-delay: 450ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card-title {
-          transition-delay: 280ms !important;
+          transition-delay: 450ms !important;
         }
 
 
@@ -977,7 +1041,7 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
           opacity: 0 !important;
           transition: opacity 0.12s ease-out !important;
-          transition-delay: 280ms !important;
+          transition-delay: 450ms !important;
         }
 
         /* Task title (base rules) */
@@ -988,7 +1052,7 @@ export function HomeDashboard({
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
           transform: translateY(0px) !important;
-          transition-delay: 380ms !important;
+          transition-delay: 450ms !important;
         }
         /* Keep neighbor card titles at normal multi-line display when another card is hovered */
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
@@ -1011,7 +1075,7 @@ export function HomeDashboard({
           max-height: 75px !important;
           opacity: 1 !important;
           transform: translateY(0px) !important;
-          transition-delay: 380ms !important;
+          transition-delay: 450ms !important;
         }
 
         /* =====================================================
@@ -1020,6 +1084,7 @@ export function HomeDashboard({
         /* Disable scroll-snap during double expansion to prevent browser fight */
         .task-list-scroll:has(.is-expanded-double) {
           scroll-snap-type: none !important;
+          gap: 0 !important;
         }
 
         /* Heights and visibility states for click expansion */
@@ -1032,25 +1097,20 @@ export function HomeDashboard({
         .task-card-wrapper.is-shrunk-sibling {
           height: 135px !important;
         }
+        .task-card-wrapper.is-expanded-double:has(+ .is-shrunk-sibling),
+        .task-card-wrapper.is-shrunk-sibling:has(+ .is-expanded-double) {
+          margin-bottom: 10px !important;
+        }
         
-        /* Hidden siblings will slide up/down and fade out beautifully */
+        /* Hidden siblings must not consume gap space or visual offset inside the fixed-height viewport. */
         .task-card-wrapper.is-hidden-sibling {
           height: 0px !important;
           opacity: 0 !important;
           pointer-events: none !important;
           margin-top: 0 !important;
           margin-bottom: 0 !important;
+          transform: none !important;
           transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        }
-        
-        /* Sibling above the expanded card slides up */
-        .task-card-wrapper.is-hidden-sibling:has(~ .is-expanded-double) {
-          transform: translateY(-50px) !important;
-        }
-        
-        /* Sibling below the expanded card slides down */
-        .is-expanded-double ~ .task-card-wrapper.is-hidden-sibling {
-          transform: translateY(50px) !important;
         }
 
         /* Inner card transitions under click expansion */
@@ -1150,7 +1210,7 @@ export function HomeDashboard({
         }
       `}</style>
       {/* 5 Expanded Clean Simple Rectangles Grid */}
-      <div className="w-full grid grid-cols-12 gap-5 items-start">
+      <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
         
         {/* Left Section (9 Columns) */}
         <div className="col-span-9 flex flex-col gap-5">
@@ -1376,281 +1436,30 @@ export function HomeDashboard({
               )}
             </div>
 
-          {/* Bottom Left Row: 2 Equal Rectangles - Expanded */}
-          <div className="grid grid-cols-2 gap-5">
-            {/* [R3] Bottom-Left Rectangle 1 - Vertical Navbar Pill */}
-            <div
-              className={`h-[180px] rounded-[28px] ${bgStyle} p-4 flex items-center justify-center relative overflow-visible`}
-            >
-              <motion.div
-                layout
-                transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                className={`relative z-20 flex flex-col transition-all duration-200 ${
-                  isVerticalNavExpanded
-                    ? "w-[135px] bg-[#0e0e0c]/95 dark:bg-[#0e0e0c]/95 border border-white/10 shadow-2xl backdrop-blur-xl p-1.5 rounded-2xl"
-                    : "w-auto bg-transparent border-none shadow-none p-0"
-                }`}
-              >
-                {/* Trigger Pill */}
-                <motion.button
-                  layout
-                  type="button"
-                  onClick={() => {
-                    setIsVerticalNavExpanded(!isVerticalNavExpanded);
-                    playSound('click');
-                  }}
-                  className={`relative z-10 box-border flex items-center justify-between gap-1.5 h-5.5 px-2.5 rounded-full border-none text-[12px] font-bold transition-all duration-200 select-none cursor-pointer shadow-md ${
-                    isVerticalNavExpanded ? "w-full" : "w-[125px]"
-                  } ${
-                    verticalNavOptions.find(o => o.id === selectedVerticalOption)?.activeBgClass || "bg-[#10b981] text-slate-950"
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 truncate">
-                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                      verticalNavOptions.find(o => o.id === selectedVerticalOption)?.dotClass || "bg-slate-950"
-                    }`} />
-                    <span className="truncate">
-                      {verticalNavOptions.find(o => o.id === selectedVerticalOption)?.label || "Navegación"}
-                    </span>
-                  </div>
-                  <ChevronDown
-                    className={`w-3 h-3 shrink-0 transition-transform duration-300 opacity-80 ${
-                      isVerticalNavExpanded ? "rotate-180" : ""
-                    }`}
-                  />
-                </motion.button>
-
-                {/* Expanded Vertical Pills List */}
-                <AnimatePresence>
-                  {isVerticalNavExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      onMouseLeave={() => setHoveredVerticalOption(null)}
-                      className="flex flex-col gap-1 pt-1 overflow-hidden"
-                    >
-                      {verticalNavOptions.map((opt) => {
-                        const isSelected = selectedVerticalOption === opt.id;
-                        const isHovered = hoveredVerticalOption === opt.id;
-
-                        return (
-                          <motion.button
-                            key={opt.id}
-                            layout
-                            type="button"
-                            onHoverStart={() => setHoveredVerticalOption(opt.id)}
-                            onClick={() => {
-                              setSelectedVerticalOption(opt.id);
-                              playSound('click');
-                            }}
-                            transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                            className={`relative z-10 box-border w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full text-[12px] font-bold transition-colors duration-200 select-none cursor-pointer border-none ${
-                              isSelected
-                                ? opt.textActiveColor
-                                : isHovered
-                                ? opt.textHoverColor
-                                : (isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900")
-                            }`}
-                          >
-                            {/* Active Indicator */}
-                            {isSelected && (
-                              <motion.span
-                                layoutId="verticalActiveViewIndicator"
-                                className={`absolute inset-0 rounded-full border-none shadow-md ${opt.activeBgClass}`}
-                                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                              />
-                            )}
-
-                            {/* Sliding Hover Indicator */}
-                            {isHovered && (
-                              <motion.span
-                                layoutId="verticalHoverViewIndicator"
-                                className={`absolute inset-0 rounded-full border-none shadow-sm ${opt.hoverBgClass}`}
-                                transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                              />
-                            )}
-
-                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 relative z-10 ${opt.dotClass}`} />
-                            <span className="truncate relative z-10">{opt.label}</span>
-                          </motion.button>
-                        );
-                      })}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.div>
+            {/* Bottom Left Row: 2 Rectángulos Redondeados */}
+            <div className="grid grid-cols-2 gap-5 -mt-10 relative z-20">
+              <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
+              <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
             </div>
-
-            {/* [R4] Bottom-Left Rectangle 2 - Expanded */}
-            <div
-              className={`h-[180px] rounded-[28px] ${bgStyle}`}
-            />
-          </div>
         </div>
 
-        {/* Right Section (3 Columns) */}
-        <div className="col-span-3 flex flex-col gap-4">
-          {/* Card 1: KPIs & Financial Metrics */}
-          <div
-            className={`w-full rounded-[28px] ${bgStyle} p-4.5 flex flex-col items-center justify-center overflow-hidden relative transition-all duration-500`}
-          >
-            {/* KPIs container */}
-            <div className="w-full flex flex-col gap-3 items-center">
-              {/* Row 1: LED Counters */}
-              <div className="flex items-center justify-center gap-4 w-full px-1">
-                {/* Counter 1: Projects */}
-                <div className="relative flex items-center pr-8">
-                  <span 
-                    className="tracking-tight transition-colors duration-500"
-                    style={{ 
-                      fontFamily: "'LedCounter', monospace", 
-                      fontSize: "40px",
-                      color: isNightMode ? '#fafafa' : '#0f172a',
-                      textShadow: isNightMode
-                        ? '0 0 16px rgba(255,255,255,0.2)'
-                        : '0 0 12px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    {String(totalProjects).padStart(2, '0')}
-                  </span>
-                  <span className={`absolute top-0 right-0 px-1 py-0.5 rounded-full text-[6px] font-bold tracking-widest uppercase transition-all duration-500 border ${
-                    isNightMode
-                      ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
-                      : 'bg-slate-100 border-slate-200 text-slate-800'
-                  }`}>
-                    proy.
-                  </span>
-                </div>
+        {/* Right Section (3 Columns): Barra de Esfuerzo Diario + Módulo de Sesiones (Encasillado en rectángulo) */}
+        <div className={`col-span-3 flex flex-col gap-5 p-5 h-[900px] rounded-[28px] ${bgStyle}`}>
+          <DailyEffortBar 
+            todayEffort={todayEffort} 
+            limiteHorasDia={limiteHorasDia} 
+            setLimiteHorasDia={setLimiteHorasDia} 
+            isNightMode={isNightMode} 
+          />
 
-                {/* Divider */}
-                <div className={`w-px h-6 self-center transition-colors duration-500 ${isNightMode ? 'bg-white/10' : 'bg-slate-200'}`} />
-
-                {/* Counter 2: Tasks */}
-                <div className="relative flex items-center pr-8">
-                  <span 
-                    className="tracking-tight transition-colors duration-500"
-                    style={{ 
-                      fontFamily: "'LedCounter', monospace", 
-                      fontSize: "40px",
-                      color: isNightMode ? '#fafafa' : '#0f172a',
-                      textShadow: isNightMode
-                        ? '0 0 16px rgba(255,255,255,0.2)'
-                        : '0 0 12px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    {String(totalTasks).padStart(2, '0')}
-                  </span>
-                  <span className={`absolute top-0 right-0 px-1 py-0.5 rounded-full text-[6px] font-bold tracking-widest uppercase transition-all duration-500 border ${
-                    isNightMode
-                      ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
-                      : 'bg-slate-100 border-slate-200 text-slate-800'
-                  }`}>
-                    tareas
-                  </span>
-                </div>
-
-                {/* Divider */}
-                <div className={`w-px h-6 self-center transition-colors duration-500 ${isNightMode ? 'bg-white/10' : 'bg-slate-200'}`} />
-
-                {/* Counter 3: Hours */}
-                <div className="relative flex items-center pr-9">
-                  <span 
-                    className="tracking-tight transition-colors duration-500"
-                    style={{ 
-                      fontFamily: "'LedCounter', monospace", 
-                      fontSize: "40px",
-                      color: isNightMode ? '#fafafa' : '#0f172a',
-                      textShadow: isNightMode
-                        ? '0 0 16px rgba(255,255,255,0.2)'
-                        : '0 0 12px rgba(0,0,0,0.05)'
-                    }}
-                  >
-                    {String(Math.round(totalHours)).padStart(3, '0')}
-                  </span>
-                  <span className={`absolute top-0 right-0 px-1 py-0.5 rounded-full text-[6px] font-bold tracking-widest uppercase transition-all duration-500 border ${
-                    isNightMode
-                      ? 'bg-neutral-900 border-neutral-800 text-neutral-300'
-                      : 'bg-slate-100 border-slate-200 text-slate-800'
-                  }`}>
-                    horas
-                  </span>
-                </div>
-              </div>
-
-              {/* Row 2: Financial Stats Bar */}
-              <div className="flex items-center justify-between w-full text-[8.5px] font-semibold tracking-tight px-1 mt-0.5">
-                {/* Metric 1: MRR Facturación */}
-                <div className="flex items-center gap-1 shrink-0" title="Ingresos Mensuales Recurrentes">
-                  <TrendingUp className="w-3 h-3 text-emerald-500 shrink-0" />
-                  <span className={isNightMode ? 'text-slate-200' : 'text-slate-700'}>
-                    +$48.5k <span className="opacity-60 text-[7px] uppercase font-sans font-bold">MRR</span>
-                  </span>
-                </div>
-
-                {/* Metric 2: Margen Operativo */}
-                <div className="flex items-center gap-1 shrink-0" title="Margen Operativo Neto">
-                  <ArrowUpRight className="w-3 h-3 text-sky-500 shrink-0" />
-                  <span className={isNightMode ? 'text-slate-200' : 'text-slate-700'}>
-                    68.5% <span className="opacity-60 text-[7px] uppercase font-sans font-bold">Margen</span>
-                  </span>
-                </div>
-
-                {/* Metric 3: Por Cobrar */}
-                <div className="flex items-center gap-1 shrink-0" title="Cuentas por Cobrar Pendientes">
-                  <Wallet className="w-3 h-3 text-amber-500 shrink-0" />
-                  <span className={isNightMode ? 'text-slate-200' : 'text-slate-700'}>
-                    $18.2k <span className="opacity-60 text-[7px] uppercase font-sans font-bold">Cobro</span>
-                  </span>
-                </div>
-
-                {/* Metric 4: Eficiencia Operativa */}
-                <div className="flex items-center gap-1 shrink-0" title="Eficiencia de Entregables">
-                  <Activity className="w-3 h-3 text-purple-500 shrink-0" />
-                  <span className={isNightMode ? 'text-slate-200' : 'text-slate-700'}>
-                    94.8% <span className="opacity-60 text-[7px] uppercase font-sans font-bold">Efic.</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Card 2: Daily Effort Bar & TimelineDiario */}
-          <div
-            className={`w-full rounded-[28px] ${bgStyle} p-4.5 flex flex-col items-center justify-center gap-4 overflow-hidden relative transition-all duration-500`}
-          >
-            <DailyEffortBar
-              todayEffort={todayEffort}
-              limiteHorasDia={limiteHorasDia}
-              setLimiteHorasDia={setLimiteHorasDia}
-              isNightMode={isNightMode}
-            />
-
-            <div className={`w-full h-px transition-colors duration-500 ${isNightMode ? 'bg-white/5' : 'bg-slate-200'} shrink-0`} />
-
-            <TimelineDiario
-              tasks={projects.reduce<Task[]>((acc, p) => acc.concat(p.tasks || []), [])}
+          <div className="flex-1 overflow-hidden">
+            <HomeSessionsColumn 
+              todayTasks={filteredKanbanTasks.filter(t => getCalendarDaysDiff(t.dueDate) <= 0)} 
+              allTasks={kanbanTasks}
               projects={projects}
-              updateTaskProperty={updateTaskProperty}
               isNightMode={isNightMode}
+              onUpdateTaskStatus={handleUpdateTaskStatus}
             />
-          </div>
-
-          {/* Card 3: Time Heatmap */}
-          <div
-            className={`w-full rounded-[28px] ${bgStyle} p-4 flex flex-col items-center justify-center overflow-hidden relative transition-all duration-500`}
-          >
-            <div className="w-full flex justify-center scale-90 origin-center shrink-0">
-              <div className="flex flex-col gap-1.5 items-center w-full">
-                <span className={`text-[8px] font-bold uppercase tracking-widest ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>Actividad de Tareas</span>
-                <TimeHeatmap 
-                  tasks={projects.reduce<Task[]>((acc, p) => acc.concat(p.tasks || []), [])}
-                  isNeumorphic={isNeumorphic}
-                  isNightMode={isNightMode}
-                />
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1665,13 +1474,22 @@ export function HomeDashboard({
         onSetStep={(step: 1 | 2, targetType?: "task" | "project") => {
           setDeleteModalConfig(prev => prev ? { ...prev, step, targetType } : null);
         }}
-        onConfirmTaskDelete={(projId: number, tskId: number) => {
+        onConfirmTaskDelete={async (projId: number, tskId: number) => {
+          const taskIdStr = String(tskId);
+          try {
+            // 1. Eliminar de la colección nativa /tasks en Firestore
+            await deleteDoc(doc(db, "tasks", taskIdStr));
+          } catch (err) {
+            console.error("Error al eliminar la tarea de la colección nativa /tasks:", err);
+          }
+
+          // 2. Actualizar el estado local y persistir actualización en proyectos
           onUpdateProjects(prev => {
             return prev.map(p => {
-              if (p.id === projId) {
-                const updatedTasks = (p.tasks || []).filter(t => t.id !== tskId);
+              if (String(p.id) === String(projId)) {
+                const updatedTasks = (p.tasks || []).filter(t => String(t.id) !== String(tskId) && String(t.id) !== taskIdStr);
                 const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
-                persistProjectUpdate(projId, {
+                persistProjectUpdate(p.id, {
                   tasks: evalProj.tasks,
                   status: evalProj.status,
                   statusColor: evalProj.statusColor,

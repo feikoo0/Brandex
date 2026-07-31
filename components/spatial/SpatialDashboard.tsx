@@ -14,7 +14,7 @@ import Scratchpad from "./Scratchpad";
 import TensionMap from "./TensionMap";
 import FrictionTracker from "./FrictionTracker";
 import { RefreshCw, Users, BarChart3 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getDynamicGreeting } from "@/lib/utils";
 
 export default function SpatialDashboard() {
   const { data, isLoading, error } = useData();
@@ -23,18 +23,15 @@ export default function SpatialDashboard() {
   const { role, userId, userName } = useAuthStore();
   
   // Greeting State
-  const [greetingWord, setGreetingWord] = useState("Buenos días");
+  const [greetingObj, setGreetingObj] = useState<{ title: string; subtitle: string }>({
+    title: "Buenos días,",
+    subtitle: userName || "Feiko",
+  });
 
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour >= 6 && hour < 12) {
-      setGreetingWord("Buenos días");
-    } else if (hour >= 12 && hour < 19) {
-      setGreetingWord("Buenas tardes");
-    } else {
-      setGreetingWord("Buenas noches");
-    }
-  }, []);
+    const dynamic = getDynamicGreeting(userName || "Feiko");
+    setGreetingObj(dynamic);
+  }, [userName]);
 
   // Filter projects
   const activeProjects = useMemo(() => {
@@ -158,7 +155,7 @@ export default function SpatialDashboard() {
             <div className="flex items-center justify-between select-none">
               <div>
                 <h1 className="text-2xl font-black text-white tracking-tight">
-                  {greetingWord}, {userName || "Feiko"}
+                  {greetingObj.title} {greetingObj.subtitle}
                 </h1>
                 <p className="text-xs text-neutral-500 font-bold mt-1 uppercase tracking-wider">
                   Hoy tienes {activeProjects.length} proyectos en curso y {pendingTasks.length} tareas pendientes.

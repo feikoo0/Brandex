@@ -568,7 +568,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
 
       {/* MODAL: Create New Project for Client */}
       {isNewProjectModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
           <motion.div 
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}

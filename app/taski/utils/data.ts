@@ -150,14 +150,116 @@ export const getFallbackTasks = (projectId: number): Task[] => [
 ];
 
 export const INITIAL_PROJECTS: Project[] = [
-  { id: 1, title: "Taski Redesign", client: "Apple Inc.", package: "Premium", desc: "Implementación de interfaz espacial e iteración del motor de diseño con animaciones avanzadas en Next.js.", progress: "12 de 24 tareas", percent: "50%", gradient: "from-blue-600 to-cyan-400", glow: "bg-blue-600", status: "Revisión", statusColor: "bg-yellow-500/10 border-yellow-500/30 text-yellow-500", burnRate: "32h / 48h", deadline: "15 Ago", daysRemaining: "2 Días", briefCore: "Iteración completa del sistema operativo. Fokus en animaciones 60fps y glassmorphism avanzado.", priority: "Alta", cost: "$12,000", tasks: INITIAL_PROJECT_TASKS[1] },
-  { id: 2, title: "Marketing Campaign", client: "Nike", package: "Estratégico", desc: "Desarrollo de landing page interactiva y optimización de assets 3D para la nueva línea de calzado.", progress: "5 de 15 tareas", percent: "33%", gradient: "from-orange-600 to-red-500", glow: "bg-red-500", status: "Activo", statusColor: "bg-blue-500/10 border-blue-500/30 text-blue-500", burnRate: "12h / 40h", deadline: "22 Ago", daysRemaining: "9 Días", briefCore: "Campaña interactiva para tenis de correr. Integración de modelos 3D y scroll-jacking.", priority: "Media", cost: "$8,500", tasks: INITIAL_PROJECT_TASKS[2] },
-  { id: 3, title: "E-Commerce Platform", client: "Tesla", package: "Enterprise", desc: "Integración de pasarela de pagos y rediseño del flujo de carrito de compras con WebGL.", progress: "18 de 20 tareas", percent: "90%", gradient: "from-purple-600 to-pink-500", glow: "bg-purple-500", status: "Activo", statusColor: "bg-emerald-500/10 border-emerald-500/30 text-emerald-500", burnRate: "85h / 90h", deadline: "5 Ago", daysRemaining: "Crítico", briefCore: "Actualización de sistema de pagos cripto y carrito de compras flotante con WebGL.", priority: "Urgente", cost: "$25,000", tasks: INITIAL_PROJECT_TASKS[3] },
-  { id: 4, title: "Mobile App MVP", client: "Airbnb", package: "Starter", desc: "Creación de prototipo funcional con mapas interactivos y reservaciones en tiempo real.", progress: "2 de 10 tareas", percent: "20%", gradient: "from-emerald-700 to-emerald-500", glow: "bg-emerald-600", status: "Revisión", statusColor: "bg-rose-500/10 border-rose-500/30 text-rose-500", burnRate: "4h / 20h", deadline: "30 Ago", daysRemaining: "A Tiempo", briefCore: "Prototipo rápido en React Native. Priorizar la vista de mapas y filtrado.", priority: "Baja", cost: "$4,200", tasks: getFallbackTasks(4) },
-  { id: 5, title: "AI Dashboard", client: "OpenAI", package: "Estratégico", desc: "Visualización de datos masivos y diseño de paneles de control con componentes de cristal.", progress: "8 de 8 tareas", percent: "100%", gradient: "from-slate-600 to-slate-400", glow: "bg-slate-500", status: "Completado", statusColor: "bg-white/10 border-white/30 text-white", burnRate: "60h / 60h", deadline: "Entregado", daysRemaining: "-", briefCore: "Dashboard hiper-detallado oscuro. Visualización masiva de nodos y analíticas AI.", priority: "Media", cost: "$15,000", tasks: getFallbackTasks(5) },
-  { id: 6, title: "Fintech Mobile Wallet", client: "Stripe", package: "Premium", desc: "Rediseño completo de la interfaz de billetera móvil con animaciones de transacciones.", progress: "3 de 12 tareas", percent: "25%", gradient: "from-indigo-600 to-blue-400", glow: "bg-indigo-500", status: "Activo", statusColor: "bg-indigo-500/10 border-indigo-500/30 text-indigo-500", burnRate: "10h / 50h", deadline: "10 Sep", daysRemaining: "20 Días", briefCore: "Nueva UI para wallet crypto/fiat. Enfoque en micro-interacciones de pago.", priority: "Alta", cost: "$18,500", tasks: getFallbackTasks(6) },
-  { id: 7, title: "Web3 NFT Marketplace", client: "OpenSea", package: "Enterprise", desc: "Desarrollo de plataforma de subastas descentralizada con smart contracts integrados.", progress: "15 de 30 tareas", percent: "50%", gradient: "from-fuchsia-600 to-rose-400", glow: "bg-fuchsia-500", status: "Activo", statusColor: "bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-500", burnRate: "120h / 200h", deadline: "1 Oct", daysRemaining: "40 Días", briefCore: "Mercado descentralizado. UI oscura, neón y transacciones gas-less.", priority: "Alta", cost: "$35,000", tasks: getFallbackTasks(7) },
-  { id: 8, title: "Healthcare Portal", client: "Mayo Clinic", package: "Enterprise", desc: "Portal de pacientes seguro con telemedicina en tiempo real y expedientes médicos.", progress: "20 de 25 tareas", percent: "80%", gradient: "from-teal-700 to-cyan-600", glow: "bg-teal-600", status: "Revisión", statusColor: "bg-cyan-500/10 border-cyan-500/30 text-cyan-500", burnRate: "180h / 200h", deadline: "12 Ago", daysRemaining: "5 Días", briefCore: "Portal de pacientes HIPAA-compliant. Interfaz clínica limpia y clara.", priority: "Urgente", cost: "$40,000", tasks: getFallbackTasks(8) },
+  {
+    id: 1001,
+    title: "Jenny Rivera",
+    client: "Jenny Rivera",
+    package: "Branding Complete",
+    desc: "Estrategia de marca, contenido digital e identidad visual de Jenny Rivera.",
+    progress: "0 de 2 tareas",
+    percent: "0%",
+    gradient: "bg-purple-600",
+    glow: "bg-purple-600",
+    status: "Activo",
+    statusColor: "bg-violet-500/10 border-violet-500/30 text-violet-400",
+    burnRate: "0h / 40h",
+    startDate: "Hoy",
+    deadline: "Sin Fecha",
+    daysRemaining: "14 días",
+    briefCore: "Proyecto principal de Jenny Rivera.",
+    priority: "Alta",
+    cost: "$15,000",
+    tasks: [
+      {
+        id: 10011,
+        title: "Diseño de Logotipo e Identidad",
+        desc: "Línea gráfica e identidad visual.",
+        format: "Branding",
+        formato: "Branding",
+        time: "3 horas",
+        status: "Planificado",
+        statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+        subtasks: []
+      },
+      {
+        id: 10012,
+        title: "Estrategia de Contenidos Redes",
+        desc: "Calendario editorial y piezas de contenido.",
+        format: "Redes Sociales",
+        formato: "Redes Sociales",
+        time: "2 horas",
+        status: "Planificado",
+        statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+        subtasks: []
+      }
+    ]
+  },
+  {
+    id: 1002,
+    title: "Shohei Ohtani",
+    client: "Shohei Ohtani",
+    package: "Desarrollo Web",
+    desc: "Sitio web interactivo y campaña digital de Shohei Ohtani.",
+    progress: "0 de 1 tareas",
+    percent: "0%",
+    gradient: "bg-blue-600",
+    glow: "bg-blue-600",
+    status: "Activo",
+    statusColor: "bg-violet-500/10 border-violet-500/30 text-violet-400",
+    burnRate: "0h / 40h",
+    startDate: "Hoy",
+    deadline: "Sin Fecha",
+    daysRemaining: "14 días",
+    briefCore: "Campaña y desarrollo web para Ohtani.",
+    priority: "Alta",
+    cost: "$20,000",
+    tasks: [
+      {
+        id: 10021,
+        title: "Maquetación UI/UX Landing Page",
+        desc: "Diseño responsive y componentes de alto impacto.",
+        format: "UI/UX",
+        formato: "UI/UX",
+        time: "4 horas",
+        status: "Planificado",
+        statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+        subtasks: []
+      }
+    ]
+  },
+  {
+    id: 1003,
+    title: "Mandaditos",
+    client: "Mandaditos",
+    package: "UI/UX Design",
+    desc: "Plataforma de logística y aplicación de entregas Mandaditos.",
+    progress: "0 de 1 tareas",
+    percent: "0%",
+    gradient: "bg-emerald-600",
+    glow: "bg-emerald-600",
+    status: "Activo",
+    statusColor: "bg-violet-500/10 border-violet-500/30 text-violet-400",
+    burnRate: "0h / 40h",
+    startDate: "Hoy",
+    deadline: "Sin Fecha",
+    daysRemaining: "14 días",
+    briefCore: "Plataforma y flujo de envíos de Mandaditos.",
+    priority: "Media",
+    cost: "$12,000",
+    tasks: [
+      {
+        id: 10031,
+        title: "Flujo de Pedidos y Rastreo",
+        desc: "Wireframes de la app de usuarios y repartidores.",
+        format: "App Mobile",
+        formato: "App Mobile",
+        time: "3 horas",
+        status: "Planificado",
+        statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+        subtasks: []
+      }
+    ]
+  }
 ];
 
 export const getDynamicProgress = (project: Project | null) => {

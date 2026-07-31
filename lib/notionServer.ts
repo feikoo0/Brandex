@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, getDocs, collection } from "firebase/firestore";
 import { db } from "./firebase";
 
 const NOTION_VER = "2022-06-28";
@@ -860,8 +860,45 @@ const MOCK_RECURSOS = [
   }
 ];
 
-// ── Sync All Data (Firestore Direct, No Notion) ──────────────────────
+// ── Sync All Data (Firestore Direct Native Collections) ──────────────────────
 export async function syncAllData(forceSync = false) {
+  try {
+    const [cSnap, pSnap, tSnap, wSnap] = await Promise.all([
+      getDocs(collection(db, "clients")),
+      getDocs(collection(db, "projects")),
+      getDocs(collection(db, "tasks")),
+      getDocs(collection(db, "workers"))
+    ]);
+
+    if (!cSnap.empty || !pSnap.empty) {
+      const clientes = cSnap.docs.map(d => d.data() as any);
+      const trabajadores = wSnap.docs.map(d => d.data() as any);
+
+      const clientMap = new Map(clientes.map((c: any) => [c.id, c.nombre]));
+
+      const proyectos = pSnap.docs.map(d => {
+        const p = d.data() as any;
+        return {
+          ...p,
+          cliente_ids: p.cliente_id ? [p.cliente_id] : [],
+          cliente: p.cliente_id ? (clientMap.get(p.cliente_id) || "") : ""
+        };
+      });
+
+      const tareas = tSnap.docs.map(d => {
+        const t = d.data() as any;
+        return {
+          ...t,
+          proyecto_ids: t.proyecto_id ? [t.proyecto_id] : []
+        };
+      });
+
+      return { clientes, proyectos, tareas, trabajadores, recursos: [] };
+    }
+  } catch (err) {
+    console.error("Error reading native Firestore collections:", err);
+  }
+
   const [c, p, t, r, w] = await Promise.all([
     getCacheDoc("clientes"),
     getCacheDoc("proyectos"),
@@ -869,10 +906,8 @@ export async function syncAllData(forceSync = false) {
     getCacheDoc("recursos"),
     getCacheDoc("trabajadores")
   ]);
-  
-  // If all exist in cache and have items, return them immediately
+
   if (c && p && t && r && w && (c.length > 0 || p.length > 0)) {
-    console.log(">>> Syncing from Firestore Cache (Instant load)");
     return {
       clientes: c,
       proyectos: p,
@@ -984,6 +1019,8 @@ export async function createLocalProject(data: any) {
     id: generateId(),
     nombre: data.nombre || "Nuevo Proyecto",
     cliente_ids: Array.isArray(data.cliente_ids) ? data.cliente_ids : (data.cliente_id ? [data.cliente_id] : []),
+    asignado_ids: Array.isArray(data.asignado_ids) ? data.asignado_ids : [],
+    asignado: data.asignado || "",
     estadoProyecto: data.estadoProyecto || "Activo",
     estado: data.estado || "En curso",
     area: data.area || "",
@@ -1009,6 +1046,8 @@ export async function updateLocalProject(id: string, data: any) {
   if ("nombre" in data) fields.nombre = data.nombre;
   if ("cliente_ids" in data) fields.cliente_ids = data.cliente_ids;
   else if ("cliente_id" in data) fields.cliente_ids = data.cliente_id ? [data.cliente_id] : [];
+  if ("asignado_ids" in data) fields.asignado_ids = data.asignado_ids;
+  if ("asignado" in data) fields.asignado = data.asignado;
   if ("estadoProyecto" in data) fields.estadoProyecto = data.estadoProyecto;
   if ("estado" in data) fields.estado = data.estado;
   if ("area" in data) fields.area = data.area;
@@ -1040,7 +1079,7 @@ export async function createLocalTask(data: any) {
     area: data.area || "",
     asignado: data.asignado || "",
     asignado_ids: Array.isArray(data.asignado_ids) ? data.asignado_ids : (data.asignado_id ? [data.asignado_id] : []),
-    formato: data.formato || "",
+    formato: (data.formato || "").trim().toLowerCase(),
     esfuerzo: data.esfuerzo || "Medio",
     prioridad: data.prioridad || "Media",
     plataformas: Array.isArray(data.plataformas) ? data.plataformas : [],
@@ -1079,7 +1118,7 @@ export async function updateLocalTask(id: string, data: any) {
   if ("area" in data) fields.area = data.area;
   if ("asignado" in data) fields.asignado = data.asignado;
   if ("asignado_ids" in data) fields.asignado_ids = data.asignado_ids;
-  if ("formato" in data) fields.formato = data.formato;
+  if ("formato" in data) fields.formato = (data.formato || "").trim().toLowerCase();
   if ("esfuerzo" in data) fields.esfuerzo = data.esfuerzo;
   if ("prioridad" in data) fields.prioridad = data.prioridad;
   if ("plataformas" in data) fields.plataformas = data.plataformas;

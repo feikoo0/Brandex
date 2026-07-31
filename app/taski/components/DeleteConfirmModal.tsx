@@ -68,7 +68,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md"
+            className="absolute inset-0 bg-slate-950/60"
           />
 
           {/* Modal Box */}

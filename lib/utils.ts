@@ -55,25 +55,89 @@ export function daysUntil(iso: string): number {
 }
 
 // Greeting based on hour with randomized variations
-export function greeting(name: string = ""): string {
+export function greeting(name: string = "Feiko"): string {
+  const user = name.trim() || "Feiko";
   const h = new Date().getHours();
-  let timeOfDay = "";
   let variations: string[] = [];
 
-  if (h < 12) {
-    timeOfDay = "Buenos días";
-    variations = [`¡Buen día, ${name}!`, `¡Hola, ${name}! Qué gusto verte.`, `¡Buenos días, ${name}! Empecemos con todo.`];
-  } else if (h < 18) {
-    timeOfDay = "Buenas tardes";
-    variations = [`¡Buenas tardes, ${name}!`, `¿Cómo va tu tarde, ${name}?`, `¡Hola, ${name}! Seguimos avanzando.`];
+  if (h >= 5 && h < 12) {
+    variations = [
+      `Buenos días, ${user}`,
+      `¡Buen día, ${user}!`,
+      `¡Hola, ${user}! Qué gusto verte.`,
+      `¡Buenos días, ${user}! Empecemos con todo.`,
+      `¡Excelente mañana, ${user}!`
+    ];
+  } else if (h >= 12 && h < 19) {
+    variations = [
+      `Buenas tardes, ${user}`,
+      `¿Cómo va tu tarde, ${user}?`,
+      `¡Hola, ${user}! Seguimos avanzando.`,
+      `Buenas tardes, ${user}. En pleno flujo.`,
+      `¡Excelente tarde, ${user}!`
+    ];
+  } else if (h >= 19 && h < 24) {
+    variations = [
+      `Buenas noches, ${user}`,
+      `¡Hola, ${user}! Cerrando el día.`,
+      `¿Qué tal la noche, ${user}?`,
+      `Buenas noches, ${user}. Gran trabajo hoy.`,
+      `¡Buenas noches, ${user}!`
+    ];
   } else {
-    timeOfDay = "Buenas noches";
-    variations = [`¡Buenas noches, ${name}!`, `¡Hola, ${name}! Cerrando el día.`, `¿Qué tal la noche, ${name}?`];
+    variations = [
+      `Turno nocturno, ${user}`,
+      `Buenas noches, ${user}`,
+      `¡Madrugada activa, ${user}!`,
+      `¡Hola, ${user}! Inspiración nocturna.`
+    ];
   }
 
-  // Pick a random variation
   const rand = Math.floor(Math.random() * variations.length);
   return variations[rand];
+}
+
+export function getDynamicGreeting(name: string = "Feiko"): { title: string; subtitle: string } {
+  const user = name.trim() || "Feiko";
+  const h = new Date().getHours();
+
+  let options: { title: string; subtitle: string }[] = [];
+
+  if (h >= 5 && h < 12) {
+    options = [
+      { title: "Buenos días,", subtitle: user },
+      { title: "¡Buen día,", subtitle: `${user}!` },
+      { title: "¡Hola,", subtitle: `${user}!` },
+      { title: "¡Excelente mañana,", subtitle: `${user}!` },
+      { title: "¡A darle con todo,", subtitle: `${user}!` },
+    ];
+  } else if (h >= 12 && h < 19) {
+    options = [
+      { title: "Buenas tardes,", subtitle: user },
+      { title: "¡Hola,", subtitle: `${user}!` },
+      { title: "¿Qué tal tu tarde,", subtitle: `${user}?` },
+      { title: "¡Seguimos en flujo,", subtitle: `${user}!` },
+      { title: "¡Excelente tarde,", subtitle: `${user}!` },
+    ];
+  } else if (h >= 19 && h < 24) {
+    options = [
+      { title: "Buenas noches,", subtitle: user },
+      { title: "¡Hola,", subtitle: `${user}!` },
+      { title: "¿Qué tal la noche,", subtitle: `${user}?` },
+      { title: "Cerrando el día,", subtitle: user },
+      { title: "¡Gran trabajo hoy,", subtitle: `${user}!` },
+    ];
+  } else {
+    options = [
+      { title: "Turno nocturno,", subtitle: user },
+      { title: "Buenas noches,", subtitle: user },
+      { title: "¡Madrugada activa,", subtitle: `${user}!` },
+      { title: "¡Hola,", subtitle: `${user}!` },
+    ];
+  }
+
+  const index = Math.floor(Math.random() * options.length);
+  return options[index];
 }
 
 export function parseEsfuerzoMins(esfuerzo: string): number {
@@ -124,6 +188,97 @@ export interface CardColorTheme {
   panelBg: string;
 }
 
+export interface ColorPresetItem {
+  name: string;
+  key: string;
+  h: number;
+  s: number;
+  l: number;
+  hslStr: string;
+  solidColor: string;
+  gradient: string;
+  glow: string;
+}
+
+export const PROJECT_COLOR_PALETTE: ColorPresetItem[] = [
+  { name: "Azul Eléctrico", key: "Azul", h: 217, s: 91, l: 60, hslStr: "hsl(217, 91%, 60%)", solidColor: "#2563eb", gradient: "bg-blue-600", glow: "bg-blue-600" },
+  { name: "Naranja Vibrante", key: "Naranja", h: 25, s: 95, l: 50, hslStr: "hsl(25, 95%, 50%)", solidColor: "#f97316", gradient: "bg-orange-500", glow: "bg-orange-500" },
+  { name: "Rojo Pasión", key: "Rojo", h: 0, s: 90, l: 55, hslStr: "hsl(0, 90%, 55%)", solidColor: "#ef4444", gradient: "bg-red-500", glow: "bg-red-500" },
+  { name: "Púrpura", key: "Morado", h: 271, s: 91, l: 65, hslStr: "hsl(271, 91%, 65%)", solidColor: "#9333ea", gradient: "bg-purple-600", glow: "bg-purple-600" },
+  { name: "Violeta Índigo", key: "Índigo", h: 245, s: 85, l: 60, hslStr: "hsl(245, 85%, 60%)", solidColor: "#6366f1", gradient: "bg-indigo-500", glow: "bg-indigo-500" },
+  { name: "Esmeralda", key: "Verde", h: 142, s: 70, l: 45, hslStr: "hsl(142, 70%, 45%)", solidColor: "#10b981", gradient: "bg-emerald-600", glow: "bg-emerald-600" },
+  { name: "Verde Lima", key: "Lima", h: 90, s: 90, l: 48, hslStr: "hsl(90, 90%, 48%)", solidColor: "#84cc16", gradient: "bg-lime-500", glow: "bg-lime-500" },
+  { name: "Amarillo Neón", key: "Amarillo", h: 65, s: 95, l: 50, hslStr: "hsl(65, 95%, 50%)", solidColor: "#eab308", gradient: "bg-amber-400", glow: "bg-amber-400" },
+  { name: "Rosa Neón", key: "Rosa", h: 328, s: 95, l: 55, hslStr: "hsl(328, 95%, 55%)", solidColor: "#ec4899", gradient: "bg-pink-600", glow: "bg-pink-600" },
+  { name: "Turquesa Menta", key: "Turquesa", h: 168, s: 85, l: 45, hslStr: "hsl(168, 85%, 45%)", solidColor: "#14b8a6", gradient: "bg-teal-500", glow: "bg-teal-500" },
+  { name: "Cyan Brillante", key: "Cyan", h: 180, s: 90, l: 50, hslStr: "hsl(180, 90%, 50%)", solidColor: "#06b6d4", gradient: "bg-cyan-500", glow: "bg-cyan-500" },
+  { name: "Gris Acero", key: "Gris", h: 215, s: 14, l: 40, hslStr: "hsl(215, 14%, 40%)", solidColor: "#475569", gradient: "bg-slate-700", glow: "bg-slate-500" },
+];
+
+export function getSingleSourceProjectColor(project: any): { h: number; s: number; l: number; hslCss: string } {
+  if (!project) return { h: 217, s: 91, l: 60, hslCss: "hsl(217, 91%, 60%)" };
+
+  if (project.customColor && typeof project.customColor.h === "number") {
+    const { h, s, l } = project.customColor;
+    const lVal = typeof l === "number" ? l : 55;
+    return { h, s, l: lVal, hslCss: `hsl(${h}, ${s}%, ${lVal}%)` };
+  }
+
+  const raw = project.customGradientStyle || project.gradient || "";
+  if (raw.includes("hsl(")) {
+    const match = raw.match(/hsl\((\d+),\s*(\d+)%?,\s*(\d+)%?\)/i);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const s = parseInt(match[2], 10);
+      const l = parseInt(match[3], 10);
+      return { h, s, l, hslCss: `hsl(${h}, ${s}%, ${l}%)` };
+    }
+  }
+
+  const lower = raw.toLowerCase();
+  if (lower.includes("red") || lower.includes("rojo")) return { h: 0, s: 90, l: 55, hslCss: "hsl(0, 90%, 55%)" };
+  if (lower.includes("orange") || lower.includes("naranja")) return { h: 25, s: 95, l: 50, hslCss: "hsl(25, 95%, 50%)" };
+  if (lower.includes("amber") || lower.includes("amarillo")) return { h: 65, s: 95, l: 50, hslCss: "hsl(65, 95%, 50%)" };
+  if (lower.includes("purple") || lower.includes("morado")) return { h: 271, s: 91, l: 65, hslCss: "hsl(271, 91%, 65%)" };
+  if (lower.includes("indigo") || lower.includes("violeta")) return { h: 245, s: 85, l: 60, hslCss: "hsl(245, 85%, 60%)" };
+  if (lower.includes("emerald") || lower.includes("verde")) return { h: 142, s: 70, l: 45, hslCss: "hsl(142, 70%, 45%)" };
+  if (lower.includes("lime") || lower.includes("lima")) return { h: 90, s: 90, l: 48, hslCss: "hsl(90, 90%, 48%)" };
+  if (lower.includes("slate") || lower.includes("zinc") || lower.includes("gray") || lower.includes("gris")) return { h: 215, s: 14, l: 40, hslCss: "hsl(215, 14%, 40%)" };
+  if (lower.includes("pink") || lower.includes("rosa")) return { h: 328, s: 95, l: 55, hslCss: "hsl(328, 95%, 55%)" };
+  if (lower.includes("cyan") || lower.includes("teal")) return { h: 180, s: 90, l: 50, hslCss: "hsl(180, 90%, 50%)" };
+
+  return { h: 217, s: 91, l: 60, hslCss: "hsl(217, 91%, 60%)" };
+}
+
+export function getDarkProjectPillVars(projectOrColor: any) {
+  const colorObj = (projectOrColor && typeof projectOrColor.h === "number")
+    ? projectOrColor
+    : getSingleSourceProjectColor(projectOrColor);
+
+  const { h, s, l = 55 } = colorObj;
+  const sat = Math.max(35, Math.min(s, 85));
+
+  // Slightly darker than the project lightness (~8% darker), borderless / sin trazo
+  const baseL = typeof l === "number" ? l : 55;
+  const bgL = Math.max(32, Math.round(baseL - 8));
+  const bgHoverL = Math.max(26, Math.round(baseL - 13));
+  const textL = 98;
+
+  return {
+    style: {
+      '--pill-bg': `hsl(${h}, ${sat}%, ${bgL}%)`,
+      '--pill-bg-hover': `hsl(${h}, ${sat}%, ${bgHoverL}%)`,
+      '--pill-color': `hsl(${h}, ${Math.min(sat, 80)}%, ${textL}%)`,
+      backgroundColor: `var(--pill-bg)`,
+      border: `none`,
+      outline: `none`,
+      color: `var(--pill-color)`,
+    } as React.CSSProperties,
+    className: "border-none outline-none bg-[var(--pill-bg)] hover:bg-[var(--pill-bg-hover)] text-[var(--pill-color)] shadow-sm font-bold"
+  };
+}
+
+
 export const CARD_COLOR_KEYS = [
   "Predeterminado",
   "Gris",
@@ -152,12 +307,12 @@ export function getCardColorTheme(colorName: string = "Predeterminado", _isNight
       };
     case "Naranja":
       return {
-        bg: "bg-[#ea580c] border border-orange-400/30 shadow-md",
-        panelBg: "bg-[#9a3412]",
+        bg: "bg-[#f97316] border border-orange-400/30 shadow-md",
+        panelBg: "bg-[#c2410c]",
         title: "text-white font-bold",
         desc: "text-white/90 font-normal",
         muted: "text-white/70",
-        dot: "bg-[#ea580c]",
+        dot: "bg-[#f97316]",
         label: "Naranja"
       };
     case "Amarillo":

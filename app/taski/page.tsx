@@ -16,9 +16,13 @@ import { INITIAL_PROJECTS, getDynamicProgress, autoEvaluateProjectStatus } from 
 import TimeHeatmap from "./components/TimeHeatmap";
 import { TeamDashboard } from "./components/TeamDashboard";
 import { ClientsDashboard } from "./components/ClientsDashboard";
+import { ClientV2Dashboard } from "./components/ClientV2Dashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { ProjectsV2Dashboard } from "./components/ProjectsV2Dashboard";
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { persistProjectUpdate } from "./utils/persist";
+import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store";
 
 interface TaskSession {
   id: number;
@@ -88,34 +92,25 @@ const seedProjectsWithSessions = (projectsList: Project[]): Project[] => {
   });
 };
 
-const COLOR_PRESETS = [
-  { name: "Azul Eléctrico", h: 217, s: 91, l: 60 },
-  { name: "Naranja", h: 25, s: 95, l: 50 },
-  { name: "Púrpura", h: 271, s: 91, l: 65 },
-  { name: "Esmeralda", h: 142, s: 70, l: 45 },
-  { name: "Amarillo Neón", h: 65, s: 95, l: 50 },
-  { name: "Rosa Neón", h: 328, s: 95, l: 55 },
-  { name: "Cyan Brillante", h: 180, s: 90, l: 50 },
-  { name: "Blanco Puro", h: 0, s: 0, l: 100 },
-];
+const COLOR_PRESETS = PROJECT_COLOR_PALETTE.map((item) => ({
+  name: item.name,
+  h: item.h,
+  s: item.s,
+  l: item.l
+}));
 
 function getInitialHSL(gradient: string): { h: number; s: number; l: number } {
-  if (gradient.includes("blue-600")) return { h: 217, s: 91, l: 60 };
-  if (gradient.includes("orange-600")) return { h: 25, s: 95, l: 50 };
-  if (gradient.includes("purple-600")) return { h: 271, s: 91, l: 65 };
-  if (gradient.includes("emerald-700")) return { h: 142, s: 70, l: 45 };
-  if (gradient.includes("slate-600")) return { h: 0, s: 0, l: 50 };
-  if (gradient.includes("indigo-600")) return { h: 239, s: 84, l: 55 };
-  if (gradient.includes("fuchsia-600")) return { h: 297, s: 90, l: 60 };
-  if (gradient.includes("teal-700")) return { h: 174, s: 80, l: 45 };
-  return { h: 210, s: 80, l: 55 };
+  const { h, s, l } = getSingleSourceProjectColor({ gradient });
+  return { h, s, l };
 }
 
 function getProjectHSL(project: Project): { h: number; s: number; l: number } {
-  if (project.customColor) {
-    return project.customColor;
-  }
-  return getInitialHSL(project.gradient);
+  const { h, s, l } = getSingleSourceProjectColor(project);
+  return { h, s, l };
+}
+
+function getProjectBgColor(project: Project): string {
+  return getSingleSourceProjectColor(project).hslCss;
 }
 
 export default function BrandexV3Page() {
@@ -125,11 +120,40 @@ export default function BrandexV3Page() {
   const [searchQuery, setSearchQuery] = useState("");
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
   const [viewFilterMode, setViewFilterMode] = useState<"mio" | "equipo">("equipo");
-  const [groupingMode, setGroupingMode] = useState<"fecha" | "cliente" | "prioridad" | "estado">("fecha");
+  const [groupingMode, setGroupingMode] = useState<"fecha" | "cliente" | "prioridad" | "estado">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("taski_grouping_mode");
+      if (saved && ["fecha", "cliente", "prioridad", "estado"].includes(saved)) {
+        return saved as any;
+      }
+    }
+    return "fecha";
+  });
+
+  const handleSetGroupingMode = (mode: "fecha" | "cliente" | "prioridad" | "estado") => {
+    setGroupingMode(mode);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("taski_grouping_mode", mode);
+    }
+  };
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
   const [isHomeEditMode, setIsHomeEditMode] = useState(false);
   const [notificationCount, setNotificationCount] = useState(3);
   const [isNightMode, setIsNightMode] = useState(true);
+
+  useEffect(() => {
+    const savedMode = localStorage.getItem("taski_is_night_mode");
+    if (savedMode !== null) {
+      setIsNightMode(savedMode === "true");
+    }
+  }, []);
+
+  const toggleNightMode = () => {
+    playSound('click');
+    const nextMode = !isNightMode;
+    setIsNightMode(nextMode);
+    localStorage.setItem("taski_is_night_mode", String(nextMode));
+  };
   const isNeumorphic = true;
   const isSearchActive = activeTab === "home" && homeView === "buscar";
   const [activeProject, setActiveProject] = useState<string | number>(1);
@@ -138,6 +162,7 @@ export default function BrandexV3Page() {
   const [currentTime, setCurrentTime] = useState<Date | null>(null);
   const lastScrollIndexRef = useRef<number>(0);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
+  const [editingProjectModal, setEditingProjectModal] = useState<Project | null>(null);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -165,10 +190,16 @@ export default function BrandexV3Page() {
   if (hour >= 12 && hour < 19) greeting = "Buenas tardes";
   else if (hour >= 19) greeting = "Buenas noches";
 
+  const authUserName = useAuthStore((s) => s.userName);
+  const currentUserName = authUserName || "Feiko";
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [isClient, setIsClient] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const [sessionGreeting, setSessionGreeting] = useState<string>("Buenos días, bienvenido de nuevo");
+  const [sessionGreetingObj, setSessionGreetingObj] = useState<{ title: string; subtitle: string }>({
+    title: `Buenos días, ${currentUserName}`,
+    subtitle: "bienvenido de nuevo",
+  });
   const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
@@ -176,100 +207,107 @@ export default function BrandexV3Page() {
   useEffect(() => {
     setIsClient(true);
 
-    const hourVal = new Date().getHours();
-    const morningGreetings = [
-      "Buenos días, bienvenido de nuevo",
-      "Hola, comenzando la jornada de hoy",
-      "Hola, que tengas un excelente día"
-    ];
-
-    const afternoonGreetings = [
-      "Buenas tardes, bienvenido de nuevo",
-      "Hola, tu espacio está listo para continuar",
-      "Hola, revisemos el progreso de la tarde"
-    ];
-
-    const nightGreetings = [
-      "Buenas noches, bienvenido de nuevo",
-      "Hola, hora de revisar el balance de hoy",
-      "Hola, cerrando las metas del día"
-    ];
-
-    const lateNightGreetings = [
-      "Buenas noches, la estación sigue activa",
-      "Hola, trabajando en el turno nocturno",
-      "Hola, el lienzo nocturno está listo"
-    ];
-
-    let pool = morningGreetings;
-    if (hourVal >= 6 && hourVal < 12) {
-      pool = morningGreetings;
-    } else if (hourVal >= 12 && hourVal < 18) {
-      pool = afternoonGreetings;
-    } else if (hourVal >= 18 && hourVal < 23) {
-      pool = nightGreetings;
-    } else {
-      pool = lateNightGreetings;
-    }
-
-    const randomGreeting = pool[Math.floor(Math.random() * pool.length)];
-    setSessionGreeting(randomGreeting);
+    const dynamicGreeting = getDynamicGreeting(currentUserName);
+    setSessionGreetingObj(dynamicGreeting);
 
     const loadFromFirestore = async () => {
       try {
-        // 1. Check if we have already seeded in the past
-        const metaDoc = await getDoc(doc(db, "v3_settings", "seed_status"));
-        const alreadySeededInFirestore = metaDoc.exists() && metaDoc.data()?.seeded;
-        
-        let alreadySeededInLocal = false;
-        if (typeof window !== "undefined") {
-          alreadySeededInLocal = localStorage.getItem("taski_seeded") === "true";
-        }
+        // 1. Cargar proyectos y tareas de Firestore
+        const v3ProjectsSnap = await getDocs(collection(db, "v3_projects"));
+        const tasksSnap = await getDocs(collection(db, "tasks"));
+        const nativeTasks = tasksSnap.docs.map((d) => d.data());
 
-        const isAlreadySeeded = alreadySeededInFirestore || alreadySeededInLocal;
-
-        const colRef = collection(db, "v3_projects");
-        const snap = await getDocs(colRef);
-        
-        if (snap.empty && !isAlreadySeeded) {
-          console.log("Firestore v3_projects is empty and never seeded. Seeding INITIAL_PROJECTS.");
-          const seedData = seedProjectsWithSessions(INITIAL_PROJECTS);
-          const seedPromises = seedData.map(p => {
-            return setDoc(doc(db, "v3_projects", String(p.id)), p);
-          });
-          await Promise.all(seedPromises);
-          
-          // Save seeding status
-          try {
-            await setDoc(doc(db, "v3_settings", "seed_status"), { seeded: true });
-          } catch (metaErr) {
-            console.error("Failed to write seed_status to Firestore settings:", metaErr);
-          }
-          if (typeof window !== "undefined") {
-            localStorage.setItem("taski_seeded", "true");
-          }
-          
-          setProjects(seedData);
-        } else {
-          // If alreadySeeded doesn't exist yet but snap is not empty, ensure we set it
-          if (!isAlreadySeeded && !snap.empty) {
-            try {
-              await setDoc(doc(db, "v3_settings", "seed_status"), { seeded: true });
-            } catch (metaErr) {
-              console.error("Failed to write seed_status to Firestore settings:", metaErr);
-            }
-            if (typeof window !== "undefined") {
-              localStorage.setItem("taski_seeded", "true");
-            }
-          }
-          
+        if (!v3ProjectsSnap.empty) {
           const list: Project[] = [];
-          snap.forEach(docSnap => {
-            list.push(docSnap.data() as Project);
+          v3ProjectsSnap.forEach((docSnap) => {
+            const pData = docSnap.data() as Project;
+            const extraTasks = nativeTasks
+              .filter(
+                (nt) =>
+                  String(nt.project_id) === String(pData.id) ||
+                  String(nt.proyecto_id) === String(pData.id)
+              )
+              .map((nt) => ({
+                id: Number(nt.id) || Date.now(),
+                title: nt.title || nt.nombre || nt.titulo || "Tarea sin título",
+                desc: nt.desc || nt.contenido || "",
+                format: nt.format || nt.formato || "Sin formato",
+                formato: nt.formato || nt.format || "Sin formato",
+                time: nt.time || nt.duracion || nt.tiempoEstimado || "Sin tiempo",
+                status: (nt.status || nt.estado || "Planificado") as any,
+                statusColor: "",
+                subtasks: []
+              }));
+
+            const existingTaskIds = new Set((pData.tasks || []).map((t) => String(t.id)));
+            const mergedTasks = [
+              ...(pData.tasks || []),
+              ...extraTasks.filter((nt) => !existingTaskIds.has(String(nt.id)))
+            ];
+
+            list.push({
+              ...pData,
+              tasks: mergedTasks
+            });
           });
-          list.sort((a, b) => Number(a.id) - Number(b.id));
           const evaluated = list.map(autoEvaluateProjectStatus);
           setProjects(evaluated);
+        } else {
+          // 2. Fallback a colecciones nativas si v3_projects está vacía
+          const projectsSnap = await getDocs(collection(db, "projects"));
+          const v3ClientsSnap = await getDocs(collection(db, "v3_clients"));
+          const clientsSnap = !v3ClientsSnap.empty ? v3ClientsSnap : await getDocs(collection(db, "clients"));
+          const tasksSnap = await getDocs(collection(db, "tasks"));
+          
+          if (!projectsSnap.empty) {
+            const clientMap = new Map(clientsSnap.docs.map(d => [d.id, d.data().nombre || d.data().name]));
+
+            const tasksList = tasksSnap.docs.map(d => {
+              const t = d.data();
+              return {
+                id: t.id,
+                title: t.titulo || "Sin título",
+                desc: t.contenido || "",
+                format: t.formato || "post_imagen",
+                formato: t.formato || "post_imagen",
+                time: t.tiempoEstimado || "1h",
+                status: t.estado || "Pendiente",
+                statusColor: "",
+                subtasks: [],
+                proyecto_id: t.proyecto_id,
+                fecha_programada: t.fechaProg || t.fecha_programada || "",
+                fecha_limite: t.fechaEntrega || t.fecha_limite || ""
+              };
+            });
+
+            const list: Project[] = projectsSnap.docs.map(docSnap => {
+              const data = docSnap.data();
+              const projTasks = tasksList.filter(t => t.proyecto_id === data.id);
+              const clientName = data.cliente_id ? (clientMap.get(data.cliente_id) || "Sin Cliente") : "Sin Cliente";
+
+              return {
+                id: data.id,
+                title: data.nombre || "Sin título",
+                client: clientName,
+                cliente_id: data.cliente_id || null,
+                desc: data.descripcion || "",
+                progress: "0%",
+                percent: "0%",
+                gradient: "bg-blue-600",
+                glow: "bg-blue-600",
+                package: data.area || "General",
+                status: data.estado || "Activo",
+                priority: data.prioridad || "Media",
+                cost: `$${data.costo || 0}`,
+                startDate: data.fechaInicio || "",
+                deadline: data.fechaFin || "",
+                tasks: projTasks
+              } as unknown as Project;
+            });
+
+            const evaluated = list.map(autoEvaluateProjectStatus);
+            setProjects(evaluated);
+          }
         }
         setIsLoaded(true);
       } catch (err) {
@@ -289,15 +327,17 @@ export default function BrandexV3Page() {
 
   const [editingColorProjectId, setEditingColorProjectId] = useState<number | null>(null);
 
-  const updateProjectColor = (id: number, h: number, s: number, l: number = 55) => {
-    const customGradientStyle = `linear-gradient(135deg, hsl(${h}, ${s}%, 55%) 0%, hsl(${(h + 40) % 360}, ${Math.max(s - 10, 0)}%, 45%) 100%)`;
-    const customGlowStyle = `hsl(${h}, ${s}%, 50%)`;
+  const updateProjectColor = (id: number | string, h: number, s: number, l: number = 55) => {
+    const solidColorStr = `hsl(${h}, ${s}%, ${l}%)`;
+    const customGradientStyle = solidColorStr;
+    const customGlowStyle = solidColorStr;
     const customColor = { h, s, l };
 
     setProjects(prev => prev.map(p => {
-      if (p.id === id) {
+      if (String(p.id) === String(id)) {
         return {
           ...p,
+          gradient: solidColorStr,
           customColor,
           customGradientStyle,
           customGlowStyle
@@ -305,7 +345,7 @@ export default function BrandexV3Page() {
       }
       return p;
     }));
-    persistProjectUpdate(id, { customColor, customGradientStyle, customGlowStyle });
+    persistProjectUpdate(id, { gradient: solidColorStr, customColor, customGradientStyle, customGlowStyle });
   };
 
   const updateTitle = (id: number, title: string) => {
@@ -374,12 +414,29 @@ export default function BrandexV3Page() {
     persistProjectUpdate(id, { status });
   };
 
-  const deleteProject = async (id: number) => {
+  const deleteProject = async (id: number | string) => {
     try {
-      // 1. Delete from Firestore first
-      await deleteDoc(doc(db, "v3_projects", String(id)));
+      const projIdStr = String(id);
+      // 1. Delete from Firestore v3_projects and native projects collection
+      await deleteDoc(doc(db, "v3_projects", projIdStr));
+      await deleteDoc(doc(db, "projects", projIdStr)).catch(() => {});
+
+      // 2. Delete associated tasks from native tasks collection
+      try {
+        const tasksSnap = await getDocs(collection(db, "tasks"));
+        const deletePromises: Promise<void>[] = [];
+        tasksSnap.docs.forEach((tDoc) => {
+          const tData = tDoc.data();
+          if (String(tData.project_id) === projIdStr || String(tData.proyecto_id) === projIdStr) {
+            deletePromises.push(deleteDoc(tDoc.ref));
+          }
+        });
+        await Promise.all(deletePromises);
+      } catch (tErr) {
+        console.error("Error purging associated tasks from Firestore:", tErr);
+      }
       
-      // 2. Update local state & localStorage
+      // 3. Update local state & localStorage
       setProjects(prev => {
         const next = prev.filter(p => p.id !== id);
         if (activeProject === id) {
@@ -471,8 +528,14 @@ export default function BrandexV3Page() {
       briefCore: data.desc || "Escribe el core brief aquí.",
       priority: data.priority,
       cost: data.cost,
+      // Use HSL color provided by modal or fallback to getInitialHSL
+      customColor: data.customColor || getInitialHSL(data.gradient),
+      customGradientStyle: data.customGradientStyle || (() => { const { h, s, l } = getInitialHSL(data.gradient); return `hsl(${h}, ${s}%, ${l}%)`; })(),
+      customGlowStyle: data.customGlowStyle || (() => { const { h, s, l } = getInitialHSL(data.gradient); return `hsl(${h}, ${s}%, ${l}%)`; })(),
       tasks: data.tasks.map(t => ({
         ...t,
+        fecha_limite: t.fecha_limite || data.deadlineRaw || (data.deadline && /^\d{4}-\d{2}-\d{2}$/.test(data.deadline) ? data.deadline : undefined),
+        deadline: t.deadline || data.deadlineRaw || (data.deadline && /^\d{4}-\d{2}-\d{2}$/.test(data.deadline) ? data.deadline : undefined),
         statusColor: t.status === "Completado" 
           ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
           : t.status === "En Proceso"
@@ -488,6 +551,52 @@ export default function BrandexV3Page() {
 
     try {
       await setDoc(doc(db, "v3_projects", String(newId)), newProject);
+
+      // Dual write to native /projects collection
+      const nativeProject = {
+        id: String(newId),
+        nombre: newProject.title,
+        title: newProject.title,
+        client: newProject.client,
+        cliente: newProject.client,
+        package: newProject.package || "",
+        tipo_proyecto: newProject.package || "",
+        desc: newProject.desc || "",
+        status: newProject.status || "Activo",
+        estado: newProject.status || "Activo",
+        cost: newProject.cost || "",
+        precio: newProject.cost || "",
+        startDate: newProject.startDate || "Hoy",
+        deadline: newProject.deadline || "Sin Fecha",
+        fecha_creacion: new Date().toISOString(),
+        customColor: newProject.customColor,
+        gradient: newProject.gradient
+      };
+      await setDoc(doc(db, "projects", String(newId)), nativeProject);
+
+      // Dual write tasks to native /tasks collection
+      if (newProject.tasks && newProject.tasks.length > 0) {
+        for (const t of newProject.tasks) {
+          const nativeTask = {
+            id: String(t.id),
+            title: t.title || (t as any).text || "Tarea sin título",
+            nombre: t.title || (t as any).text || "Tarea sin título",
+            project_id: String(newId),
+            proyecto_id: String(newId),
+            client: newProject.client,
+            cliente: newProject.client,
+            format: t.format || "Sin formato",
+            formato: t.formato || t.format || "Sin formato",
+            time: t.time || "Sin tiempo",
+            duracion: t.time || "Sin tiempo",
+            status: t.status || "Planificado",
+            estado: t.status || "Planificado",
+            done: (t as any).done || false,
+            fecha_creacion: new Date().toISOString()
+          };
+          await setDoc(doc(db, "tasks", String(t.id)), nativeTask);
+        }
+      }
     } catch (e) {
       console.error("Error creating project in Firestore:", e);
     }
@@ -499,8 +608,10 @@ export default function BrandexV3Page() {
   const menuItems = [
     { id: "home", label: "Inicio", path: "/" },
     { id: "proyectos", label: "Proyectos", path: "/proyectos" },
+    { id: "proyectos_v2", label: "Proyectos V2", path: "/proyectos-v2" },
     { id: "equipo", label: "Equipo", path: "/equipo" },
     { id: "clientes", label: "Clientes", path: "/cliente" },
+    { id: "cliente_v2", label: "Panel Cliente V2", path: "/cliente-v2" },
     { id: "finanzas", label: "Finanzas", path: "/admin" },
     { id: "ajustes", label: "Ajustes", path: "#" },
   ];
@@ -518,8 +629,10 @@ export default function BrandexV3Page() {
     switch (id) {
       case "home": return <Home className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos": return <Folder className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "proyectos_v2": return <Layers className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "clientes": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "cliente_v2": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "finanzas": return <DollarSign className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "ajustes": return <Settings className={className} fill={fill} strokeWidth={strokeWidth} />;
       default: return null;
@@ -531,12 +644,12 @@ export default function BrandexV3Page() {
 
 
   return (
-    <main className={`relative w-screen h-screen overflow-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#111113] text-neutral-100' : 'bg-[#f8fafc] text-slate-900'}`}>
+    <main className={`relative w-full max-w-full h-screen overflow-hidden overflow-x-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#070709] text-neutral-100' : 'bg-[#dce1e8] text-slate-900'}`}>
 
 
       {/* Background Container */}
       <div className="absolute inset-0 overflow-hidden z-0 bg-transparent pointer-events-none">
-        <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#111113]' : 'bg-[#f8fafc]'}`} />
+        <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#070709]' : 'bg-[#dce1e8]'}`} />
       </div>
 
       {/* Top Left Logo Wrapper */}
@@ -553,9 +666,88 @@ export default function BrandexV3Page() {
         </Link>
       </div>
 
-      {/* Dynamic 2-line Title next to Logo + Home KPIs & TimeHeatmap */}
-      {/* Dynamic Header Wrapper aligned with the 12-column grid */}
-      <div className="absolute top-[20px] left-[216px] right-[40px] h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
+      {/* Left Sidebar Menu Container (Instagram Web Style) */}
+      <div className="absolute left-3.5 top-0 bottom-0 z-50 flex flex-col items-start justify-center pointer-events-none">
+        <div
+          onMouseEnter={() => setIsSidebarHovered(true)}
+          onMouseLeave={() => {
+            setIsSidebarHovered(false);
+            setHoveredMenuItem(null);
+          }}
+          className="flex flex-col gap-1.5 pointer-events-auto bg-transparent border-transparent"
+        >
+          <nav className="flex flex-col gap-1 items-start">
+            {menuItems.map((item) => {
+              const isActive = activeTab === item.id;
+              const isHovered = hoveredMenuItem === item.id;
+
+              return (
+                <motion.div
+                  key={item.id}
+                  onMouseEnter={() => setHoveredMenuItem(item.id)}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    playSound('click');
+                  }}
+                  animate={{ width: isSidebarHovered ? 160 : 40 }}
+                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                  className={`relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
+                    isNightMode
+                      ? isActive
+                        ? "bg-white/10 text-white"
+                        : isHovered
+                          ? "bg-white/5 text-neutral-200"
+                          : "bg-transparent"
+                      : isActive
+                        ? "bg-slate-200/80 text-slate-900"
+                        : isHovered
+                          ? "bg-slate-100 text-slate-800"
+                          : "bg-transparent"
+                  }`}
+                >
+                  {/* Icon */}
+                  <div className="flex items-center justify-center shrink-0 w-10 h-10">
+                    {getIcon(item.id, isActive)}
+                  </div>
+
+                  {/* Text label */}
+                  <AnimatePresence>
+                    {isSidebarHovered && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -6, filter: "blur(4px)" }}
+                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, x: -6, filter: "blur(4px)" }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className={`text-[13px] whitespace-nowrap select-none pr-3 ${
+                          isActive 
+                            ? isNightMode ? "font-bold opacity-100 text-white" : "font-bold opacity-100 text-slate-900" 
+                            : isNightMode ? "font-medium opacity-80 text-zinc-300 hover:text-white" : "font-medium opacity-70 text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {item.label}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+
+      {/* Main Content Rounded Rectangle Container */}
+      <motion.div 
+        animate={{ left: isSidebarHovered ? 192 : 68 }}
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+        className={`absolute top-0 bottom-0 right-0 z-30 rounded-l-[24px] rounded-r-none border-l border-t border-b overflow-hidden pointer-events-auto transition-colors duration-500 ${
+          isNightMode 
+            ? 'bg-[#121215] border-white/[0.08]' 
+            : 'bg-[#fffce2] border-slate-300/70'
+        }`}
+      >
+        {/* Dynamic 2-line Title next to Logo + Home KPIs & TimeHeatmap */}
+        {/* Dynamic Header Wrapper aligned with the 12-column grid */}
+        <div className="absolute top-5 left-6 right-6 h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
         <div className="col-span-9 flex items-center h-full">
           {/* LEFT ZONE: Title */}
           <div className="flex-1 basis-0 flex items-center min-w-0">
@@ -583,20 +775,25 @@ export default function BrandexV3Page() {
                     isNightMode ? 'text-slate-50' : 'text-slate-900'
                   }`}>
                     {activeTab === "proyectos" ? "Panel de Proyectos" :
+                     activeTab === "proyectos_v2" ? "Panel de Proyectos" :
                      activeTab === "equipo" ? "Espacio de Equipo" :
                      activeTab === "clientes" ? "Directorio de Clientes" :
+                     activeTab === "cliente_v2" ? "Panel Cliente V2" :
                      activeTab === "finanzas" ? "Métricas Financieras" :
-                     activeTab === "ajustes" ? "Ajustes del Sistema" : "Buenos días"}
+                     activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
                   </span>
-                  <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
-                    isNightMode ? 'text-slate-400' : 'text-slate-600'
-                  }`}>
-                    {activeTab === "proyectos" ? "flujo y entregables activos" :
-                     activeTab === "equipo" ? "colaboradores y carga de trabajo" :
-                     activeTab === "clientes" ? "marcas asociadas y contratos" :
-                     activeTab === "finanzas" ? "facturación y margen operativo" :
-                     activeTab === "ajustes" ? "configuración y preferencias" : "bienvenido de nuevo"}
-                  </span>
+                  {activeTab !== "proyectos_v2" && (
+                    <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
+                      isNightMode ? 'text-slate-400' : 'text-slate-600'
+                    }`}>
+                      {activeTab === "proyectos" ? "flujo y entregables activos" :
+                       activeTab === "equipo" ? "colaboradores y carga de trabajo" :
+                       activeTab === "clientes" ? "marcas asociadas y contratos" :
+                       activeTab === "cliente_v2" ? "visión 360° de marca y proyectos" :
+                       activeTab === "finanzas" ? "facturación y margen operativo" :
+                       activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
+                    </span>
+                  )}
                 </motion.div>
               </AnimatePresence>
             </motion.div>
@@ -626,7 +823,7 @@ export default function BrandexV3Page() {
               </motion.button>
             )}
           </AnimatePresence>
-          {activeTab === "home" && (
+          {(activeTab === "home" || activeTab === "proyectos_v2") && (
             <motion.div 
               layout
               className="flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0"
@@ -797,7 +994,7 @@ export default function BrandexV3Page() {
 
           {/* RIGHT ZONE: Action Buttons */}
           <div className="flex-1 basis-0 flex items-center justify-end">
-          {activeTab === "home" && (
+          {(activeTab === "home" || activeTab === "proyectos_v2") && (
             <div className="flex items-center gap-3 shrink-0">
 
 
@@ -808,21 +1005,14 @@ export default function BrandexV3Page() {
                     playSound('click');
                     setGroupDropdownOpen(!groupDropdownOpen);
                   }}
-                  className={`flex items-center gap-1.5 h-8 px-3 rounded-full border text-xs font-bold transition-all duration-200 shadow-sm ${
+                  title="Agrupar y ordenar"
+                  className={`flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 ${
                     isNightMode
                       ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
                       : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <Layers className={`w-3.5 h-3.5 ${isNightMode ? "text-slate-400" : "text-slate-900"}`} />
-                  <span>
-                    {
-                      groupingMode === "fecha" ? "Fecha" :
-                      groupingMode === "cliente" ? "Cliente" :
-                      groupingMode === "prioridad" ? "Prioridad" : "Estado"
-                    }
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 ${isNightMode ? "opacity-60 text-slate-400" : "opacity-80 text-slate-900"}`} />
+                  <Layers className={`w-4 h-4 ${isNightMode ? "text-slate-400" : "text-slate-700"}`} />
                 </button>
 
                 {/* Dropdown Menu */}
@@ -844,7 +1034,7 @@ export default function BrandexV3Page() {
                       </div>
                       
                       <button
-                        onClick={() => { setGroupingMode("fecha"); setGroupDropdownOpen(false); }}
+                        onClick={() => { handleSetGroupingMode("fecha"); setGroupDropdownOpen(false); }}
                         className={`text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 ${
                           groupingMode === "fecha"
                             ? isNightMode ? "bg-white/10 text-white shadow-sm" : "bg-slate-100 text-slate-950 font-bold"
@@ -856,7 +1046,7 @@ export default function BrandexV3Page() {
                       </button>
 
                       <button
-                        onClick={() => { setGroupingMode("cliente"); setGroupDropdownOpen(false); }}
+                        onClick={() => { handleSetGroupingMode("cliente"); setGroupDropdownOpen(false); }}
                         className={`text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 ${
                           groupingMode === "cliente"
                             ? isNightMode ? "bg-white/10 text-white shadow-sm" : "bg-slate-100 text-slate-950 font-bold"
@@ -868,7 +1058,7 @@ export default function BrandexV3Page() {
                       </button>
 
                       <button
-                        onClick={() => { setGroupingMode("prioridad"); setGroupDropdownOpen(false); }}
+                        onClick={() => { handleSetGroupingMode("prioridad"); setGroupDropdownOpen(false); }}
                         className={`text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 ${
                           groupingMode === "prioridad"
                             ? isNightMode ? "bg-white/10 text-white shadow-sm" : "bg-slate-100 text-slate-950 font-bold"
@@ -880,7 +1070,7 @@ export default function BrandexV3Page() {
                       </button>
 
                       <button
-                        onClick={() => { setGroupingMode("estado"); setGroupDropdownOpen(false); }}
+                        onClick={() => { handleSetGroupingMode("estado"); setGroupDropdownOpen(false); }}
                         className={`text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 ${
                           groupingMode === "estado"
                             ? isNightMode ? "bg-white/10 text-white shadow-sm" : "bg-slate-100 text-slate-950 font-bold"
@@ -919,6 +1109,23 @@ export default function BrandexV3Page() {
                 </AnimatePresence>
               </div>
 
+              {/* Modo Claro Toggle Button */}
+              <button
+                onClick={toggleNightMode}
+                title={isNightMode ? "Activar modo claro" : "Activar modo oscuro"}
+                className={`flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 ${
+                  isNightMode
+                    ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
+                    : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
+                }`}
+              >
+                {isNightMode ? (
+                  <Sun className="w-4 h-4 text-slate-400 stroke-[2]" />
+                ) : (
+                  <Moon className="w-4 h-4 text-slate-700 stroke-[2]" />
+                )}
+              </button>
+
               {/* 4. Nuevo Proyecto Button (High Contrast White) */}
               <button
                 onClick={() => {
@@ -936,74 +1143,14 @@ export default function BrandexV3Page() {
         </div>
       </div>
 
-      {/* Top Right Controls: SaveStatusBadge, Notification Bell, User Profile Pill */}
-      <div className="absolute top-[20px] right-8 z-[100] flex items-center gap-2.5 pointer-events-auto select-none">
+      {/* Top Right Controls: SaveStatusBadge */}
+      <div className="absolute top-5 right-6 z-[100] flex items-center gap-2.5 pointer-events-auto select-none">
         <SaveStatusBadge isNightMode={isNightMode} />
-        {/* Notification Bell Icon Button with Red Badge */}
-        {activeTab === "home" && (
-          <button
-            onClick={() => {
-              playSound('pop');
-              setNotificationCount(prev => prev > 0 ? 0 : 3);
-            }}
-            className={`relative flex items-center justify-center w-8 h-8 rounded-full border transition-all duration-300 shadow-sm shrink-0 ${
-              isNightMode
-                ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
-                : "bg-white border-slate-200 text-slate-900 hover:text-black hover:border-slate-300"
-            }`}
-          >
-            <Bell className={`w-3.5 h-3.5 ${isNightMode ? "text-slate-350" : "text-slate-900"}`} />
-            {notificationCount > 0 && (
-              <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] animate-pulse" />
-            )}
-          </button>
-        )}
-
-        {/* User Profile Pill */}
-        <div className={`flex items-center h-8 gap-2.5 px-3.5 rounded-full border transition-all duration-300 shadow-sm ${
-          isNightMode 
-            ? "bg-slate-900 border-slate-800 text-slate-100" 
-            : "bg-white border-slate-200 text-slate-900"
-        }`}>
-          <div className="relative w-5 h-5 rounded-full overflow-hidden flex-shrink-0 border border-slate-400/30 bg-slate-950 flex items-center justify-center">
-            <Image 
-              src="/TASKI%20ICON.png" 
-              alt="User Profile" 
-              width={14} 
-              height={14} 
-              className="object-contain opacity-90"
-            />
-            <span className="absolute bottom-0 right-0 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
-          </div>
-          <span className="text-[12px] font-bold tracking-tight">
-            Taski Admin
-          </span>
-        </div>
-
-        {/* Single Circular Day/Night Toggle Button */}
-        <button
-          onClick={() => {
-            setIsNightMode(!isNightMode);
-            playSound('click');
-          }}
-          title={isNightMode ? "Cambiar a Modo Día" : "Cambiar a Modo Noche"}
-          className={`w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300 cursor-pointer shadow-sm ${
-            isNightMode
-              ? "bg-slate-900 border-slate-800 text-amber-400 hover:bg-slate-800 hover:border-slate-700"
-              : "bg-white border-slate-200 text-slate-900 hover:bg-slate-100 hover:border-slate-300"
-          }`}
-        >
-          {isNightMode ? (
-            <Sun className="w-3.5 h-3.5 fill-amber-400/20" />
-          ) : (
-            <Moon className="w-3.5 h-3.5 fill-slate-900/20 text-slate-900" />
-          )}
-        </button>
       </div>
 
       {/* Column Header Pill */}
       {activeTab === "proyectos" && (
-        <div className="absolute top-[140px] left-[216px] z-50 pointer-events-auto">
+        <div className="absolute top-[80px] left-6 z-50 pointer-events-auto">
           <div className={`relative px-4 py-1.5 rounded-full text-[11px] font-bold tracking-widest uppercase flex items-center justify-center w-fit overflow-hidden border shadow-md cursor-default select-none transition-all duration-300 ${
             isNeumorphic 
               ? 'bg-[#e6eef8] text-slate-800 shadow-[3px_3px_6px_#b8c4d9,-3px_-3px_6px_#ffffff] border-white/40' 
@@ -1015,16 +1162,14 @@ export default function BrandexV3Page() {
         </div>
       )}
 
-
-
       {/* Info Cards Column */}
       {activeTab === "proyectos" && (
         <div 
           onScroll={handleScroll}
-          className="absolute top-[235px] left-[216px] w-[500px] bottom-12 overflow-y-auto hide-scrollbar z-30 pb-20 px-8 pt-12 -ml-8 -mt-12 pointer-events-auto snap-y snap-mandatory scroll-pt-12"
+          className="absolute top-[124px] left-6 w-[280px] bottom-4 overflow-y-auto hide-scrollbar z-30 pb-20 pt-2 pointer-events-auto snap-y snap-mandatory"
           style={{
-            maskImage: 'linear-gradient(to bottom, transparent 0px, transparent 24px, black 48px, black 100%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, transparent 24px, black 48px, black 100%)'
+            maskImage: 'linear-gradient(to bottom, transparent 0px, transparent 16px, black 36px, black 100%)',
+            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, transparent 16px, black 36px, black 100%)'
           }}
         >
 
@@ -1043,27 +1188,19 @@ export default function BrandexV3Page() {
               onClick={() => {
                 if (isEditingColor) return;
                 setActiveProject(card.id);
+                setEditingProjectModal(card);
+                setShowNewProjectModal(true);
                 playSound('click');
               }}
-              className={`relative w-[280px] h-[140px] rounded-[20px] p-4 flex flex-col shrink-0 cursor-pointer transition-all duration-300 pointer-events-auto snap-start ${
-                isNightMode
-                  ? isActiveProject
-                    ? "neu-dark-inset border border-white/5 text-zinc-100 shadow-inner"
-                    : "neu-dark-flat border border-white/5 text-zinc-300 hover:scale-[1.02]"
-                  : isActiveProject
-                    ? "neu-inset border border-white/30 text-slate-900 shadow-inner"
-                    : "neu-flat border border-white/50 text-slate-700 hover:scale-[1.02]"
+              style={{ backgroundColor: getProjectBgColor(card) }}
+              className={`relative w-[280px] h-[140px] rounded-[20px] p-4 flex flex-col shrink-0 cursor-pointer transition-all duration-300 pointer-events-auto snap-start border border-white/10 overflow-hidden shadow-lg ${
+                isActiveProject ? "ring-2 ring-white/40 scale-[1.02]" : "hover:scale-[1.02]"
               }`}
             >
-              {/* Radial Glow (Clipped to card shape) */}
-              {!isNeumorphic && (
-                <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
-                  <div 
-                    className={`absolute -top-8 -left-8 w-28 h-28 ${card.customGlowStyle ? '' : card.glow} opacity-20 rounded-full blur-[25px] transition-opacity duration-300 ${isActiveProject ? 'opacity-40' : ''}`}
-                    style={card.customGlowStyle ? { backgroundColor: card.customGlowStyle } : {}}
-                  />
-                </div>
-              )}
+              {/* Soft White Radial Highlight (Light overlay on top corner for depth) */}
+              <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
+                <div className="absolute -top-10 -left-10 w-32 h-32 bg-white/15 rounded-full blur-[20px]" />
+              </div>
               
               {/* Header: Logo + Title/Client + Pill */}
               <div className="relative z-10 flex items-center gap-3 w-full">
@@ -1263,10 +1400,10 @@ export default function BrandexV3Page() {
                     </div>
                     <div className={`w-full h-2 rounded-full overflow-hidden shadow-inner ${isNightMode ? 'bg-zinc-900 border border-white/5' : isNeumorphic ? 'bg-slate-200' : 'bg-black/40'}`}>
                       <div 
-                        className={`h-full ${card.customGradientStyle ? '' : `bg-gradient-to-r ${card.gradient}`} rounded-full transition-all duration-500 ease-out`} 
+                        className="h-full rounded-full transition-all duration-500 ease-out" 
                         style={{ 
                           width: dynamicProgress.percent,
-                          ...(card.customGradientStyle ? { backgroundImage: card.customGradientStyle } : {})
+                          backgroundColor: getProjectBgColor(card)
                         }} 
                       />
                     </div>
@@ -1318,95 +1455,14 @@ export default function BrandexV3Page() {
 
       {/* Scroll Fade Overlay (Bottom) */}
       {activeTab === "proyectos" && (
-        <div className={`absolute bottom-12 left-[216px] w-[280px] h-32 bg-gradient-to-t pointer-events-none z-50 transition-all duration-500 ${
+        <div className={`absolute bottom-4 left-6 w-[280px] h-24 bg-gradient-to-t pointer-events-none z-50 transition-all duration-500 ${
           isNightMode
-            ? "from-[#16181d] via-[#16181d]/90 to-transparent"
+            ? "from-[#121215] via-[#121215]/90 to-transparent"
             : isNeumorphic
               ? "from-[#e6eef8] via-[#e6eef8]/90 to-transparent"
-              : "from-[#08080a] via-[#08080a]/90 to-transparent"
+              : "from-[#fffce2] via-[#fffce2]/90 to-transparent"
         }`} />
       )}
-
-
-      {/* Left Sidebar Menu Container (Instagram Web Style) */}
-      <div className="absolute left-3.5 top-0 bottom-0 z-40 flex flex-col items-start justify-center pointer-events-none">
-        {/* Background gradient of the sidebar - radial vertical mask */}
-        {!isNeumorphic && (
-          <div 
-            className="absolute inset-y-0 -left-3.5 w-36 pointer-events-none transition-opacity duration-500"
-            style={{
-              background: "radial-gradient(ellipse 65px 340px at center, rgba(8, 8, 10, 1) 20%, rgba(8, 8, 10, 0.75) 55%, rgba(8, 8, 10, 0) 100%)",
-            }}
-          />
-        )}
-
-        {/* Vertically centered navigation icons wrapper */}
-        <div
-          onMouseEnter={() => setIsSidebarHovered(true)}
-          onMouseLeave={() => {
-            setIsSidebarHovered(false);
-            setHoveredMenuItem(null);
-          }}
-          className="flex flex-col gap-1.5 pointer-events-auto bg-transparent border-transparent"
-        >
-          <nav className="flex flex-col gap-1 items-start">
-            {menuItems.map((item) => {
-              const isActive = activeTab === item.id;
-              const isHovered = hoveredMenuItem === item.id;
-
-              return (
-                <motion.div
-                  key={item.id}
-                  onMouseEnter={() => setHoveredMenuItem(item.id)}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    playSound('click');
-                  }}
-                  animate={{ width: isSidebarHovered ? 160 : 40 }}
-                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                  className={`relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
-                    isNightMode
-                      ? isActive
-                        ? "bg-white/10 text-white"
-                        : isHovered
-                          ? "bg-white/5 text-neutral-200"
-                          : "bg-transparent"
-                      : isActive
-                        ? "bg-slate-200/80 text-slate-900"
-                        : isHovered
-                          ? "bg-slate-100 text-slate-800"
-                          : "bg-transparent"
-                  }`}
-                >
-                  {/* Icon - Fixed 40px width container on the far left (NEVER shifts) */}
-                  <div className="flex items-center justify-center shrink-0 w-10 h-10">
-                    {getIcon(item.id, isActive)}
-                  </div>
-
-                  {/* Text label - Silky smooth blur fade-in & fade-out without clipping */}
-                  <AnimatePresence>
-                    {isSidebarHovered && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -6, filter: "blur(4px)" }}
-                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                        exit={{ opacity: 0, x: -6, filter: "blur(4px)" }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className={`text-[13px] whitespace-nowrap select-none pr-3 ${
-                          isActive 
-                            ? isNightMode ? "font-bold opacity-100 text-white" : "font-bold opacity-100 text-slate-900" 
-                            : isNightMode ? "font-medium opacity-80 text-zinc-300 hover:text-white" : "font-medium opacity-70 text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        {item.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
 
       {/* Selected Project Dashboard */}
       {activeTab === "proyectos" && (
@@ -1425,8 +1481,18 @@ export default function BrandexV3Page() {
           onUpdateDaysRemaining={updateDaysRemaining}
           onSelectTask={(taskId) => setActiveTaskId(taskId)}
           onDeleteProject={deleteProject}
+          onSelectProject={(projId) => {
+            const targetProject = projects.find((p) => String(p.id) === String(projId));
+            if (targetProject) {
+              setActiveProject(targetProject.id);
+              setEditingProjectModal(targetProject);
+              setShowNewProjectModal(true);
+              playSound('click');
+            }
+          }}
           isNeumorphic={isNeumorphic}
           isNightMode={isNightMode}
+          isSidebarHovered={isSidebarHovered}
         />
       )}
 
@@ -1438,15 +1504,26 @@ export default function BrandexV3Page() {
             initial={{ opacity: 0, y: 15, filter: "blur(8px)" }}
             animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
             exit={{ opacity: 0, y: -15, filter: "blur(8px)" }}
-            transition={{ duration: 0.4, ease: "easeOut" }}
-            className="absolute top-[92px] left-[216px] right-[40px] bottom-4 z-30 pointer-events-auto flex flex-col gap-6"
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="absolute top-[80px] left-6 right-6 bottom-4 z-30 pointer-events-auto flex flex-col gap-6 overflow-x-hidden"
           >
             {/* Render Home Dashboard */}
             {activeTab === "home" && (
               <HomeDashboard
                 projects={projects}
                 onSelectTab={(tab) => setActiveTab(tab)}
-                onSelectProject={(projectId) => setActiveProject(projectId)}
+                onSelectProject={(projectId) => {
+                  const targetProject = projects.find((p) => String(p.id) === String(projectId));
+                  if (targetProject) {
+                    setActiveProject(targetProject.id);
+                    setEditingProjectModal(targetProject);
+                    setShowNewProjectModal(true);
+                    playSound('click');
+                  } else {
+                    setActiveProject(projectId);
+                    setActiveTab("proyectos");
+                  }
+                }}
                 isNeumorphic={isNeumorphic}
                 isNightMode={isNightMode}
                 activeView={homeView}
@@ -1458,6 +1535,37 @@ export default function BrandexV3Page() {
                 onDeleteProject={deleteProject}
                 searchQuery={searchQuery}
                 onSearchQueryChange={setSearchQuery}
+              />
+            )}
+
+            {/* Render Projects V2 Dashboard */}
+            {activeTab === "proyectos_v2" && (
+              <ProjectsV2Dashboard
+                projects={projects}
+                onSelectProject={(projId) => {
+                  const targetProject = projects.find((p) => String(p.id) === String(projId));
+                  if (targetProject) {
+                    setActiveProject(targetProject.id);
+                    setActiveTab("proyectos");
+                    playSound('click');
+                  } else {
+                    setActiveProject(Number(projId));
+                    setActiveTab("proyectos");
+                  }
+                }}
+                onEditProject={(proj) => {
+                  setActiveProject(proj.id);
+                  setEditingProjectModal(proj);
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                }}
+                onNewProject={() => {
+                  setEditingProjectModal(null);
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                }}
+                isNeumorphic={isNeumorphic}
+                isNightMode={isNightMode}
               />
             )}
 
@@ -1476,6 +1584,28 @@ export default function BrandexV3Page() {
               <ClientsDashboard 
                 projects={projects}
                 onUpdateProjects={setProjects}
+                isNeumorphic={isNeumorphic}
+                isNightMode={isNightMode}
+              />
+            )}
+
+            {/* Render Client V2 Dashboard */}
+            {activeTab === "cliente_v2" && (
+              <ClientV2Dashboard 
+                projects={projects}
+                onUpdateProjects={setProjects}
+                onSelectProject={(projId) => {
+                  const targetProject = projects.find((p) => String(p.id) === String(projId));
+                  if (targetProject) {
+                    setActiveProject(targetProject.id);
+                    setEditingProjectModal(targetProject);
+                    setShowNewProjectModal(true);
+                    playSound('click');
+                  } else {
+                    setActiveProject(Number(projId));
+                    setActiveTab("proyectos");
+                  }
+                }}
                 isNeumorphic={isNeumorphic}
                 isNightMode={isNightMode}
               />
@@ -1581,14 +1711,60 @@ export default function BrandexV3Page() {
           </motion.div>
         )}
       </AnimatePresence>
+      </motion.div>
 
       <NewProjectModal
         isOpen={showNewProjectModal}
-        onClose={() => setShowNewProjectModal(false)}
+        onClose={() => {
+          setShowNewProjectModal(false);
+          setEditingProjectModal(null);
+        }}
         onCreateProject={addNewProjectFromModal}
+        onDeleteProject={deleteProject}
+        editingProject={editingProjectModal}
+        onUpdateProject={(projId, updatedData) => {
+          setProjects((prev) =>
+            prev.map((p) => {
+              if (String(p.id) !== String(projId)) return p;
+              const updatedTasks = updatedData.tasks !== undefined ? updatedData.tasks : p.tasks;
+              const evalProj = autoEvaluateProjectStatus({
+                ...p,
+                ...updatedData,
+                tasks: updatedTasks
+              });
+              persistProjectUpdate(p.id, {
+                title: evalProj.title,
+                client: evalProj.client,
+                package: evalProj.package,
+                desc: evalProj.briefCore || evalProj.desc,
+                status: evalProj.status,
+                tasks: evalProj.tasks,
+                gradient: evalProj.gradient,
+                glow: evalProj.glow,
+                customColor: evalProj.customColor,
+                customGradientStyle: evalProj.customGradientStyle,
+                customGlowStyle: evalProj.customGlowStyle,
+                statusColor: evalProj.statusColor,
+                progress: evalProj.progress,
+                percent: evalProj.percent
+              });
+              return evalProj;
+            })
+          );
+          setShowNewProjectModal(false);
+          setEditingProjectModal(null);
+          playSound('pop');
+        }}
+        projects={projects}
+        onSelectProject={(projId) => {
+          setActiveProject(projId);
+          setActiveTab("proyectos");
+          setShowNewProjectModal(false);
+          setEditingProjectModal(null);
+          playSound('click');
+        }}
         isNightMode={isNightMode}
         isNeumorphic={isNeumorphic}
-        projects={projects}
       />
     </main>
   );

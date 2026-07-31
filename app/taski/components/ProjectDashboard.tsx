@@ -6,13 +6,22 @@ import { playSound } from '../utils/audio';
 import { getDynamicProgress } from '../utils/data';
 import DateRangePicker from './DateRangePicker';
 import Image from 'next/image';
-import { Calendar, DollarSign, Clock, Flag, ClipboardList, TrendingUp, Users, Plus, Trash2 } from 'lucide-react';
+import { Calendar, DollarSign, Clock, Flag, ClipboardList, TrendingUp, Users, Plus, Trash2, Check, X, ChevronDown, ChevronRight, Layers, Filter, Grid } from 'lucide-react';
+import FormatoShape from './FormatoShape';
+import { FORMATOS_ESTANDAR, getFormato, FormatoConfig } from '../utils/formatos';
+import { TaskCardContent } from './TaskCard';
+import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { useTaskCardInteractions } from '../hooks/useTaskCardInteractions';
+import { CARD_COLOR_KEYS, getCardColorTheme, getSingleSourceProjectColor } from '@/lib/utils';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export interface Task {
   id: number;
   title: string;
   desc: string;
   format: string;
+  formato?: string | null;
   time: string;
   status: 'Planificado' | 'En Proceso' | 'En Revisión' | 'Completado';
   statusColor: string;
@@ -47,6 +56,8 @@ export interface Project {
   deadline?: string;
   daysRemaining?: string;
   team?: { name: string; color: string }[];
+  asignado_ids?: string[];
+  asignado?: string;
   briefCore?: string;
   priority?: string;
   cost?: string;
@@ -54,6 +65,7 @@ export interface Project {
   customColor?: { h: number; s: number; l: number };
   customGradientStyle?: string;
   customGlowStyle?: string;
+  fecha_creacion?: string;
 }
 
 interface ProjectDashboardProps {
@@ -71,8 +83,10 @@ interface ProjectDashboardProps {
   onUpdateDaysRemaining?: (id: number, newDaysRemaining: string) => void;
   onSelectTask?: (taskId: number) => void;
   onDeleteProject?: (id: number) => void;
+  onSelectProject?: (projectId: string | number) => void;
   isNeumorphic?: boolean;
   isNightMode?: boolean;
+  isSidebarHovered?: boolean;
 }
 
 const MONTHS_SPANISH = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
@@ -81,6 +95,10 @@ const FULL_MONTH_NAMES = {
   'jul': 'julio', 'ago': 'agosto', 'sep': 'septiembre', 'oct': 'octubre', 'nov': 'noviembre', 'dic': 'diciembre'
 };
 const WEEKDAYS_SPANISH = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+function getProjectBgColor(p: Project): string {
+  return getSingleSourceProjectColor(p).hslCss;
+}
 
 const parseTaskTimeToHours = (timeStr: string | undefined | null): number => {
   if (!timeStr) return 0;
@@ -178,13 +196,16 @@ export function ProjectDashboard({
   onUpdateDaysRemaining,
   onSelectTask,
   onDeleteProject,
+  onSelectProject,
   isNeumorphic = false,
-  isNightMode = false
+  isNightMode = false,
+  isSidebarHovered = false
 }: ProjectDashboardProps) {
   const projectStatusGlow = getGlowFromStatusColor(project?.statusColor);
   const [isEditingTitle, setIsEditingTitle] = React.useState(false);
   const [editedTitle, setEditedTitle] = React.useState(project?.title || "");
   const [originalTitle, setOriginalTitle] = React.useState("");
+  const [activeTimeTaskRowId, setActiveTimeTaskRowId] = React.useState<number | null>(null);
 
   const [isEditingDesc, setIsEditingDesc] = React.useState(false);
   const [editedDesc, setEditedDesc] = React.useState(project?.briefCore || "");
@@ -197,7 +218,263 @@ export function ProjectDashboard({
     onUpdateTasks(project.id, nextTasks);
   };
 
+  // Shared Task Card interactions hook
+  const {
+    activeStatusDropdownCardId,
+    setActiveStatusDropdownCardId,
+    activeFormatDropdownCardId,
+    setActiveFormatDropdownCardId,
+    activeTimeDropdownCardId,
+    setActiveTimeDropdownCardId,
+    activeColorSelectorCardId,
+    setActiveColorSelectorCardId,
+    activeCardMenuId,
+    setActiveCardMenuId,
+    editingTaskField,
+    setEditingTaskField,
+    editingValue,
+    setEditingValue,
+    expandedCardId,
+    setExpandedCardId,
+    hoveredStatusOptionCard,
+    setHoveredStatusOptionCard,
+    hoveredFormatOptionCard,
+    setHoveredFormatOptionCard,
+    getStatusPillConfig,
+    getFormatPillConfig,
+  } = useTaskCardInteractions();
+
+  // Grouping & Collapse state
+  const [agruparPor, setAgruparPor] = useState<"status" | "formato" | "fecha" | "ninguno">("status");
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [deleteModalConfig, setDeleteModalConfig] = useState<any>(null);
+
+  const colorConfig = React.useMemo(() => {
+    return CARD_COLOR_KEYS.reduce((acc: Record<string, any>, key: string) => {
+      acc[key] = getCardColorTheme(key, isNightMode);
+      return acc;
+    }, {} as Record<string, any>);
+  }, [isNightMode]);
+
+  const getCalendarDaysDiff = React.useCallback((targetDate: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(targetDate);
+    target.setHours(0, 0, 0, 0);
+    const diffTime = target.getTime() - today.getTime();
+    return Math.round(diffTime / (1000 * 60 * 60 * 24));
+  }, []);
+
+  const formatLocalDate = React.useCallback((d: Date) => {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+
+  const updateTaskProperty = React.useCallback((projId: string | number, tId: string | number, key: string, value: any) => {
+    if (!project || !onUpdateTasks) return;
+
+    const tIdStr = String(tId);
+    const updatedTasks = (tasks || []).map((t) => {
+      const isMatch = String(t.id) === tIdStr || `kt-${project.id}-${t.id}` === tIdStr || (tIdStr.startsWith("kt-") && tIdStr.endsWith(`-${t.id}`));
+      if (!isMatch) return t;
+
+      const updated = { ...t, [key]: value };
+      if (key === "status") {
+        updated.statusColor = value === "Completado"
+          ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+          : value === "En Proceso"
+            ? "bg-amber-500/20 border-amber-500/30 text-amber-400"
+            : value === "En Revisión" || value === "Revisión"
+              ? "bg-purple-500/20 border-purple-500/30 text-purple-400"
+              : "bg-slate-500/20 border-slate-500/30 text-slate-300";
+        updated.fecha_hora_completado = value === "Completado"
+          ? new Date().toISOString()
+          : undefined;
+      }
+      return updated;
+    });
+
+    onUpdateTasks(project.id, updatedTasks);
+  }, [project, onUpdateTasks, tasks]);
+
+  const saveEditing = React.useCallback((projId: string | number, tId: string | number) => {
+    if (!editingTaskField) return;
+    updateTaskProperty(projId, tId, editingTaskField.field, editingValue);
+    setEditingTaskField(null);
+  }, [editingTaskField, editingValue, updateTaskProperty, setEditingTaskField]);
+
+  const toggleSectionCollapse = (sectionId: string) => {
+    playSound('click');
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
+  };
+
+  const groupedSections = React.useMemo(() => {
+    if (agruparPor === "status") {
+      const map: Record<string, Task[]> = {
+        "Planificado": [],
+        "En Proceso": [],
+        "En Revisión": [],
+        "Completado": [],
+        "Sin categoría": []
+      };
+
+      tasks.forEach(t => {
+        const st: string = t.status || "Planificado";
+        if (st === "Planificado" || st === "Pendiente") {
+          map["Planificado"].push(t);
+        } else if (st === "En Proceso") {
+          map["En Proceso"].push(t);
+        } else if (st === "En Revisión" || st === "Revisión") {
+          map["En Revisión"].push(t);
+        } else if (st === "Completado") {
+          map["Completado"].push(t);
+        } else {
+          map["Sin categoría"].push(t);
+        }
+      });
+
+      return [
+        { id: "status-planificado", title: "Por hacer / Planificado", tasks: map["Planificado"], badgeBg: "bg-slate-500/20 text-slate-300" },
+        { id: "status-proceso", title: "En Proceso", tasks: map["En Proceso"], badgeBg: "bg-amber-500/20 text-amber-300" },
+        { id: "status-revision", title: "En Revisión", tasks: map["En Revisión"], badgeBg: "bg-purple-500/20 text-purple-300" },
+        { id: "status-completado", title: "Completado", tasks: map["Completado"], badgeBg: "bg-emerald-500/20 text-emerald-300" },
+        ...(map["Sin categoría"].length > 0 ? [{ id: "status-sin-cat", title: "Sin categoría", tasks: map["Sin categoría"], badgeBg: "bg-neutral-500/20 text-neutral-400" }] : [])
+      ];
+    }
+
+    if (agruparPor === "formato") {
+      const knownFormats = ["Portada", "Flyer", "Video", "Copywriting", "Branding"];
+      const map: Record<string, Task[]> = {};
+      knownFormats.forEach(fmt => { map[fmt] = []; });
+      map["Otros formatos"] = [];
+      map["Sin categoría"] = [];
+
+      tasks.forEach(t => {
+        const fmt = t.formato || t.format;
+        if (!fmt) {
+          map["Sin categoría"].push(t);
+        } else if (knownFormats.includes(fmt)) {
+          map[fmt].push(t);
+        } else {
+          map["Otros formatos"].push(t);
+        }
+      });
+
+      const result = knownFormats.map(fmt => ({
+        id: `fmt-${fmt}`,
+        title: fmt,
+        tasks: map[fmt],
+        badgeBg: "bg-sky-500/20 text-sky-300"
+      }));
+
+      if (map["Otros formatos"].length > 0) {
+        result.push({ id: "fmt-otros", title: "Otros formatos", tasks: map["Otros formatos"], badgeBg: "bg-indigo-500/20 text-indigo-300" });
+      }
+      if (map["Sin categoría"].length > 0) {
+        result.push({ id: "fmt-sin-cat", title: "Sin categoría", tasks: map["Sin categoría"], badgeBg: "bg-neutral-500/20 text-neutral-400" });
+      }
+      return result;
+    }
+
+    if (agruparPor === "fecha") {
+      const map: Record<string, Task[]> = {
+        "Vencidas": [],
+        "Hoy": [],
+        "Mañana": [],
+        "Próximos 7 días": [],
+        "Más adelante": [],
+        "Sin categoría": []
+      };
+
+      tasks.forEach(t => {
+        const targetDateStr = t.fecha_limite || t.deadline || t.fecha_programada;
+        if (!targetDateStr) {
+          map["Sin categoría"].push(t);
+          return;
+        }
+        const dateObj = new Date(targetDateStr + "T00:00:00");
+        const diffDays = getCalendarDaysDiff(dateObj);
+
+        if (diffDays < 0 && t.status !== "Completado") {
+          map["Vencidas"].push(t);
+        } else if (diffDays === 0) {
+          map["Hoy"].push(t);
+        } else if (diffDays === 1) {
+          map["Mañana"].push(t);
+        } else if (diffDays > 1 && diffDays <= 7) {
+          map["Próximos 7 días"].push(t);
+        } else if (diffDays > 7) {
+          map["Más adelante"].push(t);
+        } else {
+          map["Sin categoría"].push(t);
+        }
+      });
+
+      return [
+        { id: "fecha-vencidas", title: "Vencidas", tasks: map["Vencidas"], badgeBg: "bg-rose-500/20 text-rose-300" },
+        { id: "fecha-hoy", title: "Hoy", tasks: map["Hoy"], badgeBg: "bg-sky-500/20 text-sky-300" },
+        { id: "fecha-manana", title: "Mañana", tasks: map["Mañana"], badgeBg: "bg-amber-500/20 text-amber-300" },
+        { id: "fecha-7dias", title: "Próximos 7 días", tasks: map["Próximos 7 días"], badgeBg: "bg-indigo-500/20 text-indigo-300" },
+        { id: "fecha-adelante", title: "Más adelante", tasks: map["Más adelante"], badgeBg: "bg-slate-500/20 text-slate-300" },
+        ...(map["Sin categoría"].length > 0 ? [{ id: "fecha-sin-cat", title: "Sin categoría", tasks: map["Sin categoría"], badgeBg: "bg-neutral-500/20 text-neutral-400" }] : [])
+      ];
+    }
+
+    return [
+      { id: "all-tasks", title: "Todas las tareas", tasks: tasks, badgeBg: "bg-slate-500/20 text-slate-300" }
+    ];
+  }, [tasks, agruparPor, getCalendarDaysDiff]);
+
   const [expandedTaskIds, setExpandedTaskIds] = useState<number[]>([]);
+
+  // Local inline task creation draft state (Zero silent Firestore writes)
+  const [isCreatingInlineTask, setIsCreatingInlineTask] = useState(false);
+  const [inlineTaskTitle, setInlineTaskTitle] = useState("");
+  const [inlineTaskTime, setInlineTaskTime] = useState("30 min");
+  const [inlineTaskFormatoKey, setInlineTaskFormatoKey] = useState<string | null>(null);
+  const [inlineTaskFormatoName, setInlineTaskFormatoName] = useState("");
+
+  const handleConfirmInlineTask = () => {
+    if (!inlineTaskTitle.trim() || !project) return;
+    playSound('pop');
+    const today = new Date();
+    const fecha_creacion = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const newTask: Task = {
+      id: Date.now(),
+      title: inlineTaskTitle.trim(),
+      desc: "",
+      format: inlineTaskFormatoName || "Sin formato",
+      formato: inlineTaskFormatoKey || null,
+      time: inlineTaskTime.trim() || "30 min",
+      status: "Planificado",
+      statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+      subtasks: [],
+      fecha_creacion,
+    };
+    const updatedTasks = [...tasks, newTask];
+    setTasks(updatedTasks);
+    if (onUpdateTasks && project) {
+      onUpdateTasks(project.id, updatedTasks);
+    }
+    setIsCreatingInlineTask(false);
+    setInlineTaskTitle("");
+    setInlineTaskTime("30 min");
+    setInlineTaskFormatoKey(null);
+    setInlineTaskFormatoName("");
+  };
+
+  const handleCancelInlineTask = () => {
+    setIsCreatingInlineTask(false);
+    setInlineTaskTitle("");
+    setInlineTaskTime("30 min");
+    setInlineTaskFormatoKey(null);
+    setInlineTaskFormatoName("");
+  };
+
+  const handleUpdateTaskTime = (taskId: number, newTime: string) => {
+    if (!onUpdateTasks || !project) return;
+    const newTasks = tasks.map(t => t.id === taskId ? { ...t, time: newTime } : t);
+    onUpdateTasks(project.id, newTasks);
+  };
 
   // Time Tracker state for task session logs
   const [activeTimerTaskId, setActiveTimerTaskId] = useState<number | null>(null);
@@ -449,6 +726,7 @@ export function ProjectDashboard({
   const handleAddTask = () => {
     const today = new Date();
     const fecha_creacion = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const defaultDeadline = project ? ((project as any).fecha_limite || (project as any).deadlineRaw || (project.deadline && /^\d{4}-\d{2}-\d{2}$/.test(project.deadline) ? project.deadline : undefined)) : undefined;
     const newTask: Task = {
       id: Date.now(),
       title: "Nueva Tarea",
@@ -458,7 +736,9 @@ export function ProjectDashboard({
       status: "Planificado",
       statusColor: "bg-white",
       subtasks: [],
-      fecha_creacion
+      fecha_creacion,
+      fecha_limite: defaultDeadline,
+      deadline: defaultDeadline,
     };
     setTasks([...tasks, newTask]);
     playSound('pop');
@@ -576,13 +856,18 @@ export function ProjectDashboard({
     <AnimatePresence mode="wait">
       <motion.div 
         key={project.id}
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-        exit="exit"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         onAnimationStart={() => playSound('whoosh')}
-        className="absolute top-0 left-[508px] right-[40px] bottom-0 z-auto p-8 pt-[140px] pointer-events-auto"
+        className="absolute top-0 left-[310px] right-6 bottom-0 z-auto p-8 pt-[140px] pointer-events-auto overflow-y-auto hide-scrollbar pb-24 relative"
       >
+        {/* Dynamic Ambient Header Glow matching project color */}
+        <div 
+          className="absolute top-0 left-0 right-0 h-44 pointer-events-none opacity-25 blur-3xl transition-all duration-500" 
+          style={{ background: `radial-gradient(ellipse at top, ${getProjectBgColor(project)} 0%, transparent 75%)` }} 
+        />
         {/* Nivel 4: Acciones Rápidas (Absolute Top Right) */}
         <motion.div variants={itemVariants} className="absolute top-[186px] right-8 flex items-center gap-3 z-40">
           <button 
@@ -1029,314 +1314,305 @@ export function ProjectDashboard({
               ? "bg-neutral-800/50 text-neutral-50"
               : "bg-slate-100 text-slate-900"
           }`}>
-            
-            {/* Sección de Tareas / Tarjetas Inferiores */}
-            <div className="flex items-start gap-6 pt-4 pb-6 overflow-x-auto w-full [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] mask-linear-right pr-12">
-          <AnimatePresence>
-          {tasks.map((task) => {
-            const isExpanded = true;
-            const taskGlow = getGlowFromStatusColor(task.statusColor);
-            return (
-              <motion.div 
-                layout
-                key={task.id}
-                variants={itemVariants} 
-                whileHover={{ scale: 1.01 }}
-                exit={{ opacity: 0, y: 30, scale: 0.9, filter: "blur(5px)", width: 0, paddingLeft: 0, paddingRight: 0, marginLeft: -24, overflow: "hidden", transition: { duration: 0.3 } }}
-                onClick={() => { playSound('task-click'); if (onSelectTask) onSelectTask(task.id); }}
-                className={`rounded-2xl p-4 flex flex-col shrink-0 select-none cursor-pointer transition-all duration-200 relative w-[340px] h-[320px] group/card border ${
-                  isNightMode
-                    ? "bg-neutral-900 border-neutral-800 text-neutral-50 shadow-sm"
-                    : "bg-slate-50 border-slate-200 text-slate-900 shadow-sm"
-                }`}
-              >
-                {/* Radial Glow (Clipped to card shape) */}
-                {!isNeumorphic && (
-                  <div className="absolute inset-0 rounded-[24px] overflow-hidden pointer-events-none">
-                    <div className={`absolute -top-8 -left-8 w-28 h-28 ${taskGlow} ${task.status === 'Planificado' || (task.status as any) === 'Pendiente' ? 'opacity-[0.15]' : 'opacity-[0.60]'} rounded-full blur-[25px] transition-all duration-500`} />
-                  </div>
-                )}
-                
-                {/* Delete Button (appears on hover) */}
-                <div 
-                  onClick={(e) => handleDeleteTask(task.id, e)}
-                  className={`absolute -top-2.5 -right-2.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover/card:opacity-100 transition-all duration-300 cursor-pointer shadow-xl z-50 ${
-                    isNeumorphic
-                      ? "bg-[#e6eef8] border border-white/40 shadow-[2px_2px_4px_#b8c4d9,-2px_-2px_4px_#ffffff]"
-                      : "bg-[#1c1c1e] border border-white/10 hover:border-white/30 hover:bg-[#2c2c2e]"
-                  }`}
-                  title="Eliminar tarea"
-                >
-                  <svg className={`w-3 h-3 transition-colors ${isNeumorphic ? 'text-slate-500 hover:text-slate-800' : 'text-white/50 hover:text-white/90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
+            {/* Header / Bar con Selector Agrupar Por */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10 mb-4 w-full">
+              <div className="flex items-center gap-2">
+                <Layers className={`w-4 h-4 ${isNightMode ? 'text-amber-400' : 'text-amber-600'}`} />
+                <span className={`text-xs font-bold uppercase tracking-wider ${isNightMode ? 'text-neutral-300' : 'text-slate-700'}`}>
+                  Tarjetas de tareas
+                </span>
+                <span className={`text-xs px-2.5 py-0.5 rounded-full font-mono font-bold ${isNightMode ? 'bg-white/10 text-white' : 'bg-slate-200 text-slate-800'}`}>
+                  {tasks.length} {tasks.length === 1 ? 'tarea' : 'tareas'}
+                </span>
+              </div>
 
-                {/* Upper part: Image square + Text */}
-                <div className="flex gap-3 w-full items-start pr-6">
-                  {/* Image box placeholder with "+" */}
-                  <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAttachmentToggle(task.id);
-                    }}
-                    className={`w-16 h-16 rounded-[20px] flex items-center justify-center flex-shrink-0 transition-all duration-200 group/upload overflow-hidden relative ${
-                      isNeumorphic
-                        ? "bg-transparent border border-dashed border-slate-400 hover:border-slate-800"
-                        : "bg-white/5 border border-dashed border-white/20 hover:border-white/45 hover:bg-white/10"
-                    }`}
-                    title={task.attachmentUrl ? "Quitar adjunto" : "Adjuntar imagen"}
-                  >
-                    {task.attachmentUrl ? (
-                      <>
-                        <div 
-                          className={`absolute inset-0 ${isNeumorphic ? 'bg-slate-200' : 'bg-zinc-800'}`} 
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <Image src="/taski-icon.png?v=3" alt="Adjunto" width={22} height={22} className="object-contain opacity-80" />
-                        </div>
-                        <div className="absolute inset-0 bg-black/70 opacity-0 hover:opacity-100 flex items-center justify-center transition-opacity duration-200 z-10">
-                          <span className="text-[8px] font-bold text-rose-400 uppercase tracking-widest">Quitar</span>
-                        </div>
-                      </>
-                    ) : (
-                      <svg className={`w-4 h-4 transition-colors ${isNeumorphic ? 'text-slate-400 group-hover/upload:text-slate-800' : 'text-white/40 group-hover/upload:text-white/80'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
+              <div className="flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 opacity-60" />
+                <span className="text-xs font-semibold opacity-70">Agrupar por:</span>
+                <select
+                  value={agruparPor}
+                  onChange={(e) => {
+                    playSound('click');
+                    setAgruparPor(e.target.value as any);
+                  }}
+                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-all ${
+                    isNightMode 
+                      ? "bg-neutral-900 border-neutral-700 text-neutral-100 hover:border-amber-500/50" 
+                      : "bg-white border-slate-300 text-slate-900 hover:border-amber-500 shadow-sm"
+                  }`}
+                >
+                  <option value="status">Estado</option>
+                  <option value="formato">Formato</option>
+                  <option value="fecha">Fecha</option>
+                  <option value="ninguno">Sin agrupación</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Contenedor de Secciones Agrupadas */}
+            <div className="flex flex-col gap-6 w-full">
+              {tasks.length === 0 && !isCreatingInlineTask && (
+                <div className={`p-8 rounded-xl border border-dashed text-center text-sm font-medium ${isNightMode ? 'border-neutral-800 text-neutral-400' : 'border-slate-300 text-slate-500'}`}>
+                  No hay tareas creadas en este proyecto todavía.
+                </div>
+              )}
+
+              {groupedSections.map((section) => {
+                if (section.tasks.length === 0 && agruparPor !== "ninguno" && section.id !== "status-planificado" && section.id !== "all-tasks") {
+                  return null;
+                }
+
+                const isCollapsed = Boolean(collapsedSections[section.id]);
+
+                return (
+                  <div key={section.id} className="flex flex-col gap-3 w-full">
+                    {/* Encabezado de Sección */}
+                    <button
+                      type="button"
+                      onClick={() => toggleSectionCollapse(section.id)}
+                      className={`flex items-center justify-between p-2.5 px-3.5 rounded-xl border transition-all cursor-pointer select-none ${
+                        isNightMode
+                          ? "bg-neutral-900/60 hover:bg-neutral-900 border-neutral-800/80 text-white"
+                          : "bg-white hover:bg-slate-50 border-slate-200 text-slate-900 shadow-sm"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4 text-amber-400 shrink-0" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-amber-400 shrink-0" />
+                        )}
+                        <span className="text-sm font-bold tracking-tight">{section.title}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${section.badgeBg}`}>
+                          {section.tasks.length}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Contenido Grid de Tarjetas */}
+                    {!isCollapsed && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full pt-1">
+                        <AnimatePresence>
+                          {section.tasks.map((task) => {
+                            const cardTaskId = `kt-${project?.id || 'p'}-${task.id}`;
+                            return (
+                              <motion.div
+                                key={task.id}
+                                layout
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.9 }}
+                                className="w-full h-full min-h-[170px]"
+                              >
+                                <TaskCardContent
+                                  taskId={cardTaskId}
+                                  projectId={project?.id || 0}
+                                  onSelectProject={onSelectProject}
+                                  projectName={project?.title || ""}
+                                  taskTitle={task.title}
+                                  completedTasks={tasks.filter(t => t.status === "Completado").length}
+                                  totalTasks={tasks.length}
+                                  desc={task.desc}
+                                  expandedCardId={expandedCardId}
+                                  setExpandedCardId={setExpandedCardId}
+                                  projects={project ? [project] : []}
+                                  setProjects={(updater: any) => {
+                                    if (!project || !onUpdateTasks) return;
+                                    const nextProjects = typeof updater === "function" ? updater([project]) : updater;
+                                    const updatedProj = nextProjects.find((p: any) => String(p.id) === String(project.id));
+                                    if (updatedProj && updatedProj.tasks) {
+                                      onUpdateTasks(project.id, updatedProj.tasks);
+                                    }
+                                  }}
+                                  colorConfig={colorConfig}
+                                  getStatusPillConfig={getStatusPillConfig}
+                                  getFormatPillConfig={getFormatPillConfig}
+                                  updateTaskProperty={updateTaskProperty}
+                                  activeStatusDropdownCardId={activeStatusDropdownCardId}
+                                  setActiveStatusDropdownCardId={setActiveStatusDropdownCardId}
+                                  activeFormatDropdownCardId={activeFormatDropdownCardId}
+                                  setActiveFormatDropdownCardId={setActiveFormatDropdownCardId}
+                                  activeTimeDropdownCardId={activeTimeDropdownCardId}
+                                  setActiveTimeDropdownCardId={setActiveTimeDropdownCardId}
+                                  activeColorSelectorCardId={activeColorSelectorCardId}
+                                  setActiveColorSelectorCardId={setActiveColorSelectorCardId}
+                                  activeCardMenuId={activeCardMenuId}
+                                  setActiveCardMenuId={setActiveCardMenuId}
+                                  hoveredStatusOptionCard={hoveredStatusOptionCard}
+                                  setHoveredStatusOptionCard={setHoveredStatusOptionCard}
+                                  hoveredFormatOptionCard={hoveredFormatOptionCard}
+                                  setHoveredFormatOptionCard={setHoveredFormatOptionCard}
+                                  availableFormats={["Portada", "Flyer", "Video", "Copywriting", "Branding"]}
+                                  editingTaskField={editingTaskField}
+                                  setEditingTaskField={setEditingTaskField}
+                                  editingValue={editingValue}
+                                  setEditingValue={setEditingValue}
+                                  saveEditing={saveEditing}
+                                  isNightMode={isNightMode}
+                                  isHomeEditMode={false}
+                                  setDeleteModalConfig={setDeleteModalConfig}
+                                  getCalendarDaysDiff={getCalendarDaysDiff}
+                                  formatLocalDate={formatLocalDate}
+                                />
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
+
+                        {/* Botón Ghost de Nueva Tarea en el primer grupo */}
+                        {section.id === groupedSections[0]?.id && !isCreatingInlineTask && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              playSound('click');
+                              setIsCreatingInlineTask(true);
+                              setInlineTaskTitle("");
+                              setInlineTaskTime("30 min");
+                              setInlineTaskFormatoKey(null);
+                              setInlineTaskFormatoName("");
+                            }}
+                            className={`w-full min-h-[170px] rounded-xl border border-dashed p-4 flex flex-col items-center justify-center gap-2 transition-all cursor-pointer group ${
+                              isNightMode
+                                ? 'border-neutral-700/80 hover:border-amber-400/60 bg-neutral-900/30 hover:bg-neutral-900/60 text-neutral-400 hover:text-neutral-100'
+                                : 'border-slate-300 hover:border-amber-500 bg-white/50 hover:bg-white text-slate-600 hover:text-slate-900 shadow-xs'
+                            }`}
+                          >
+                            <Plus className="w-5 h-5 opacity-60 group-hover:opacity-100 group-hover:scale-110 transition-all text-amber-400" />
+                            <span className="text-xs font-bold">+ Nueva tarea</span>
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
+                );
+              })}
 
-                  {/* Title & Desc */}
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-0.5 rounded border text-[8px] font-extrabold uppercase tracking-widest leading-none flex items-center justify-center ${
-                        isNightMode
-                          ? "border-neutral-800 bg-neutral-950 text-neutral-300"
-                          : "border-slate-200 bg-slate-100 text-slate-700"
-                      }`}>
-                        <InlineEditable 
-                          value={task.format || "Formato"}
-                          onSave={(val) => handleUpdateTaskFormat(task.id, val)}
-                          className={`inline-block ${isNightMode ? 'hover:text-white text-neutral-300' : 'hover:text-slate-900 text-slate-700'}`}
-                        />
-                      </span>
-                    </div>
-                    <h4 className={`font-bold text-[15px] truncate tracking-wide ${isNightMode ? 'text-neutral-50' : 'text-slate-900'}`} title={task.title}>
-                      <InlineEditable 
-                        value={task.title}
-                        onSave={(val) => handleUpdateTaskTitle(task.id, val)}
-                        className={`inline-block ${isNightMode ? 'hover:text-white text-neutral-50' : 'hover:text-slate-950 text-slate-900'}`}
-                      />
-                    </h4>
-                    <p className={`text-[12px] mt-1 leading-relaxed ${isExpanded ? '' : 'line-clamp-2'} ${isNightMode ? 'text-neutral-300' : 'text-slate-600'}`}>
-                      <InlineEditable 
-                        value={task.desc}
-                        onSave={(val) => handleUpdateTaskDesc(task.id, val)}
-                        className={`inline-block w-full ${isNightMode ? 'hover:text-white text-neutral-300' : 'hover:text-slate-900 text-slate-600'}`}
-                      />
-                    </p>
-                  </div>
-                </div>
-
-                {/* Middle part: Subtasks (only when expanded) */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div 
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className={`mt-4 flex flex-col gap-2 min-h-0 flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] pt-3 border-t ${
-                        isNightMode ? 'border-neutral-800' : 'border-slate-200'
-                      }`}
-                    >
-                      <span className={`text-[9px] font-extrabold tracking-widest uppercase mb-1 ${isNightMode ? 'text-neutral-400' : 'text-slate-500'}`}>Subtareas de control</span>
-                      <div className="flex flex-col gap-2.5">
-                        {task.subtasks && task.subtasks.map((sub) => (
-                          <div 
-                            key={sub.id} 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSubtask(task.id, sub.id);
-                            }}
-                            className="flex items-center gap-2 group/sub cursor-pointer select-none"
-                          >
-                            <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-all flex-shrink-0 cursor-pointer ${
-                              sub.done 
-                                ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-500' 
-                                : isNightMode
-                                  ? 'border-neutral-700 hover:border-neutral-500'
-                                  : 'border-slate-300 hover:border-slate-500'
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleSubtask(task.id, sub.id);
-                            }}>
-                              {sub.done && (
-                                <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </div>
-                            <span className={`text-[11.5px] transition-colors flex-1 min-w-0 ${
-                              sub.done 
-                                ? isNightMode ? 'text-neutral-500 line-through' : 'text-slate-400 line-through' 
-                                : isNightMode ? 'text-neutral-200 group-hover/sub:text-white font-medium' : 'text-slate-800 group-hover/sub:text-slate-950 font-medium'
-                            }`}>
-                              <InlineEditable 
-                                value={sub.text}
-                                onSave={(val) => handleUpdateSubtaskText(task.id, sub.id, val)}
-                                className="w-full inline-block truncate"
-                              />
-                            </span>
-                          </div>
-                        ))}
-                        
-                        {/* Add Subtask Button */}
-                        <div 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAddSubtask(task.id);
-                          }}
-                          className="flex items-center gap-2 mt-1 cursor-pointer group/add w-fit"
-                        >
-                          <div className={`w-3.5 h-3.5 rounded border border-dashed flex items-center justify-center transition-all flex-shrink-0 ${
-                            isNightMode
-                              ? "border-neutral-700 text-neutral-400 group-hover/add:text-neutral-200 group-hover/add:border-neutral-500"
-                              : "border-slate-300 text-slate-500 group-hover/add:text-slate-900 group-hover/add:border-slate-500"
-                          }`}>
-                            <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                            </svg>
-                          </div>
-                          <span className={`text-[10px] font-extrabold uppercase tracking-widest transition-colors ${
-                            isNightMode ? "text-neutral-400 group-hover/add:text-neutral-200" : "text-slate-500 group-hover/add:text-slate-900"
-                          }`}>
-                            Añadir Subtarea
-                          </span>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Bottom part: Properties (Format, Time, Status) */}
-                <div className={`mt-auto pt-2 flex items-center justify-between w-full uppercase ${
-                  isNightMode 
-                    ? "border-t border-neutral-800 text-neutral-300" 
-                    : "border-t border-slate-200 text-slate-700"
-                }`}>
-                  {/* Formato */}
-                  <div className="flex flex-col">
-                    <span className={`text-[9px] font-extrabold tracking-wider mb-0.5 ${isNightMode ? 'text-neutral-400' : 'text-slate-500'}`}>Formato</span>
-                    <span className={`text-[11.5px] font-bold lowercase tracking-wide first-letter:uppercase ${isNightMode ? 'text-neutral-100' : 'text-slate-900'}`}>{task.format}</span>
-                  </div>
-
-                  <div className={`w-px h-6 ${isNightMode ? 'bg-neutral-800' : 'bg-slate-200'}`} />
-
-                  {/* Tiempo */}
-                  <div 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleTimer(task);
-                    }}
-                    className={`flex flex-col cursor-pointer group/timer p-1 px-2 rounded-lg transition-all ${
-                      activeTimerTaskId === task.id
-                        ? "bg-red-500/10 border border-red-500/20"
-                        : isNightMode ? "hover:bg-neutral-800" : "hover:bg-slate-100"
-                    }`}
-                  >
-                    <span className={`text-[9px] font-extrabold tracking-wider mb-0.5 flex items-center gap-1 leading-none ${
-                      activeTimerTaskId === task.id 
-                        ? 'text-red-400 font-bold' 
-                        : isNightMode ? 'text-neutral-400' : 'text-slate-500'
-                    }`}>
-                      {activeTimerTaskId === task.id ? (
-                        <>
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-                          Grabando
-                        </>
-                      ) : (
-                        "Tiempo"
-                      )}
-                    </span>
-                    <div className="flex items-center gap-1.5 mt-0.5 leading-none">
-                      <span className={`text-[11.5px] font-bold tracking-wide ${
-                        activeTimerTaskId === task.id
-                          ? 'text-red-400 font-bold'
-                          : isNightMode ? 'text-neutral-100' : 'text-slate-900'
-                      }`}>
-                        {activeTimerTaskId === task.id 
-                          ? formatTimer(timerSeconds)
-                          : task.time
-                        }
-                      </span>
-                      {activeTimerTaskId === task.id ? (
-                        <svg className="w-2.5 h-2.5 text-red-400" fill="currentColor" viewBox="0 0 24 24">
-                          <rect x="6" y="4" width="4" height="16" rx="1" />
-                          <rect x="14" y="4" width="4" height="16" rx="1" />
-                        </svg>
-                      ) : (
-                        <svg className="w-2.5 h-2.5 text-emerald-400 opacity-0 group-hover/timer:opacity-100 transition-opacity flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`w-px h-6 ${isNightMode ? 'bg-neutral-800' : 'bg-slate-200'}`} />
-
-                  {/* Estado */}
-                  <div className="flex flex-col items-end">
-                    <span 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTaskStatus(task.id);
+              {/* Formulario Inline de Nueva Tarea */}
+              {isCreatingInlineTask && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  className={`w-full rounded-xl border p-4 flex flex-col gap-3 backdrop-blur-md shadow-xl transition-all ${
+                    isNightMode
+                      ? "bg-neutral-900/95 border-amber-500/40 text-neutral-100"
+                      : "bg-white border-amber-500/50 text-slate-900 shadow-lg"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <input
+                      type="text"
+                      autoFocus
+                      placeholder="Nombre de la tarea (obligatorio)"
+                      value={inlineTaskTitle}
+                      onChange={(e) => setInlineTaskTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleConfirmInlineTask();
+                        if (e.key === "Escape") handleCancelInlineTask();
                       }}
-                      className={`w-[100px] py-1.5 rounded-full border text-[11px] font-bold capitalize tracking-wide leading-none flex items-center justify-center cursor-pointer ${
-                        task.status === 'Completado' ? 'bg-emerald-600 text-white border-transparent' :
-                        task.status === 'En Proceso' ? 'bg-amber-600 text-white border-transparent' :
-                        isNightMode 
-                          ? 'bg-neutral-800 border-neutral-700/80 text-neutral-300' 
-                          : 'bg-slate-100 border-slate-200 text-slate-600'
+                      className={`flex-1 border rounded-lg px-3.5 py-2 text-sm font-bold focus:outline-none focus:border-amber-400 ${
+                        isNightMode
+                          ? "bg-neutral-950 border-neutral-700 text-white placeholder-neutral-500"
+                          : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                      }`}
+                    />
+                    <input
+                      type="text"
+                      placeholder="30 min"
+                      value={inlineTaskTime}
+                      onChange={(e) => setInlineTaskTime(e.target.value)}
+                      className={`w-28 border rounded-lg px-3 py-2 text-xs font-semibold focus:outline-none focus:border-amber-400 ${
+                        isNightMode
+                          ? "bg-neutral-950 border-neutral-700 text-white placeholder-neutral-500"
+                          : "bg-slate-50 border-slate-300 text-slate-900 placeholder-slate-400"
+                      }`}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider opacity-60 mr-1">Formato:</span>
+                    {Object.values(FORMATOS_ESTANDAR).map((fmt) => {
+                      const isSelected = inlineTaskFormatoKey === fmt.key;
+                      return (
+                        <button
+                          key={fmt.key}
+                          type="button"
+                          onClick={() => {
+                            if (isSelected) {
+                              setInlineTaskFormatoKey(null);
+                              setInlineTaskFormatoName("");
+                            } else {
+                              setInlineTaskFormatoKey(fmt.key);
+                              setInlineTaskFormatoName(fmt.nombre);
+                            }
+                          }}
+                          className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-amber-400 text-slate-950 border-amber-300 font-bold shadow-md"
+                              : isNightMode
+                              ? "bg-neutral-800/80 border-neutral-700 text-neutral-300 hover:bg-neutral-700 hover:text-white"
+                              : "bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200 hover:text-slate-900"
+                          }`}
+                        >
+                          <FormatoShape formatoObj={fmt} size="sm" />
+                          <span>{fmt.nombre}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={handleCancelInlineTask}
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium opacity-70 hover:opacity-100 cursor-pointer"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmInlineTask}
+                      disabled={!inlineTaskTitle.trim()}
+                      className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all shadow ${
+                        inlineTaskTitle.trim()
+                          ? "bg-amber-400 hover:bg-amber-300 text-slate-950 cursor-pointer"
+                          : "bg-neutral-700 text-neutral-400 cursor-not-allowed opacity-50"
                       }`}
                     >
-                      {task.status}
-                    </span>
+                      Guardar Tarea
+                    </button>
                   </div>
-                </div>
-              </motion.div>
-            );
-          })}
-          </AnimatePresence>
-
-          {/* Tarjeta de Agregar Tarea (+) */}
-          <motion.div 
-            variants={itemVariants} 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={handleAddTask}
-            className={`w-[340px] h-[320px] rounded-2xl border border-dashed flex flex-col items-center justify-center cursor-pointer transition-all duration-300 group shrink-0 ${
-              isNightMode
-                ? 'border-neutral-800 bg-neutral-900/50 hover:bg-neutral-900 hover:border-neutral-700 text-neutral-400 hover:text-neutral-100'
-                : 'border-slate-300 bg-slate-50/50 hover:bg-slate-100 hover:border-slate-400 text-slate-500 hover:text-slate-900'
-            }`}
-          >
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-colors border ${
-              isNightMode 
-                ? 'bg-neutral-950 border-neutral-800 text-neutral-400 group-hover:text-neutral-100' 
-                : 'bg-white border-slate-200 text-slate-500 group-hover:text-slate-900 shadow-sm'
-            }`}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+                </motion.div>
+              )}
             </div>
-            <span className={`text-[11px] font-bold uppercase tracking-widest mt-3 transition-colors ${
-              isNeumorphic ? 'text-slate-500 group-hover:text-slate-800' : 'text-white/30 group-hover:text-white/60'
-            }`}>Crear Tarea</span>
-          </motion.div>
-        </div>
         
       </div> {/* Fin del Folder Body */}
+
+      {/* Delete Confirmation Modal */}
+      {deleteModalConfig && (
+        <DeleteConfirmModal
+          isOpen={Boolean(deleteModalConfig?.isOpen)}
+          isNightMode={isNightMode}
+          config={deleteModalConfig}
+          onClose={() => setDeleteModalConfig(null)}
+          onConfirmTaskDelete={async (projId, tId) => {
+            if (!project) return;
+            const taskIdStr = String(tId);
+            try {
+              await deleteDoc(doc(db, "tasks", taskIdStr));
+            } catch (err) {
+              console.error("Error deleting task from Firestore tasks collection:", err);
+            }
+            const updated = (tasks || []).filter((t) => String(t.id) !== taskIdStr);
+            if (onUpdateTasks) {
+              onUpdateTasks(project.id, updated);
+            }
+            setTasks(updated);
+            setDeleteModalConfig(null);
+            playSound('trash');
+          }}
+        />
+      )}
     </motion.div>
 
       </motion.div>

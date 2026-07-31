@@ -141,6 +141,7 @@ export const ADMIN_NAV = [
   { tab: "clientes",  label: "Clientes" },
   { tab: "pipeline",  label: "Pipeline" },
   { tab: "proyectos", label: "Proyectos" },
+  { tab: "proyectos_v2", label: "Proyectos V2" },
   { tab: "tareas",    label: "Tareas" },
   { sep: "EQUIPO & DATA" },
   { tab: "talent",    label: "Equipo" },

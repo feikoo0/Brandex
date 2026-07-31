@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
-import { Settings, Check } from "lucide-react";
+import React from "react";
 
 export interface TodayEffortTask {
-  id: string;
+  id: string | number;
   title: string;
   hours: number;
+  isCompleted?: boolean;
+  executedMins?: number;
 }
 
 export interface TodayEffortData {
@@ -21,184 +22,161 @@ export interface TodayEffortData {
   total: number;
   tasksVerde: TodayEffortTask[];
   tasksNaranja: TodayEffortTask[];
+  allTodayTasks?: TodayEffortTask[];
+  realExecutedHours?: number;
 }
 
 export interface DailyEffortBarProps {
   todayEffort: TodayEffortData;
-  limiteHorasDia: number;
-  setLimiteHorasDia: (value: number) => void;
+  limiteHorasDia?: number;
+  setLimiteHorasDia?: (value: number) => void;
   isNightMode: boolean;
 }
 
 export const DailyEffortBar: React.FC<DailyEffortBarProps> = ({
   todayEffort,
-  limiteHorasDia,
-  setLimiteHorasDia,
   isNightMode,
 }) => {
-  const [showLimitInput, setShowLimitInput] = useState(false);
+  const tasksToRender: TodayEffortTask[] = todayEffort.allTodayTasks ?? [
+    ...todayEffort.tasksVerde.map(t => ({ ...t, isCompleted: true })),
+    ...todayEffort.tasksNaranja.map(t => ({ ...t, isCompleted: false }))
+  ];
+
+  const totalHours = tasksToRender.reduce((sum, t) => sum + (t.hours || 0), 0);
+
+  // Calcula las horas y minutos restantes netos descontando los minutos ejecutados de las tareas pendientes
+  const rawRemainingMins = tasksToRender.reduce((sum, t) => {
+    if (t.isCompleted) return sum;
+    const estMins = (t.hours || 0) * 60;
+    const execMins = t.executedMins || 0;
+    const leftMins = Math.max(0, estMins - execMins);
+    return sum + leftMins;
+  }, 0);
+
+  const remH = Math.floor(rawRemainingMins / 60);
+  const remM = rawRemainingMins % 60;
+
+  let remainingText = "0min";
+  if (remH > 0 && remM > 0) {
+    remainingText = `${remH}h ${remM}min`;
+  } else if (remH > 0 && remM === 0) {
+    remainingText = `${remH}h`;
+  } else if (remH === 0 && remM > 0) {
+    remainingText = `${remM}min`;
+  }
+
+  // Calcula el avance real acumulado en sesiones trabajadas
+  const totalExecutedMins = tasksToRender.reduce((sum, t) => {
+    if (t.isCompleted) {
+      const estMins = (t.hours || 0) * 60;
+      return sum + Math.max(estMins, t.executedMins || 0);
+    }
+    return sum + (t.executedMins || 0);
+  }, 0);
+
+  const execH = Math.floor(totalExecutedMins / 60);
+  const execM = totalExecutedMins % 60;
+  
+  let executedText = "0min de avance";
+  if (execH > 0 && execM > 0) {
+    executedText = `${execH}h ${execM}min de avance`;
+  } else if (execH > 0 && execM === 0) {
+    executedText = `${execH}h de avance`;
+  } else if (execH === 0 && execM > 0) {
+    executedText = `${execM}min de avance`;
+  }
 
   return (
     <div className="w-full flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        {/* Left Column: Discreet label + Big main number */}
-        <div className="flex flex-col justify-end">
-          <span className={`text-[10px] font-bold tracking-widest uppercase opacity-60 mb-0.5 ${isNightMode ? 'text-zinc-400' : 'text-slate-500'}`}>
-            Esfuerzo Diario
-          </span>
-          <div className={`text-[28px] sm:text-[30px] font-bold leading-none tracking-tight flex items-baseline gap-1.5 ${isNightMode ? 'text-white' : 'text-slate-900'}`}>
-            <span>{todayEffort.verde}h</span>
-            <span className="text-base font-normal opacity-50">de</span>
-            <span>{todayEffort.total}h</span>
-          </div>
-        </div>
-        
-        {/* Right Column: Badge + Gear icon toggle on top, Siguiente/Estado on bottom */}
-        <div className="flex flex-col items-end justify-between gap-1.5">
-          <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-              todayEffort.verde === todayEffort.total && todayEffort.total > 0
-                ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
-                : todayEffort.excedente > 0
-                  ? "bg-rose-500/10 text-rose-500 border border-rose-500/20"
-                  : "bg-blue-500/10 text-blue-500 border border-blue-500/20"
-            }`}>
-              {todayEffort.verde === todayEffort.total && todayEffort.total > 0 ? "¡Día Completo!" : todayEffort.excedente > 0 ? "Sobrecargado" : "A tiempo"}
-            </span>
-
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setShowLimitInput(prev => !prev)}
-                title="Configurar límite de horas"
-                className={`p-1 rounded-md transition-all duration-200 ${
-                  showLimitInput 
-                    ? (isNightMode ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-900') 
-                    : (isNightMode ? 'text-zinc-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100')
-                }`}
-              >
-                <Settings className="w-3.5 h-3.5" />
-              </button>
-
-              {showLimitInput && (
-                <div className={`absolute right-0 top-full mt-1.5 z-20 flex items-center gap-2 px-2.5 py-1.5 rounded-lg border shadow-lg backdrop-blur-md transition-all ${
-                  isNightMode ? 'bg-zinc-900/95 border-zinc-700/80 text-white' : 'bg-white/95 border-slate-200 text-slate-800'
-                }`}>
-                  <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap opacity-70">Límite:</span>
-                  <input
-                    type="number"
-                    min="1"
-                    max="24"
-                    value={limiteHorasDia}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 0;
-                      setLimiteHorasDia(val);
-                      if (typeof window !== 'undefined') {
-                        localStorage.setItem('taski_limite_horas_dia', val.toString());
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === 'Escape') {
-                        setShowLimitInput(false);
-                      }
-                    }}
-                    autoFocus
-                    className={`w-10 px-1 py-0.5 text-center text-xs font-bold rounded border outline-none ${
-                      isNightMode ? 'bg-zinc-800 border-zinc-600 text-white' : 'bg-slate-100 border-slate-300 text-slate-900'
-                    }`}
-                  />
-                  <span className="text-[10px] font-bold opacity-60">h</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowLimitInput(false)}
-                    className="text-emerald-500 hover:text-emerald-400 p-0.5"
-                    title="Guardar"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {todayEffort.nextTask && (
-            <div className="flex items-center gap-1.5 text-right">
-              <span className={`text-[9px] font-semibold uppercase opacity-60 ${isNightMode ? 'text-zinc-300' : 'text-slate-500'}`}>
-                Siguiente:
-              </span>
-              <span className={`text-[10px] font-bold max-w-[140px] truncate ${isNightMode ? 'text-amber-400' : 'text-amber-600'}`}>
-                {todayEffort.nextTask.title} · {todayEffort.nextTask.hours}h
-              </span>
-            </div>
-          )}
-          {!todayEffort.nextTask && todayEffort.total > 0 && (
-            <div className="flex items-center gap-1.5 text-right">
-              <span className={`text-[9px] font-semibold uppercase opacity-60 ${isNightMode ? 'text-zinc-300' : 'text-slate-500'}`}>
-                Estado:
-              </span>
-              <span className={`text-[10px] font-bold ${isNightMode ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                Todo listo 🎉
-              </span>
-            </div>
-          )}
-          {todayEffort.total === 0 && (
-            <div className="flex items-center gap-1.5 text-right">
-              <span className={`text-[10px] font-bold ${isNightMode ? 'text-zinc-500' : 'text-slate-400'}`}>
-                Sin tareas hoy
-              </span>
-            </div>
+      {/* Encabezado limpio: horas y minutos restantes hoy y avance abajo */}
+      <div className="flex flex-col gap-0.5">
+        <div className={`tracking-tight flex items-baseline gap-2 ${isNightMode ? 'text-white' : 'text-slate-900'}`}>
+          {totalHours === 0 ? (
+            <span className={`text-sm font-bold ${isNightMode ? 'text-white/50' : 'text-slate-500'}`}>Sin tareas para hoy</span>
+          ) : rawRemainingMins === 0 ? (
+            <span className={`text-[18px] font-black ${isNightMode ? 'text-emerald-400' : 'text-emerald-600'}`}>¡Día completado! (0min por terminar)</span>
+          ) : (
+            <>
+              <span className={`text-[24px] font-black leading-none ${isNightMode ? 'text-white' : 'text-slate-900'}`}>{remainingText}</span>
+              <span className={`text-[14px] font-bold ${isNightMode ? 'text-white/70' : 'text-slate-600'}`}>para terminar hoy</span>
+            </>
           )}
         </div>
+
+        {totalHours > 0 && (
+          <div className={`text-[11px] font-semibold ${isNightMode ? 'text-white/50' : 'text-slate-500'}`}>
+            {executedText}
+          </div>
+        )}
       </div>
 
-      {/* Segmented Bar */}
-      <div className="w-full h-3 flex gap-1 relative">
-        {/* Verde */}
-        {todayEffort.tasksVerde.map((tk, idx) => (
-          <div 
-            key={`v-${tk.id}-${idx}`}
-            className="h-full bg-[#3ecf8e] hover:bg-emerald-400 transition-all duration-300 rounded-full relative group/segment cursor-default"
-            style={{ width: `${(tk.hours / todayEffort.maxVal) * 100}%` }}
-          >
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[12px] font-bold text-white flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3ecf8e]" />
-              <span>{tk.title}</span>
-              <span className="opacity-60 font-semibold text-[9px]">({tk.hours}h)</span>
-            </div>
-          </div>
-        ))}
-        {/* Naranja */}
-        {todayEffort.tasksNaranja.map((tk, idx) => (
-          <div 
-            key={`n-${tk.id}-${idx}`}
-            className="h-full bg-[#f0a545] hover:bg-amber-400 transition-all duration-300 rounded-full relative group/segment cursor-default"
-            style={{ width: `${(tk.hours / todayEffort.maxVal) * 100}%` }}
-          >
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl bg-slate-900/95 border border-white/10 shadow-2xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[12px] font-bold text-white flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#f0a545]" />
-              <span>{tk.title}</span>
-              <span className="opacity-60 font-semibold text-[9px]">({tk.hours}h)</span>
-            </div>
-          </div>
-        ))}
-        {/* Gris libre (only up to limit) */}
-        {todayEffort.gris > 0 && (
-          <div 
-            className={`h-full transition-all duration-500 rounded-full ${isNightMode ? 'bg-[#2a3654]' : 'bg-slate-200'}`}
-            style={{ width: `${(todayEffort.gris / todayEffort.maxVal) * 100}%` }}
-            title={`Capacidad libre: ${todayEffort.gris}h`}
-          />
-        )}
-        {/* Excedente (Rayado rojo) */}
-        {todayEffort.excedente > 0 && (
-          <div 
-            className="h-full bg-rose-500/20 transition-all duration-500 rounded-full"
-            style={{ 
-              width: `${(todayEffort.excedente / todayEffort.maxVal) * 100}%`,
-              backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(244,63,94,0.5) 5px, rgba(244,63,94,0.5) 10px)'
-            }}
-            title={`Excedente: ${todayEffort.excedente}h`}
-          />
+      {/* Barra de Progreso dividida proporcionalmente según las tareas de hoy */}
+      <div className={`w-full h-3 flex gap-1 relative p-0.5 rounded-full border ${
+        isNightMode ? 'bg-white/5 border-white/5' : 'bg-slate-200/80 border-slate-300/60'
+      }`}>
+        {totalHours === 0 ? (
+          <div className={`w-full h-full rounded-full ${isNightMode ? 'bg-white/5' : 'bg-slate-200'}`} />
+        ) : (
+          tasksToRender.map((tk, idx) => {
+            const isDone = tk.isCompleted ?? false;
+            const pct = totalHours > 0 ? (tk.hours / totalHours) * 100 : 0;
+            const totalMins = Math.max(1, (tk.hours || 0) * 60);
+            const execMins = tk.executedMins || 0;
+
+            // Relleno progresivo según las sesiones ejecutadas
+            const fillRatio = isDone ? 1 : Math.min(1, execMins / totalMins);
+
+            // Excedente de tiempo por sobrepasar las horas planeadas (Capa roja)
+            const hasExcess = execMins > totalMins;
+            const excessMins = hasExcess ? execMins - totalMins : 0;
+            const excessRatio = Math.min(1, excessMins / totalMins);
+
+            return (
+              <div 
+                key={`tk-${tk.id}-${idx}`}
+                className="h-full relative group/segment cursor-default"
+                style={{ width: `${pct}%` }}
+              >
+                {/* Pista y Relleno interno adaptativo para Modo Claro / Modo Oscuro */}
+                <div className={`w-full h-full rounded-full overflow-hidden p-[0.5px] border relative ${
+                  isNightMode ? 'bg-white/20 border-white/5' : 'bg-slate-300/70 border-slate-400/20'
+                }`}>
+                  {/* Base de tiempo planeado */}
+                  <div 
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      isNightMode 
+                        ? 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.7)]' 
+                        : 'bg-slate-900 shadow-[0_0_6px_rgba(15,23,42,0.3)]'
+                    }`}
+                    style={{ width: `${fillRatio * 100}%` }}
+                  />
+
+                  {/* Capa de relleno rojo por tiempo excedido sobre el planeado */}
+                  {hasExcess && (
+                    <div 
+                      className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${
+                        isNightMode 
+                          ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]' 
+                          : 'bg-rose-600 shadow-[0_0_6px_rgba(225,29,72,0.4)]'
+                      }`}
+                      style={{ width: `${excessRatio * 100}%` }}
+                    />
+                  )}
+                </div>
+
+                {/* Tooltip informativo adaptativo al pasar el cursor */}
+                <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-xl shadow-xl opacity-0 scale-90 group-hover/segment:opacity-100 group-hover/segment:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap text-[12px] font-bold flex items-center gap-2 ${
+                  isNightMode ? 'bg-zinc-900 text-white' : 'bg-white text-slate-900 border border-slate-200/80 shadow-2xl'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${hasExcess ? 'bg-rose-500' : fillRatio >= 1 ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                  <span>{tk.title}</span>
+                  <span className={`font-semibold text-[9px] ${isNightMode ? 'opacity-60' : 'text-slate-500'}`}>
+                    ({execMins > 0 ? `${Math.floor(execMins / 60) > 0 ? `${Math.floor(execMins / 60)}h ` : ''}${execMins % 60 > 0 ? `${execMins % 60}m ` : ''}/ ` : ''}{tk.hours}h {hasExcess ? `· Excedido (+${Math.floor(excessMins / 60) > 0 ? `${Math.floor(excessMins / 60)}h ` : ''}${excessMins % 60 > 0 ? `${excessMins % 60}m` : ''})` : isDone ? '· Completada' : fillRatio > 0 ? `· ${Math.round(fillRatio * 100)}%` : '· Pendiente'})
+                  </span>
+                </div>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

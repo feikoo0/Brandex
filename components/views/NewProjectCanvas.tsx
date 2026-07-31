@@ -19,6 +19,8 @@ export function NewProjectCanvas() {
   const [prioridad, setPrioridad] = useState("MODERADO");
   const [fechaInicio, setFechaInicio] = useState("");
   const [fechaFin, setFechaFin] = useState("");
+  const [costo, setCosto] = useState("");
+  const [asignadoIds, setAsignadoIds] = useState<string[]>([]);
   const [descripcion, setDescripcion] = useState("");
   const [error, setError] = useState("");
 
@@ -27,6 +29,8 @@ export function NewProjectCanvas() {
     setError("");
     setSaving(true);
     try {
+      const workers = data?.trabajadores ?? [];
+      const selectedWorkers = workers.filter((w) => asignadoIds.includes(w.id));
       const res = await createProject.mutateAsync({
         nombre: nombre.trim(),
         cliente_ids: clienteId ? [clienteId] : [],
@@ -34,13 +38,14 @@ export function NewProjectCanvas() {
         prioridad,
         fechaInicio: fechaInicio || undefined,
         fechaFin: fechaFin || undefined,
+        costo: costo ? Number(costo) : undefined,
+        asignado_ids: asignadoIds,
+        asignado: selectedWorkers.map((w) => w.nombre).join(", ") || undefined,
         descripcion: descripcion || undefined,
       } as any);
       
       // Navigate to the new project or go back
       popView();
-      // If we got the ID back we could pushView({level: 'project', id: res.id})
-      // But typically we just pop back for now.
     } catch (err: any) {
       setError(err?.message || "No se pudo crear el proyecto.");
     } finally {
@@ -49,6 +54,7 @@ export function NewProjectCanvas() {
   }
 
   const clients = data?.clientes ?? [];
+  const workers = data?.trabajadores ?? [];
 
   return (
     <div className="w-full h-full flex flex-col pt-6 px-10">
@@ -138,6 +144,48 @@ export function NewProjectCanvas() {
                 <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Fin</span>
                 <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2.5 text-xs font-bold dark:text-white text-gray-900 outline-none" />
               </label>
+            </div>
+
+            <label className="flex flex-col gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Precio / Costo ($)</span>
+              <input
+                type="number"
+                value={costo}
+                onChange={(e) => setCosto(e.target.value)}
+                placeholder="Ej: 2500"
+                className="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-xl px-3 py-2.5 text-xs font-bold dark:text-white text-gray-900 outline-none"
+              />
+            </label>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Asignado (Miembros del equipo)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {workers.map((w) => {
+                  const isSelected = asignadoIds.includes(w.id);
+                  return (
+                    <button
+                      key={w.id}
+                      type="button"
+                      onClick={() => {
+                        setAsignadoIds((prev) =>
+                          isSelected ? prev.filter((id) => id !== w.id) : [...prev, w.id]
+                        );
+                      }}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all border flex items-center gap-1.5 cursor-pointer ${
+                        isSelected
+                          ? "bg-green-500/20 border-green-500 text-green-400"
+                          : "dark:bg-white/5 bg-black/5 dark:border-white/10 border-black/10 dark:text-white/60 text-gray-600 hover:dark:bg-white/10"
+                      }`}
+                    >
+                      <span>{w.nombre}</span>
+                      {w.rol && <span className="text-[9px] opacity-60">({w.rol})</span>}
+                    </button>
+                  );
+                })}
+                {workers.length === 0 && (
+                  <span className="text-xs text-gray-500 dark:text-white/30">Sin miembros registrados</span>
+                )}
+              </div>
             </div>
 
             {error && <p className="text-xs font-bold text-red-500 mt-2">{error}</p>}

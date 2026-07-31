@@ -3,12 +3,29 @@
 import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, Plus } from "lucide-react";
+import { Check, Plus, Trash2, FolderOpen, Palette, PlusCircle, Paintbrush } from "lucide-react";
 import { Task } from "./ProjectDashboard";
+import { playSound } from "../utils/audio";
+import FormatoShape from "./FormatoShape";
+import {
+  FORMATOS_ESTANDAR,
+  FORMATOS_CUSTOM,
+  getFormato,
+  addCustomFormato,
+  ProporcionFormat,
+  TipoMedioFormat,
+} from "../utils/formatos";
+
+import { getDarkProjectPillVars } from "@/lib/utils";
+
+import StatusSelectorDropdown from "./StatusSelectorDropdown";
+import FormatSelectorDropdown from "./FormatSelectorDropdown";
+import PillPortalDropdown from "./PillPortalDropdown";
 
 export interface TaskCardPopoversProps {
   taskId: string;
   projectId: string | number;
+  project?: any;
   task: Task;
   availableFormats: string[];
   activeStatusDropdownCardId: string | null;
@@ -35,128 +52,12 @@ export interface TaskCardPopoversProps {
     textHoverColor: string;
     dotClass: string;
   };
-  updateTaskProperty: (projectId: string | number, taskId: string, property: string, value: any) => void;
+  updateTaskProperty: (projectId: string | number, taskId: string | number, property: string, value: any) => void;
   isNightMode: boolean;
   type: "status-format" | "tiempo";
+  isInteractive?: boolean;
   panelBgClass?: string;
 }
-
-const STATUS_OPTIONS = ["Planificado", "En Proceso", "En Revisión", "Completado"] as const;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// PillPortalDropdown — renders its panel at document.body via createPortal.
-// The trigger pill stays in-place; the floating panel never affects card layout.
-// ─────────────────────────────────────────────────────────────────────────────
-interface PillPortalProps {
-  isOpen: boolean;
-  onToggle: (e: React.MouseEvent) => void;
-  onClose: () => void;
-  pillClassName: string;
-  pillLabel: string;
-  isDimmed: boolean;
-  panelBgClass: string;
-  children: React.ReactNode;
-}
-
-const PillPortalDropdown: React.FC<PillPortalProps> = ({
-  isOpen,
-  onToggle,
-  onClose,
-  pillClassName,
-  pillLabel,
-  isDimmed,
-  panelBgClass,
-  children,
-}) => {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
-  const [portalMounted, setPortalMounted] = useState(false);
-
-  // Open: measure trigger position and mount portal
-  // Panel wraps around the trigger pill — starts at trigger top with padding
-  const PANEL_PAD = 3; // px of breathing room around pills
-  useEffect(() => {
-    if (isOpen) {
-      setPortalMounted(true);
-      if (triggerRef.current) {
-        // Measure the parent flex-1 wrapper for true alignment (button is w-full inside it)
-        const el = triggerRef.current.parentElement ?? triggerRef.current;
-        const rect = el.getBoundingClientRect();
-        setPanelPos({
-          top: rect.top - PANEL_PAD,
-          left: rect.left - PANEL_PAD,
-          width: rect.width + PANEL_PAD * 2,
-        });
-      }
-    }
-  }, [isOpen]);
-
-  // While open: close on outside click or scroll
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleScroll = () => onClose();
-    const handleOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
-      onClose();
-    };
-
-    window.addEventListener("scroll", handleScroll, true);
-    // Small delay so the opening click doesn't immediately close
-    const t = setTimeout(() => document.addEventListener("mousedown", handleOutside, true), 60);
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll, true);
-      document.removeEventListener("mousedown", handleOutside, true);
-      clearTimeout(t);
-    };
-  }, [isOpen, onClose]);
-
-  return (
-    <div className="relative flex-1">
-      {/* Trigger pill — always visible; panel renders on top and covers it */}
-      <button
-        ref={triggerRef}
-        type="button"
-        onClick={onToggle}
-        className={`${pillClassName} ${
-          isDimmed ? "opacity-50 pointer-events-none" : ""
-        }`}
-      >
-        <span className="truncate">{pillLabel}</span>
-      </button>
-
-      {/* Panel rendered at document.body — zero layout impact on the card */}
-      {portalMounted && panelPos && typeof document !== "undefined" && createPortal(
-        <AnimatePresence onExitComplete={() => { setPortalMounted(false); setPanelPos(null); }}>
-          {isOpen && (
-            <motion.div
-              ref={panelRef}
-              key="pill-panel"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.08, ease: "easeOut" }}
-              style={{
-                position: "fixed",
-                top: panelPos.top,
-                left: panelPos.left,
-                width: panelPos.width,
-                zIndex: 99999,
-              }}
-              className={`${panelBgClass} rounded-2xl p-1.5 flex flex-col gap-1`}
-            >
-              {children}
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
-    </div>
-  );
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TaskCardPopovers — main exported component
@@ -164,6 +65,7 @@ const PillPortalDropdown: React.FC<PillPortalProps> = ({
 export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
   taskId,
   projectId,
+  project,
   task,
   availableFormats,
   activeStatusDropdownCardId,
@@ -181,10 +83,13 @@ export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
   updateTaskProperty,
   isNightMode,
   type,
+  isInteractive = true,
   panelBgClass = 'bg-[#0a0a0c]',
 }) => {
   const [isAddingCustomTime, setIsAddingCustomTime] = useState(false);
   const [customTimeValue, setCustomTimeValue] = useState("");
+
+  const pillVars = getDarkProjectPillVars(project || { id: projectId });
 
   // ── Tiempo popover via portal ──
   if (type === "tiempo") {
@@ -199,9 +104,11 @@ export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
     return (
       <PillPortalDropdown
         isOpen={isTimeOpen}
+        isInteractive={isInteractive}
         isDimmed={false}
         pillLabel={currentTime}
-        pillClassName="w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border border-sky-400/20 bg-sky-500/15 text-sky-100 hover:bg-sky-500/25 text-[12px] font-bold transition-all duration-150 select-none cursor-pointer capitalize"
+        pillClassName={`w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full ${pillVars.className} text-[12px] font-bold transition-all duration-150 select-none cursor-pointer capitalize`}
+        pillStyle={pillVars.style}
         panelBgClass={panelBgClass}
         onToggle={(e) => {
           e.stopPropagation();
@@ -233,7 +140,7 @@ export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
                 }}
                 className={`w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full text-[12px] font-bold transition-colors duration-150 select-none cursor-pointer border-none capitalize ${
                   isSelected
-                    ? "bg-sky-500/30 text-sky-200"
+                    ? "bg-[var(--pill-bg)] text-[var(--pill-color)] border border-[var(--pill-border)]"
                     : isNightMode ? "text-slate-400 hover:text-slate-200 hover:bg-white/5" : "text-slate-600 hover:text-slate-900 hover:bg-black/5"
                 }`}
               >
@@ -285,118 +192,231 @@ export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
   const isStatusOpen = activeStatusDropdownCardId === taskId;
   const isFormatOpen = activeFormatDropdownCardId === taskId;
 
-  const currentStatusCfg = getStatusPillConfig(task.status);
-  const currentFmtIdx = availableFormats.findIndex(f => f.toLowerCase() === (task.format || "").toLowerCase());
-  const currentFmtCfg = getFormatPillConfig(task.format || "Formato", currentFmtIdx >= 0 ? currentFmtIdx : 0);
-
-  const pillBase = "w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full border-none text-[12px] font-bold transition-all duration-150 select-none cursor-pointer";
+  const pillBase = "w-full flex items-center justify-center gap-1.5 h-5.5 px-2.5 rounded-full text-[12px] font-bold transition-all duration-150 select-none cursor-pointer";
 
   return (
     <div className="flex items-center gap-2 w-full" data-dropdown-container>
-
       {/* ── Status ── */}
-      <PillPortalDropdown
+      <StatusSelectorDropdown
         isOpen={isStatusOpen}
+        isInteractive={isInteractive}
         isDimmed={isFormatOpen}
         pillLabel={task.status}
-        pillClassName={`${pillBase} ${currentStatusCfg.activeBgClass} ${currentStatusCfg.textActiveColor}`}
+        pillClassName={`${pillBase} ${pillVars.className}`}
+        pillStyle={pillVars.style}
         panelBgClass={panelBgClass}
+        task={task}
+        projectId={projectId}
+        hoveredStatusOptionCard={hoveredStatusOptionCard}
+        setHoveredStatusOptionCard={setHoveredStatusOptionCard}
+        getStatusPillConfig={getStatusPillConfig}
+        updateTaskProperty={updateTaskProperty}
+        isNightMode={isNightMode}
         onToggle={(e) => {
           e.stopPropagation();
           setActiveStatusDropdownCardId(prev => prev === taskId ? null : taskId);
           setActiveFormatDropdownCardId(null);
         }}
         onClose={() => setActiveStatusDropdownCardId(null)}
-      >
-        {/* Selected option always first, others below */}
-        {[task.status, ...STATUS_OPTIONS.filter(s => s !== task.status)].map((st, i) => {
-          const isSelected = task.status === st;
-          const isHov = hoveredStatusOptionCard?.taskId === taskId && hoveredStatusOptionCard?.status === st;
-          const cfg = getStatusPillConfig(st);
-          return (
-            <motion.button
-              key={st}
-              type="button"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, delay: i * 0.055, ease: [0.16, 1, 0.3, 1] }}
-              onHoverStart={() => setHoveredStatusOptionCard({ taskId, status: st })}
-              onHoverEnd={() => setHoveredStatusOptionCard(null)}
-              onClick={(e) => {
-                e.stopPropagation();
-                updateTaskProperty(projectId, task.id, "status", st);
-                setActiveStatusDropdownCardId(null);
-              }}
-              className={`${pillBase} ${
-                isSelected
-                  ? `${cfg.activeBgClass} ${cfg.textActiveColor}`
-                  : isHov
-                  ? `${cfg.hoverBgClass} ${cfg.textHoverColor}`
-                  : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <span className="truncate">{st}</span>
-            </motion.button>
-          );
-        })}
-      </PillPortalDropdown>
+      />
 
       {/* ── Format ── */}
-      <PillPortalDropdown
+      <FormatSelectorDropdown
         isOpen={isFormatOpen}
+        isInteractive={isInteractive}
         isDimmed={isStatusOpen}
         pillLabel={task.format || "Formato"}
-        pillClassName={`${pillBase} capitalize ${currentFmtCfg.activeBgClass} ${currentFmtCfg.textActiveColor}`}
+        pillClassName={`${pillBase} capitalize ${pillVars.className}`}
+        pillStyle={pillVars.style}
         panelBgClass={panelBgClass}
+        task={task}
+        projectId={projectId}
+        updateTaskProperty={updateTaskProperty}
         onToggle={(e) => {
           e.stopPropagation();
           setActiveFormatDropdownCardId(prev => prev === taskId ? null : taskId);
           setActiveStatusDropdownCardId(null);
         }}
         onClose={() => setActiveFormatDropdownCardId(null)}
-      >
-        {/* Selected format first, others below */}
-        <div className="max-h-48 overflow-y-auto hide-scrollbar flex flex-col gap-1">
-          {[
-            task.format || availableFormats[0],
-            ...availableFormats.filter(f => f.toLowerCase() !== (task.format || "").toLowerCase()),
-          ].map((fmt, idx) => {
-            const isSelected = (task.format || "").toLowerCase() === fmt.toLowerCase();
-            const isHov = hoveredFormatOptionCard?.taskId === taskId && hoveredFormatOptionCard?.format === fmt;
-            const origIdx = availableFormats.findIndex(f => f.toLowerCase() === fmt.toLowerCase());
-            const cfg = getFormatPillConfig(fmt, origIdx >= 0 ? origIdx : idx);
-            return (
-              <motion.button
-                key={fmt}
-                type="button"
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15, delay: idx * 0.055, ease: [0.16, 1, 0.3, 1] }}
-                onHoverStart={() => setHoveredFormatOptionCard({ taskId, format: fmt })}
-                onHoverEnd={() => setHoveredFormatOptionCard(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  updateTaskProperty(projectId, task.id, "format", fmt);
-                  setActiveFormatDropdownCardId(null);
-                }}
-                className={`${pillBase} capitalize ${
-                  isSelected
-                    ? `${cfg.activeBgClass} ${cfg.textActiveColor}`
-                    : isHov
-                    ? `${cfg.hoverBgClass} ${cfg.textHoverColor}`
-                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                <span className="truncate">{fmt}</span>
-              </motion.button>
-            );
-          })}
-        </div>
-      </PillPortalDropdown>
-
+      />
     </div>
+  );
+};
+
+export interface TaskCardMenuPopoverProps {
+  isOpen: boolean;
+  onClose: () => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
+  onOpenProject?: () => void;
+  onChangeProjectColor?: () => void;
+  onAddTaskToProject?: () => void;
+  onCustomizeCardColor?: () => void;
+  onDeleteTask?: () => void;
+}
+
+export const TaskCardMenuPopover: React.FC<TaskCardMenuPopoverProps> = ({
+  isOpen,
+  onClose,
+  triggerRef,
+  onOpenProject,
+  onChangeProjectColor,
+  onAddTaskToProject,
+  onCustomizeCardColor,
+  onDeleteTask,
+}) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const menuWidth = 145;
+      let left = rect.right - menuWidth;
+      if (left < 10) left = 10;
+      if (left + menuWidth > window.innerWidth - 10) {
+        left = Math.max(10, window.innerWidth - menuWidth - 10);
+      }
+      let top = rect.bottom + 4;
+      if (top + 200 > window.innerHeight - 10) {
+        top = Math.max(10, rect.top - 200);
+      }
+      setPos({ top, left });
+    }
+  }, [isOpen, triggerRef]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleScroll = () => onClose();
+    const handleOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      onClose();
+    };
+
+    window.addEventListener("scroll", handleScroll, true);
+    const t = setTimeout(() => document.addEventListener("mousedown", handleOutside, true), 60);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll, true);
+      document.removeEventListener("mousedown", handleOutside, true);
+      clearTimeout(t);
+    };
+  }, [isOpen, onClose, triggerRef]);
+
+  if (!isOpen || !pos || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      data-dropdown-container="true"
+      data-fpl-component=""
+      data-fullscreen-prevent-event-capture="true"
+      data-fullscreen-prevent-event-capture-keys="true"
+      data-fullscreen-wheel-event-capture="true"
+      className="menu-primitive__container__5lt-5 menu__container__ZmSkT menu__dark__crKxV menu__allowsIndent__1tnRp figma-card-menu animate-fadeIn"
+      data-is-positioned="true"
+      data-floating-ui-focusable=""
+      data-fpl-menu-container="true"
+      style={{
+        position: "fixed",
+        left: `${pos.left}px`,
+        top: `${pos.top}px`,
+        maxWidth: "145px",
+        maxHeight: "625.781px",
+        zIndex: 99999,
+      }}
+    >
+      <div data-editor-theme="design" data-preferred-theme="dark" style={{ display: "contents" }}>
+        <ul
+          data-fpl-component="primitive"
+          className="menu-primitive__list__i3VRn"
+          tabIndex={-1}
+          data-floating-ui-focusable=""
+          role="menu"
+          aria-orientation="vertical"
+        >
+          {/* Project Actions */}
+          <ul data-fpl-component="" role="group" className="menu__group__KwU4I">
+            {/* 1. Abrir proyecto */}
+            <li
+              data-fpl-component=""
+              role="menuitem"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound("click");
+                onOpenProject?.();
+                onClose();
+              }}
+              className="menu__item__Tl2MO menu__selectItem__I9GzL"
+            >
+              <span className="menu__itemText__qcxtq menu__selectItemText__m9o3C">
+                <span>Abrir proyecto</span>
+              </span>
+            </li>
+
+            {/* 2. Color de proyecto */}
+            <li
+              data-fpl-component=""
+              role="menuitem"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound("click");
+                onChangeProjectColor?.();
+                onClose();
+              }}
+              className="menu__item__Tl2MO menu__selectItem__I9GzL"
+            >
+              <span className="menu__itemText__qcxtq menu__selectItemText__m9o3C">
+                <span>Color de proyecto</span>
+              </span>
+            </li>
+
+            {/* 3. Nueva tarea */}
+            <li
+              data-fpl-component=""
+              role="menuitem"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound("click");
+                onAddTaskToProject?.();
+                onClose();
+              }}
+              className="menu__item__Tl2MO menu__selectItem__I9GzL"
+            >
+              <span className="menu__itemText__qcxtq menu__selectItemText__m9o3C">
+                <span>Nueva tarea</span>
+              </span>
+            </li>
+          </ul>
+
+          {/* Task Actions */}
+          <ul data-fpl-component="" role="group" className="menu__group__KwU4I">
+            {/* 4. Eliminar tarea */}
+            <li
+              data-fpl-component=""
+              role="menuitem"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound("click");
+                onDeleteTask?.();
+                onClose();
+              }}
+              className="menu__item__Tl2MO menu__selectItem__I9GzL hover:!bg-rose-500/20 hover:!text-rose-300"
+            >
+              <span className="menu__itemText__qcxtq menu__selectItemText__m9o3C text-rose-400">
+                <span>Eliminar tarea</span>
+              </span>
+            </li>
+          </ul>
+        </ul>
+      </div>
+    </div>,
+    document.body
   );
 };
 

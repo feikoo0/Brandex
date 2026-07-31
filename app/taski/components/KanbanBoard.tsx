@@ -37,8 +37,6 @@ class SmartMouseSensor extends MouseSensor {
             element.tagName === "BUTTON" ||
             element.tagName === "INPUT" ||
             element.tagName === "TEXTAREA" ||
-            element.classList?.contains("task-card-desc") ||
-            element.classList?.contains("task-card-title") ||
             element.getAttribute("contenteditable") === "true"
           ) {
             return false;
@@ -64,8 +62,6 @@ class SmartTouchSensor extends TouchSensor {
             element.tagName === "BUTTON" ||
             element.tagName === "INPUT" ||
             element.tagName === "TEXTAREA" ||
-            element.classList?.contains("task-card-desc") ||
-            element.classList?.contains("task-card-title") ||
             element.getAttribute("contenteditable") === "true"
           ) {
             return false;
@@ -553,14 +549,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
           return arrayMove(updatedTasks, activeIdx, overIdx);
         }
         return updatedTasks;
-      } else {
-        const activeIdx = prev.findIndex((t) => t.id === activeId);
-        const overIdx = prev.findIndex((t) => t.id === overId);
-        if (activeIdx !== -1 && overIdx !== -1 && activeIdx !== overIdx) {
-          return arrayMove(prev, activeIdx, overIdx);
-        }
-        return prev;
       }
+      return prev;
     });
   };
 

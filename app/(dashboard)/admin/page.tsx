@@ -51,6 +51,7 @@ export default function AdminPage() {
       case "engine":    return <EngineView />;
       case "tareas":    return <TasksView />;
       case "proyectos": return <ProjectsView />;
+      case "proyectos_v2": return <ProjectsView />;
       case "clientes":  return <ClientsView />;
       case "calendario":return <CalendarView />;
       case "finanzas":  return <FinanzasView />;

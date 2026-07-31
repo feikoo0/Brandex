@@ -37,6 +37,8 @@ export interface Project {
   id: string;
   nombre: string;
   cliente_ids: string[];
+  asignado_ids?: string[];
+  asignado?: string;
   estadoProyecto: string;
   estado: string;
   area: string;
@@ -93,6 +95,27 @@ export interface Worker {
   created: string;
 }
 
+// ── Session Types ─────────────────────────────────────────────────────────────
+export type SessionOrigin = "manual" | "agent_self" | "agent_research" | "agent_qa_visual";
+export type SessionStatus = "en_curso" | "completada" | "completada_forzada";
+
+export interface SessionDoc {
+  id: string;
+  task_id: string;
+  project_id: string;
+  client_id: string | null;
+  worker_id: string | null;
+  origin: SessionOrigin;
+  status: SessionStatus;
+  startTime: any; // Firestore Timestamp
+  endTime: any | null; // Firestore Timestamp
+  lastHeartbeat: any; // Firestore Timestamp
+  durationMins: number;
+  summary?: string;
+  created: any;
+  updatedAt: any;
+}
+
 // ── Data Store Shape ───────────────────────────────────────────────────────────
 export interface BraindexData {
   clientes:    Client[];
@@ -126,7 +149,7 @@ export interface LoginResponse {
 // ── UI State ──────────────────────────────────────────────────────────────────
 export type AdminTab =
   | "pulse" | "engine" | "timeline" | "pipeline"
-  | "clientes" | "proyectos" | "tareas" | "talent"
+  | "clientes" | "proyectos" | "proyectos_v2" | "tareas" | "talent"
   | "analytics" | "recursos" | "calendario" | "finanzas" | "accesos";
 
 export type CalView = "day" | "week";

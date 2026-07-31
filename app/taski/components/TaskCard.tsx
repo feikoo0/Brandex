@@ -1,13 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { useSortable, defaultAnimateLayoutChanges } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { MoreHorizontal, Trash2 } from "lucide-react";
 import { Project, Task } from "./ProjectDashboard";
-import TaskCardPopovers from "./TaskCardPopovers";
+import TaskCardPopovers, { TaskCardMenuPopover } from "./TaskCardPopovers";
 import { playSound } from "../utils/audio";
-import { getCardColorTheme, CARD_COLOR_KEYS } from "@/lib/utils";
+import { getCardColorTheme, CARD_COLOR_KEYS, getSingleSourceProjectColor } from "@/lib/utils";
+import FormatoShape from "./FormatoShape";
+
+function getProjectBgColor(project: Project): string {
+  return getSingleSourceProjectColor(project).hslCss;
+}
 
 function animateLayoutChanges(args: any) {
   const { isSorting, wasDragging } = args;
@@ -48,7 +53,7 @@ export interface TaskCardProps {
     textHoverColor: string;
     dotClass: string;
   };
-  updateTaskProperty: (projectId: string | number, taskId: string, property: string, value: any) => void;
+  updateTaskProperty: (projectId: string | number, taskId: string | number, property: string, value: any) => void;
   activeStatusDropdownCardId: string | null;
   setActiveStatusDropdownCardId: React.Dispatch<React.SetStateAction<string | null>>;
   activeFormatDropdownCardId: string | null;
@@ -57,6 +62,15 @@ export interface TaskCardProps {
   setActiveTimeDropdownCardId: React.Dispatch<React.SetStateAction<string | null>>;
   activeColorSelectorCardId: string | null;
   setActiveColorSelectorCardId: React.Dispatch<React.SetStateAction<string | null>>;
+  activeCardMenuId?: string | null;
+  setActiveCardMenuId?: React.Dispatch<React.SetStateAction<string | null>>;
+  onSelectProject?: (projectId: string | number) => void;
+  onAddTaskToProject?: (projectId: string | number) => void;
+  onChangeProjectColor?: (projectId: string | number) => void;
+  sortBy?: "alfabetico" | "creacion" | "visto";
+  setSortBy?: (val: "alfabetico" | "creacion" | "visto") => void;
+  sortOrder?: "asc" | "desc";
+  setSortOrder?: (val: "asc" | "desc") => void;
   hoveredStatusOptionCard: { taskId: string; status: string } | null;
   setHoveredStatusOptionCard: React.Dispatch<React.SetStateAction<{ taskId: string; status: string } | null>>;
   hoveredFormatOptionCard: { taskId: string; format: string } | null;
@@ -66,7 +80,7 @@ export interface TaskCardProps {
   setEditingTaskField: React.Dispatch<React.SetStateAction<{ taskId: string; field: "title" | "desc" } | null>>;
   editingValue: string;
   setEditingValue: React.Dispatch<React.SetStateAction<string>>;
-  saveEditing: (projectId: string | number, taskId: string) => void;
+  saveEditing: (projectId: string | number, taskId: string | number) => void;
   isNightMode: boolean;
   isHomeEditMode: boolean;
   setDeleteModalConfig: (config: any) => void;
@@ -102,6 +116,15 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   setActiveTimeDropdownCardId,
   activeColorSelectorCardId,
   setActiveColorSelectorCardId,
+  activeCardMenuId,
+  setActiveCardMenuId,
+  onSelectProject,
+  onAddTaskToProject,
+  onChangeProjectColor,
+  sortBy = "visto",
+  setSortBy,
+  sortOrder = "desc",
+  setSortOrder,
   hoveredStatusOptionCard,
   setHoveredStatusOptionCard,
   hoveredFormatOptionCard,
@@ -118,14 +141,21 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   getCalendarDaysDiff,
   formatLocalDate,
 }) => {
+  const threeDotsRef = useRef<HTMLButtonElement>(null);
   const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   
   const project = projects.find(p => String(p.id) === String(projectId));
   const clientName = project?.client || "Cliente";
   const projName = project?.title || projectName;
-  const task = project?.tasks?.find(t => `kt-${projectId}-${t.id}` === taskId);
+  const task = project?.tasks?.find(t => `kt-${projectId}-${t.id}` === taskId || String(t.id) === String(taskId));
 
   if (!task) return null;
+
+  const projectTasks = project?.tasks || [];
+  const realTotalTasks = projectTasks.length > 0 ? projectTasks.length : (totalTasks || 1);
+  const foundIndex = projectTasks.findIndex(t => `kt-${projectId}-${t.id}` === taskId || String(t.id) === String(task.id));
+  const rawIndex = foundIndex !== -1 ? foundIndex + 1 : (taskIndex !== undefined ? (taskIndex < realTotalTasks ? taskIndex + 1 : taskIndex) : ((task as any)?.taskIndex !== undefined ? (task as any).taskIndex + 1 : 1));
+  const displayTaskIndex = Math.min(Math.max(1, rawIndex), realTotalTasks);
 
   // 1. Programada Date
   const progDate = (task.fecha_programada ? new Date(task.fecha_programada + "T00:00:00") : (() => {
@@ -179,15 +209,16 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
 
   // Creation date
   const creationDateObj = (task as any).fecha_creacion ? new Date((task as any).fecha_creacion + "T00:00:00") : new Date();
-  const formattedCreationDate = `Creado el ${creationDateObj.toLocaleDateString("es-ES", { day: "numeric", month: "long" })}`;
+  const formattedCreationDateShort = creationDateObj.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
   const diffCreationDays = getCalendarDaysDiff(creationDateObj);
-  const shortCreationDate = diffCreationDays === 0 
-    ? "Creado hoy" 
-    : diffCreationDays < 0 
-    ? `Creado hace ${Math.abs(diffCreationDays)}d` 
-    : `Creado el ${creationDateObj.toLocaleDateString("es-ES", { day: "numeric", month: "short" })}`;
+  let relativeCreationLabel = "";
+  if (diffCreationDays === 0) relativeCreationLabel = "Hoy";
+  else if (diffCreationDays === -1) relativeCreationLabel = "Ayer";
+  else relativeCreationLabel = `Hace ${Math.abs(diffCreationDays)} días`;
 
-  const taskColor = task.color || "Predeterminado";
+  const parentProject = projects.find(p => String(p.id) === String(projectId));
+  const taskBgColor = parentProject ? getProjectBgColor(parentProject) : undefined;
+  const taskColor = task.color || (parentProject as any)?.color || "Predeterminado";
   const currentTheme = getCardColorTheme(taskColor, isNightMode);
   const isExpanded = (expandedCardId === taskId) && !forceCollapsed;
 
@@ -202,8 +233,7 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
             el.tagName === "TEXTAREA" ||
             el.dataset?.noDnd === "true" ||
             el.dataset?.dropdownContainer !== undefined ||
-            el.classList?.contains("task-card-title") ||
-            el.classList?.contains("task-card-desc")
+            (isExpanded && (el.classList?.contains("task-card-title") || el.classList?.contains("task-card-desc")))
           ) {
             return;
           }
@@ -223,7 +253,8 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
         setExpandedCardId?.((prev) => (prev === taskId ? null : taskId));
       }}
       onMouseEnter={() => playSound('click')}
-      className={`group/card border-none rounded-[13px] transition-all duration-300 pointer-events-auto relative font-sans flex flex-col h-full w-full ${currentTheme.bg} px-3.5 pt-2.5 pb-2.5`}
+      style={taskBgColor ? { backgroundColor: taskBgColor } : {}}
+      className={`group/card border-none rounded-xl transition-all duration-300 pointer-events-auto relative font-sans flex flex-col h-full w-full ${taskBgColor ? '' : currentTheme.bg} px-3.5 pt-2.5 pb-2.5`}
     >
       {/* Delete button in edit mode */}
       {isHomeEditMode && (
@@ -248,138 +279,176 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
       )}
 
       {/* Top Group: Project Title & Icon & Task Title */}
-      <div className={`flex flex-col relative ${activeColorSelectorCardId === taskId ? "z-[9999]" : (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-auto" : "z-10"}`}>
+      <div className={`flex flex-col relative ${activeColorSelectorCardId === taskId || activeCardMenuId === taskId ? "z-[9999]" : (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-auto" : "z-10"}`}>
         <div className="flex items-center justify-between w-full">
-          <span className={`text-[12px] font-normal select-none truncate max-w-[85%] ${currentTheme.muted}`}>
-            {isExpanded ? formattedCreationDate : shortCreationDate}
+          <span className={`text-[12px] font-normal select-none truncate ${currentTheme.muted}`}>
+            <span className="text-white font-medium">{clientName}</span> • Entrega {relativeLimitLabel.toLowerCase()}
           </span>
           {!isHomeEditMode && (
-            <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 shrink-0 transform translate-x-1 group-hover:translate-x-0">
-              <MoreHorizontal className={`w-4 h-4 opacity-70 hover:opacity-100 transition-colors duration-200 cursor-pointer ${currentTheme.title}`} />
-            </div>
-          )}
-        </div>
-        
-        {/* Slide-Up Task Title */}
-        {isHomeEditMode ? (
-          <input
-            type="text"
-            defaultValue={taskTitle || ""}
-            onBlur={(e) => {
-              const newTitle = e.target.value.trim();
-              if (!newTitle) return;
-              setProjects((prev) => {
-                return prev.map((p) => {
-                  if (p.id === projectId) {
-                    const updatedTasks = (p.tasks || []).map(t => {
-                      if (t.id === task.id) {
-                        return { ...t, title: newTitle };
-                      }
-                      return t;
-                    });
-                    return { ...p, tasks: updatedTasks };
-                  }
-                  return p;
-                });
-              });
-            }}
-            className={`task-card-title text-[16px] font-bold bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 mt-1.5 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left ${currentTheme.title}`}
-          />
-        ) : (
-          <div className={`flex items-center gap-2 mt-1 relative ${activeColorSelectorCardId === taskId ? "z-[9999]" : ""}`}>
-            {isExpanded && (
-              <div className="relative z-50" data-dropdown-container>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    playSound('click');
-                    setActiveColorSelectorCardId(prev => prev === taskId ? null : taskId);
-                  }}
-                  className={`w-4 h-4 rounded-full ${currentTheme.dot} cursor-pointer border-2 border-white/80 transition-all hover:scale-110 active:scale-90 shrink-0 shadow-sm`}
-                  title="Personalizar color"
-                />
-              </div>
-            )}
-            {editingTaskField?.taskId === taskId && editingTaskField?.field === "title" ? (
-              <input
-                type="text"
-                autoFocus
-                data-no-dnd
-                value={editingValue}
-                onChange={(e) => setEditingValue(e.target.value)}
-                onBlur={() => {
-                  saveEditing(projectId, task.id);
-                  setDragDisabledProp?.(false);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    saveEditing(projectId, task.id);
-                    setDragDisabledProp?.(false);
-                  } else if (e.key === "Escape") {
-                    setEditingTaskField(null);
-                    setDragDisabledProp?.(false);
-                  }
-                }}
-                className={`task-card-title text-[14px] font-bold bg-transparent border-none p-0 mt-0.5 focus:outline-none focus:ring-0 w-full pointer-events-auto z-45 text-left ${currentTheme.title}`}
-              />
-            ) : (
-              <h4 
-                data-no-dnd
+            <div className="relative shrink-0" data-dropdown-container>
+              <button
+                ref={threeDotsRef}
+                type="button"
+                data-no-dnd="true"
                 onClick={(e) => {
                   e.stopPropagation();
                   playSound('click');
-                  setEditingTaskField({ taskId, field: "title" });
-                  setEditingValue(taskTitle || "");
-                  setDragDisabledProp?.(true);
+                  setActiveCardMenuId?.((prev) => (prev === taskId ? null : taskId));
                 }}
-                onMouseEnter={() => setDragDisabledProp?.(true)}
-                onMouseLeave={() => {
-                  if (editingTaskField?.taskId !== taskId) {
-                    setDragDisabledProp?.(false);
-                  }
-                }}
-                className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 cursor-text hover:opacity-80 transition-all pointer-events-auto ${currentTheme.title}`}
-                title="Haz clic para editar título"
+                className={`p-0.5 -mr-1 rounded-md hover:bg-white/15 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white ${
+                  activeCardMenuId === taskId ? "bg-white/20 text-white" : ""
+                }`}
+                title="Opciones de la tarjeta"
               >
-                {taskTitle}
-              </h4>
-            )}
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
 
-            {/* Color selector popover aligned to card width */}
-            {activeColorSelectorCardId === taskId && (
-              <div className={`absolute top-7 left-0 border rounded-2xl p-2.5 grid grid-cols-3 gap-2 z-[9999] shadow-lg items-center animate-fadeIn pointer-events-auto w-[115px] ${isNightMode ? 'bg-[#0e0e0c] border-white/20' : 'bg-white border-slate-200'}`} data-dropdown-container>
-                {CARD_COLOR_KEYS.map((key) => {
-                  const cfg = getCardColorTheme(key, isNightMode);
-                  return (
-                    <button
-                      key={key}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playSound('pop');
-                        updateTaskProperty(projectId, task.id, "color", key);
-                        setActiveColorSelectorCardId(null);
-                      }}
-                      className={`w-6 h-6 rounded-full ${cfg.dot} cursor-pointer border border-white/40 transition-all hover:scale-110 active:scale-95 relative ${taskColor === key ? 'ring-2 ring-white ring-offset-2 ring-offset-black z-10 scale-105' : ''}`}
-                      title={cfg.label}
-                    />
-                  );
-                })}
-              </div>
+        {/* Task Card Menu Popover (Figma-Style) */}
+        {activeCardMenuId === taskId && (
+          <TaskCardMenuPopover
+            isOpen={activeCardMenuId === taskId}
+            onClose={() => setActiveCardMenuId?.(null)}
+            triggerRef={threeDotsRef}
+            onOpenProject={() => {
+              onSelectProject?.(projectId);
+              setActiveCardMenuId?.(null);
+            }}
+            onChangeProjectColor={() => {
+              onChangeProjectColor?.(projectId);
+              setActiveCardMenuId?.(null);
+            }}
+            onAddTaskToProject={() => {
+              onAddTaskToProject?.(projectId);
+              setActiveCardMenuId?.(null);
+            }}
+            onCustomizeCardColor={() => {
+              setActiveColorSelectorCardId?.(taskId);
+              setActiveCardMenuId?.(null);
+            }}
+            onDeleteTask={() => {
+              setDeleteModalConfig?.({
+                isOpen: true,
+                projectId: Number(projectId),
+                projectTitle: projName,
+                taskId: task.id,
+                taskTitle: task.title,
+                targetType: undefined,
+              });
+              setActiveCardMenuId?.(null);
+            }}
+          />
+        )}
+        
+        {/* Slide-Up Task Title + Format Icon */}
+        {isHomeEditMode ? (
+          <div className="flex flex-col gap-1 mt-1.5 w-full">
+            <div className="flex items-center gap-2 w-full">
+              <FormatoShape formatoKey={task.formato || task.format} size="sm" className="shrink-0" />
+              <input
+                type="text"
+                defaultValue={taskTitle || ""}
+                onBlur={(e) => {
+                  const newTitle = e.target.value.trim();
+                  if (!newTitle) return;
+                  setProjects((prev) => {
+                    return prev.map((p) => {
+                      if (p.id === projectId) {
+                        const updatedTasks = (p.tasks || []).map(t => {
+                          if (t.id === task.id) {
+                            return { ...t, title: newTitle };
+                          }
+                          return t;
+                        });
+                        return { ...p, tasks: updatedTasks };
+                      }
+                      return p;
+                    });
+                  });
+                }}
+                className={`task-card-title text-[16px] font-bold bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left ${currentTheme.title}`}
+              />
+            </div>
+            {projName && (
+              <span className="text-[12px] font-medium leading-snug text-white truncate select-none pl-7">
+                {projName}
+              </span>
             )}
+          </div>
+        ) : (
+          <div className="flex items-start gap-2 mt-1.5 relative w-full">
+            <FormatoShape formatoKey={task.formato || task.format} size="sm" className="shrink-0 mt-0.5" />
+            <div className="flex flex-col min-w-0 flex-1">
+              {isExpanded && editingTaskField?.taskId === taskId && editingTaskField?.field === "title" ? (
+                <input
+                  type="text"
+                  autoFocus
+                  data-no-dnd="true"
+                  value={editingValue}
+                  onChange={(e) => setEditingValue(e.target.value)}
+                  onBlur={() => {
+                    saveEditing(projectId, task.id);
+                    setDragDisabledProp?.(false);
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      saveEditing(projectId, task.id);
+                      setDragDisabledProp?.(false);
+                    } else if (e.key === "Escape") {
+                      setEditingTaskField(null);
+                      setDragDisabledProp?.(false);
+                    }
+                  }}
+                  className={`task-card-title text-[14px] font-bold bg-transparent border-none p-0 focus:outline-none focus:ring-0 w-full pointer-events-auto z-45 text-left ${currentTheme.title}`}
+                />
+              ) : (
+                <h4 
+                  {...(isExpanded ? { "data-no-dnd": "true" } : {})}
+                  onClick={isExpanded ? (e) => {
+                    e.stopPropagation();
+                    playSound('click');
+                    setEditingTaskField({ taskId, field: "title" });
+                    setEditingValue(taskTitle || "");
+                    setDragDisabledProp?.(true);
+                  } : undefined}
+                  onMouseEnter={isExpanded ? () => setDragDisabledProp?.(true) : undefined}
+                  onMouseLeave={isExpanded ? () => {
+                    if (editingTaskField?.taskId !== taskId) {
+                      setDragDisabledProp?.(false);
+                    }
+                  } : undefined}
+                  className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 transition-all pointer-events-auto ${
+                    isExpanded ? "cursor-text hover:opacity-80" : ""
+                  } ${currentTheme.title}`}
+                  title={isExpanded ? "Haz clic para editar título" : undefined}
+                >
+                  {taskTitle}
+                </h4>
+              )}
+              {projName && (
+                <span className="text-[12px] font-medium leading-snug text-white truncate select-none mt-0.5">
+                  {projName}
+                </span>
+              )}
+            </div>
           </div>
         )}
 
         {/* Client & Project details & Description visible on hover / expanded */}
         <div className={`task-card-details flex flex-col gap-3 mt-3 select-none pointer-events-auto relative ${
-          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-[9999] !overflow-visible" : activeColorSelectorCardId === taskId ? "z-auto" : "z-20"
+          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-[9999] !overflow-visible" : "z-20"
         }`}>
           {/* Properties: Status and Format/Type via TaskCardPopovers */}
           <TaskCardPopovers
             type="status-format"
+            isInteractive={isExpanded}
             taskId={taskId}
             projectId={projectId}
+            project={parentProject || project}
             task={task}
             availableFormats={availableFormats}
             activeStatusDropdownCardId={activeStatusDropdownCardId}
@@ -400,10 +469,10 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
           />
 
           {/* Description line */}
-          {editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
+          {isExpanded && editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
             <textarea
               autoFocus
-              data-no-dnd
+              data-no-dnd="true"
               value={editingValue}
               onChange={(e) => setEditingValue(e.target.value)}
               onBlur={() => {
@@ -426,50 +495,52 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
               rows={3}
             />
           ) : (
-            task.description || desc ? (
+            task.desc || desc ? (
               <p 
-                data-no-dnd
-                onClick={(e) => {
+                {...(isExpanded ? { "data-no-dnd": "true" } : {})}
+                onClick={isExpanded ? (e) => {
                   e.stopPropagation();
                   playSound('click');
                   setEditingTaskField({ taskId, field: "desc" });
-                  setEditingValue(task.description || desc || "");
+                  setEditingValue(task.desc || desc || "");
                   setDragDisabledProp?.(true);
-                }}
-                onMouseEnter={() => setDragDisabledProp?.(true)}
-                onMouseLeave={() => {
+                } : undefined}
+                onMouseEnter={isExpanded ? () => setDragDisabledProp?.(true) : undefined}
+                onMouseLeave={isExpanded ? () => {
                   if (editingTaskField?.taskId !== taskId) {
                     setDragDisabledProp?.(false);
                   }
-                }}
-                className={`task-card-desc text-[12px] leading-snug cursor-text hover:opacity-80 transition-all pointer-events-auto ${
-                  isExpanded ? 'max-h-[72px] overflow-y-auto hide-scrollbar pr-1' : 'line-clamp-2'
+                } : undefined}
+                className={`task-card-desc text-[12px] leading-snug transition-all pointer-events-auto ${
+                  isExpanded ? 'max-h-[72px] overflow-y-auto hide-scrollbar pr-1 cursor-text hover:opacity-80' : 'line-clamp-2'
                 } ${currentTheme.desc}`}
-                title="Haz clic para editar descripción"
+                title={isExpanded ? "Haz clic para editar descripción" : undefined}
               >
-                {task.description || desc}
+                {task.desc || desc}
               </p>
             ) : (
-              <p 
-                data-no-dnd
-                onClick={(e) => {
-                  e.stopPropagation();
-                  playSound('click');
-                  setEditingTaskField({ taskId, field: "desc" });
-                  setEditingValue("");
-                  setDragDisabledProp?.(true);
-                }}
-                onMouseEnter={() => setDragDisabledProp?.(true)}
-                onMouseLeave={() => {
-                  if (editingTaskField?.taskId !== taskId) {
-                    setDragDisabledProp?.(false);
-                  }
-                }}
-                className={`task-card-desc text-[14px] italic cursor-text hover:opacity-80 transition-all pointer-events-auto ${currentTheme.muted}`}
-                title="Haz clic para agregar descripción"
-              >
-                Descripción de la tarea...
-              </p>
+              isExpanded ? (
+                <p 
+                  data-no-dnd="true"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    playSound('click');
+                    setEditingTaskField({ taskId, field: "desc" });
+                    setEditingValue("");
+                    setDragDisabledProp?.(true);
+                  }}
+                  onMouseEnter={() => setDragDisabledProp?.(true)}
+                  onMouseLeave={() => {
+                    if (editingTaskField?.taskId !== taskId) {
+                      setDragDisabledProp?.(false);
+                    }
+                  }}
+                  className={`task-card-desc text-[14px] italic cursor-text hover:opacity-80 transition-all pointer-events-auto ${currentTheme.muted}`}
+                  title="Haz clic para agregar descripción"
+                >
+                  Descripción de la tarea...
+                </p>
+              ) : null
             )
           )}
         </div>
@@ -482,8 +553,10 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
           <span className={`font-normal select-none ${currentTheme.muted}`}>Tiempo</span>
           <TaskCardPopovers
             type="tiempo"
+            isInteractive={isExpanded}
             taskId={taskId}
             projectId={projectId}
+            project={parentProject || project}
             task={task}
             availableFormats={availableFormats}
             activeStatusDropdownCardId={activeStatusDropdownCardId}
@@ -564,22 +637,26 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Creation Info Line */}
+        <div className="flex justify-end items-center relative pt-0.5">
+          <span className={`text-[11px] font-semibold select-none opacity-80 ${currentTheme.title}`}>
+            Creado {relativeCreationLabel.toLowerCase()} · {formattedCreationDateShort}
+          </span>
+        </div>
       </div>
 
-      {/* Footer Metadata: Project Name, Client Tag & Progress Bar */}
+      {/* Footer Metadata: Task Index, Client Tag & Progress Bar */}
       <div className="mt-auto flex flex-col gap-1 pt-1.5 border-t border-white/[0.04] shrink-0 w-full">
-        <div className="flex items-center justify-between text-[11px] leading-none">
-          <span className={`font-bold truncate max-w-[70%] select-none ${currentTheme.title}`}>
-            {projName}
-          </span>
-          <span className={`text-[10px] font-bold uppercase tracking-wider select-none shrink-0 ${currentTheme.title}`}>
-            {clientName}
+        <div className="flex items-center justify-between leading-none">
+          <span className={`text-[13px] font-medium select-none ${currentTheme.title}`}>
+            Tarea {displayTaskIndex} de {realTotalTasks}
           </span>
         </div>
 
         {/* Segmented Progress Bar */}
         <div className="w-full flex items-center gap-1 h-1 my-0.5">
-          {Array.from({ length: Math.max(1, totalTasks) }).map((_, idx) => {
+          {Array.from({ length: Math.max(1, realTotalTasks) }).map((_, idx) => {
             const isCompleted = idx < completedTasks;
             const isInProcess = !isCompleted && task.status === "En Proceso" && idx === completedTasks;
             
@@ -596,14 +673,6 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
               />
             );
           })}
-        </div>
-
-        {/* Task count & percentage */}
-        <div className={`flex items-center justify-between text-[10px] font-bold leading-none select-none ${currentTheme.muted}`}>
-          <span>
-            Tarea {taskIndex !== undefined ? taskIndex + 1 : (task.taskIndex !== undefined ? task.taskIndex + 1 : 1)} De {totalTasks || 1}
-          </span>
-          <span>{progressPercent}%</span>
         </div>
       </div>
     </div>
@@ -636,7 +705,7 @@ export interface SortableTaskCardProps {
     textHoverColor: string;
     dotClass: string;
   };
-  updateTaskProperty: (projectId: string | number, taskId: string, property: string, value: any) => void;
+  updateTaskProperty: (projectId: string | number, taskId: string | number, property: string, value: any) => void;
   activeStatusDropdownCardId: string | null;
   setActiveStatusDropdownCardId: React.Dispatch<React.SetStateAction<string | null>>;
   activeFormatDropdownCardId: string | null;
@@ -654,7 +723,7 @@ export interface SortableTaskCardProps {
   setEditingTaskField: React.Dispatch<React.SetStateAction<{ taskId: string; field: "title" | "desc" } | null>>;
   editingValue: string;
   setEditingValue: React.Dispatch<React.SetStateAction<string>>;
-  saveEditing: (projectId: string | number, taskId: string) => void;
+  saveEditing: (projectId: string | number, taskId: string | number) => void;
   isNightMode: boolean;
   isHomeEditMode: boolean;
   setDeleteModalConfig: (config: any) => void;
@@ -716,7 +785,7 @@ export const SortableTaskCard: React.FC<SortableTaskCardProps> = (props) => {
       data-task-id={taskIdComposite}
     >
       {/* inner-card-clip: always overflow-hidden + rounded — never disturbed by dropdown z-index changes on the wrapper */}
-      <div className="inner-card-clip w-full h-full overflow-hidden rounded-[13px]">
+      <div className="inner-card-clip w-full h-full overflow-hidden rounded-xl">
         <TaskCardContent
           {...props}
           taskId={taskIdComposite}

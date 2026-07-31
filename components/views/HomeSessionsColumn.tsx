@@ -1,0 +1,670 @@
+"use client";
+
+import React, { useMemo, useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useSessions, useRecentSessions } from "@/hooks/useSessions";
+import { useData } from "@/hooks/useData";
+import { Clock, Play, Square, Plus, Bot, User, ShieldCheck, Search, Check } from "lucide-react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import type { SessionDoc, SessionOrigin } from "@/lib/types";
+import { CARD_COLOR_KEYS, getCardColorTheme, getSingleSourceProjectColor, parseTimeToHours } from "@/lib/utils";
+import FormatoShape from "@/app/taski/components/FormatoShape";
+
+function getOriginBadge(origin: SessionOrigin) {
+  switch (origin) {
+    case "agent_self":
+      return { label: "Agente Self", icon: <Bot className="w-3 h-3 text-purple-400" /> };
+    case "agent_research":
+      return { label: "Agente Research", icon: <Search className="w-3 h-3 text-cyan-400" /> };
+    case "agent_qa_visual":
+      return { label: "Agente QA", icon: <ShieldCheck className="w-3 h-3 text-emerald-400" /> };
+    default:
+      return { label: "Manual", icon: <User className="w-3 h-3 text-blue-400" /> };
+  }
+}
+
+function getRelativeTime(timestamp: any): string {
+  if (!timestamp) return "Recientemente";
+  const ms = timestamp.toMillis ? timestamp.toMillis() : new Date(timestamp).getTime();
+  const diffMins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+
+  if (diffMins < 1) return "Ahora mismo";
+  if (diffMins < 60) return `Hace ${diffMins} min`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `Hace ${diffHours} h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Hace ${diffDays} d`;
+}
+
+function getDateGroupTitle(timestamp: any): string {
+  if (!timestamp) return "Anteriores";
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return "Hoy";
+  if (date.toDateString() === yesterday.toDateString()) return "Ayer";
+
+  return date.toLocaleDateString("es-ES", { month: "short", day: "numeric" });
+}
+
+export function getProjectBgColor(project: any, task?: any): string {
+  if (project) {
+    return getSingleSourceProjectColor(project).hslCss;
+  }
+  if (task) {
+    return getSingleSourceProjectColor(task).hslCss;
+  }
+  return "hsl(217, 91%, 60%)";
+}
+
+function getCreatedText(t: any): string {
+  let createdDate: Date | null = null;
+  const rawCreated = t.fecha_creacion || t.createdAt || t.created_at;
+
+  if (rawCreated) {
+    if (typeof rawCreated === "string") {
+      createdDate = new Date(rawCreated.includes("T") ? rawCreated : rawCreated + "T00:00:00");
+    } else if (rawCreated.toDate) {
+      createdDate = rawCreated.toDate();
+    } else if (typeof rawCreated === "number") {
+      createdDate = new Date(rawCreated);
+    }
+  }
+
+  if (!createdDate || isNaN(createdDate.getTime())) {
+    return "Creada hoy";
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const cDay = new Date(createdDate.getFullYear(), createdDate.getMonth(), createdDate.getDate());
+  const diffDays = Math.round((today.getTime() - cDay.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return "Creada hoy";
+  if (diffDays === 1) return "Creada hace 1 día";
+  return `Creada hace ${diffDays} días`;
+}
+
+function getDueText(t: any): { text: string; isOverdue: boolean } {
+  let dueDateObj: Date | null = null;
+
+  if (t.dueDate instanceof Date) {
+    dueDateObj = t.dueDate;
+  } else {
+    const rawDue = t.dueDate || t.fecha_limite || t.deadline || t.fecha_programada;
+    if (rawDue) {
+      if (typeof rawDue === "string") {
+        dueDateObj = new Date(rawDue.includes("T") ? rawDue : rawDue + "T00:00:00");
+      } else if (rawDue.toDate) {
+        dueDateObj = rawDue.toDate();
+      } else if (typeof rawDue === "number") {
+        dueDateObj = new Date(rawDue);
+      }
+    }
+  }
+
+  if (!dueDateObj || isNaN(dueDateObj.getTime())) {
+    return { text: "Entrega: Hoy", isOverdue: false };
+  }
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(dueDateObj.getFullYear(), dueDateObj.getMonth(), dueDateObj.getDate());
+  const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    const overdueDays = Math.abs(diffDays);
+    return {
+      text: overdueDays === 1 ? "Atraso de 1 día" : `Atraso de ${overdueDays} días`,
+      isOverdue: true,
+    };
+  } else if (diffDays === 0) {
+    return { text: "Entrega: Hoy", isOverdue: false };
+  } else if (diffDays === 1) {
+    return { text: "Entrega: Mañana", isOverdue: false };
+  } else {
+    return { text: `Entrega en ${diffDays} días`, isOverdue: false };
+  }
+}
+
+interface HomeSessionsColumnProps {
+  todayTasks?: any[];
+  allTasks?: any[];
+  projects?: any[];
+  isNightMode?: boolean;
+  onUpdateTaskStatus?: (projectId: string | number, taskId: string | number, status: string) => void;
+}
+
+export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, projects, isNightMode = true, onUpdateTaskStatus }: HomeSessionsColumnProps) {
+  const { sessions, isLoading, refetch } = useRecentSessions(100);
+  const { activeSession, startSession, endSession } = useSessions();
+  const { data } = useData();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const { projectMap, clientMap, taskMap, internalTodayTasks } = useMemo(() => {
+    const pMap = new Map<string, any>();
+    const cMap = new Map<string, any>();
+    const tMap = new Map<string, any>();
+    const tList: any[] = [];
+
+    // 1. First map from canvas projects prop (has exact customColor, HSL & title)
+    if (projects && projects.length > 0) {
+      projects.forEach((p) => {
+        const idStr = String(p.id);
+        pMap.set(idStr, p);
+        if (p.title) pMap.set(p.title.toLowerCase().trim(), p);
+        if (p.nombre) pMap.set(p.nombre.toLowerCase().trim(), p);
+      });
+    }
+
+    // 2. Map from data cache
+    if (data) {
+      data.clientes.forEach((c) => cMap.set(String(c.id), c.nombre));
+      data.proyectos.forEach((p) => {
+        const idStr = String(p.id);
+        if (!pMap.has(idStr)) {
+          pMap.set(idStr, p);
+        }
+      });
+      data.tareas.forEach((t) => {
+        tMap.set(String(t.id), t);
+        if (t.estado !== "Completado") {
+          tList.push(t);
+        }
+      });
+    }
+
+    // 3. Map from tasksToMap
+    const tasksToMap = allTasks || externalTodayTasks;
+    if (tasksToMap) {
+      tasksToMap.forEach((st: any) => {
+        const rawId = String(st.id);
+        const taskNumId = rawId.includes("kt-") ? rawId.split("-")[2] : rawId;
+        tMap.set(rawId, st);
+        tMap.set(taskNumId, st);
+
+        const pId = String(st.projectId || st.proyecto_id || "");
+        if (pId && !pMap.has(pId)) {
+          const matchProj = projects?.find((p) => String(p.id) === pId || p.title === st.projectName || p.nombre === st.projectName);
+          if (matchProj) {
+            pMap.set(pId, matchProj);
+          } else {
+            pMap.set(pId, {
+              id: pId,
+              nombre: st.projectName,
+              title: st.projectName,
+              cliente_id: st.clientId || st.client_id,
+              customColor: st.customColor || st.project?.customColor,
+              customGradientStyle: st.customGradientStyle || st.project?.customGradientStyle,
+              gradient: st.gradient || st.project?.gradient
+            });
+          }
+        }
+      });
+    }
+
+    return { projectMap: pMap, clientMap: cMap, taskMap: tMap, internalTodayTasks: tList.slice(0, 8) };
+  }, [data, externalTodayTasks, allTasks, projects]);
+
+  const activeTodayTasks = externalTodayTasks && externalTodayTasks.length > 0 ? externalTodayTasks : internalTodayTasks;
+
+  const groupedSessions = useMemo(() => {
+    const groups: Array<{ groupName: string; items: SessionDoc[] }> = [];
+    const groupMap = new Map<string, SessionDoc[]>();
+
+    sessions.forEach((s) => {
+      const gName = getDateGroupTitle(s.startTime);
+      if (!groupMap.has(gName)) {
+        groupMap.set(gName, []);
+      }
+      groupMap.get(gName)!.push(s);
+    });
+
+    groupMap.forEach((items, groupName) => {
+      groups.push({ groupName, items });
+    });
+
+    return groups;
+  }, [sessions]);
+
+  const handleToggleSession = async (t: any) => {
+    const rawTaskId = String(t.id || t.taskId || "");
+    const taskIdStr = rawTaskId.includes("kt-") ? rawTaskId.split("-")[2] : rawTaskId;
+    const projIdStr = String(t.projectId || t.proyecto_id || t.proyecto_ids?.[0] || "");
+    const project = projectMap.get(projIdStr);
+    const clientIdStr = project?.cliente_id || t.clientId || null;
+
+    if (activeSession?.task_id === taskIdStr) {
+      await endSession();
+    } else {
+      await startSession({
+        taskId: taskIdStr,
+        projectId: projIdStr,
+        clientId: clientIdStr,
+        origin: "manual",
+      });
+    }
+  };
+
+  const handleToggleCompleteTask = async (e: React.MouseEvent, t: any) => {
+    e.stopPropagation();
+    const rawTaskId = String(t.id || t.taskId || "");
+    const taskIdStr = rawTaskId.includes("kt-") ? rawTaskId.split("-")[2] : rawTaskId;
+    const projIdStr = String(t.projectId || t.proyecto_id || t.proyecto_ids?.[0] || "");
+    const isComp = t.status === "Completado" || t.status === "Completada";
+    const newStatus = isComp ? "Planificado" : "Completado";
+
+    try {
+      await updateDoc(doc(db, "tasks", taskIdStr), {
+        estado: newStatus,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error("Error al actualizar estado de la tarea:", err);
+    }
+
+    if (onUpdateTaskStatus) {
+      onUpdateTaskStatus(projIdStr, taskIdStr, newStatus);
+    }
+  };
+
+  if (!isMounted) {
+    return (
+      <div className={`flex flex-col h-full justify-center items-center text-xs ${isNightMode ? 'text-white/30' : 'text-slate-400'}`}>
+        Cargando estudio...
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden space-y-4 select-none">
+      {/* 1. SECCIÓN SUPERIOR: "HOY — TAREAS PROGRAMADAS" */}
+      <div className="flex flex-col space-y-2">
+        <div className="flex items-center justify-between gap-2.5 px-0 pt-1 pb-1 shrink-0">
+          <h3 className={`text-[13px] font-bold ${isNightMode ? 'text-white' : 'text-slate-900'}`}>Hoy — Tareas Programadas</h3>
+          <span className={`px-2.5 py-0.5 min-w-[24px] h-[20px] rounded-[13px] text-[11px] font-mono font-bold flex items-center justify-center shrink-0 ${
+            isNightMode ? 'bg-white/10 text-white' : 'bg-slate-200 text-slate-800'
+          }`}>
+            {activeTodayTasks.length}
+          </span>
+        </div>
+
+        {/* Lista de píldoras de tareas programadas de hoy */}
+        <div className="max-h-[208px] overflow-y-auto space-y-2 custom-scrollbar pr-1 pt-1">
+          {activeTodayTasks.length === 0 ? (
+            <div className={`py-3 text-center text-[11px] font-medium ${isNightMode ? 'text-white/30' : 'text-slate-600'}`}>
+              No hay tareas pendientes para hoy.
+            </div>
+          ) : (
+            activeTodayTasks.map((t) => {
+              const projIdStr = String(t.projectId || t.proyecto_id || t.proyecto_ids?.[0] || "");
+              let project = projectMap.get(projIdStr);
+              if (!project && t.projectName) {
+                project = projectMap.get(String(t.projectName).toLowerCase().trim());
+              }
+              if (!project && t.project) {
+                project = t.project;
+              }
+              
+              const projectName = t.projectName || project?.nombre || project?.title || "Sin Proyecto";
+              const clientName = t.client || t.clientName || (project?.cliente_id ? clientMap.get(project.cliente_id) : null) || project?.client || null;
+              const taskTitle = t.taskTitle || t.titulo || t.title || "Tarea";
+              const createdText = getCreatedText(t);
+              const dueInfo = getDueText(t);
+
+              const rawTaskId = String(t.id);
+              const cleanTaskId = rawTaskId.includes("kt-") ? rawTaskId.split("-")[2] : rawTaskId;
+              const isActive = activeSession?.task_id === cleanTaskId || activeSession?.task_id === rawTaskId;
+
+              // Tiempo estimado y ejecutado para el aro de progreso
+              const estHours = parseTimeToHours(t.time || t.horas || t.hours || t.duracion) || 1;
+              const totalMins = Math.max(1, Math.round(estHours * 60));
+
+              const taskSessions = (sessions || []).filter(s => {
+                const sTaskId = String(s.task_id || "").trim();
+                if (!sTaskId || !cleanTaskId) return false;
+                return sTaskId === cleanTaskId || sTaskId === rawTaskId;
+              });
+
+              const executedMins = taskSessions.reduce((sum, s) => {
+                if (s.status === "en_curso") {
+                  const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+                  const elapsed = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+                  return sum + elapsed;
+                }
+                return sum + (s.durationMins || 0);
+              }, 0);
+
+              const isCompleted = t.status === "Completado" || t.status === "Completada";
+              const fillRatio = isCompleted ? 1 : Math.min(1, executedMins / totalMins);
+              const hasExcess = executedMins > totalMins;
+              const excessMins = hasExcess ? executedMins - totalMins : 0;
+              const excessRatio = Math.min(1, excessMins / totalMins);
+              const ringCircumference = 50.2655; // 2 * Math.PI * 8
+
+              const leftMins = isCompleted ? 0 : Math.max(0, totalMins - executedMins);
+              const remH = Math.floor(leftMins / 60);
+              const remM = leftMins % 60;
+
+              let taskRemainingText = "0min para terminar";
+              if (isCompleted) {
+                taskRemainingText = "Completada";
+              } else if (remH > 0 && remM > 0) {
+                taskRemainingText = `${remH}h ${remM}min para terminar`;
+              } else if (remH > 0 && remM === 0) {
+                taskRemainingText = `${remH}h para terminar`;
+              } else if (remH === 0 && remM > 0) {
+                taskRemainingText = `${remM}min para terminar`;
+              }
+
+              return (
+                <motion.div
+                  key={t.id}
+                  initial="initial"
+                  whileHover="hover"
+                  className={`group/taskRow p-2.5 rounded-2xl transition-colors duration-200 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                    isActive
+                      ? isNightMode 
+                        ? "bg-white/10 text-white" 
+                        : "bg-amber-200/90 text-amber-950 shadow-sm"
+                      : isNightMode 
+                        ? "bg-white/[0.03] hover:bg-white/[0.05]" 
+                        : "bg-amber-100/90 hover:bg-amber-200/80 shadow-sm"
+                  }`}
+                >
+                  {/* Aro de progreso circular interactivo (20px) en estado base y hover */}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={(e) => handleToggleCompleteTask(e, t)}
+                      className="relative flex items-center justify-center shrink-0 group/checkBtn focus:outline-none select-none"
+                    >
+                      {/* Tooltip / Insight "Marcar como completado" alineado a la izquierda del aro */}
+                      <div className={`absolute bottom-full left-0 mb-2 px-2.5 py-1 rounded-lg text-[10px] font-bold shadow-2xl opacity-0 scale-90 group-hover/checkBtn:opacity-100 group-hover/checkBtn:scale-100 pointer-events-none transition-all duration-150 z-[100] whitespace-nowrap ${
+                        isNightMode ? 'bg-zinc-900 text-white border border-white/10' : 'bg-slate-900 text-white shadow-md'
+                      }`}>
+                        {isCompleted ? "Marcar como pendiente" : "Marcar como completado"}
+                      </div>
+
+                      {/* Contenedor del Aro de 20px (w-5 h-5) idéntico en todos los estados */}
+                      <motion.div
+                        className={`w-5 h-5 rounded-full flex items-center justify-center relative transition-colors duration-150 ${
+                          isNightMode
+                            ? 'group-hover/checkBtn:bg-white'
+                            : 'group-hover/checkBtn:bg-slate-900'
+                        }`}
+                      >
+                        {/* SVG Ring: Se oculta en hover del botón para mostrar fondo blanco sólido */}
+                        <svg 
+                          className="w-full h-full shrink-0 -rotate-90 overflow-visible group-hover/checkBtn:opacity-0 transition-opacity duration-150" 
+                          viewBox="0 0 20 20"
+                        >
+                          {/* Aro Base Gris */}
+                          <circle 
+                            cx="10" 
+                            cy="10" 
+                            r="8" 
+                            stroke="currentColor" 
+                            strokeWidth="1.75" 
+                            fill="none" 
+                            className={isNightMode ? "text-white/25" : "text-slate-400/40"} 
+                          />
+                          
+                          {/* Avance Blanco (se carga completamente al 100% en hover de la tarjeta) */}
+                          <motion.circle 
+                            cx="10" 
+                            cy="10" 
+                            r="8" 
+                            stroke={isNightMode ? "#FFFFFF" : "#0F172A"} 
+                            strokeWidth="1.75" 
+                            strokeLinecap={fillRatio > 0 ? "round" : "butt"} 
+                            fill="none" 
+                            strokeDasharray={ringCircumference} 
+                            variants={{
+                              initial: { strokeDashoffset: ringCircumference * (1 - fillRatio) },
+                              hover: { strokeDashoffset: 0 }
+                            }}
+                            transition={{ duration: 0.25, ease: "easeInOut" }}
+                          />
+
+                          {/* Excedente Rojo */}
+                          {hasExcess && (
+                            <circle 
+                              cx="10" 
+                              cy="10" 
+                              r="8" 
+                              stroke={isNightMode ? "#F43F5E" : "#E11D48"} 
+                              strokeWidth="1.75" 
+                              strokeLinecap="round" 
+                              fill="none" 
+                              strokeDasharray={ringCircumference} 
+                              strokeDashoffset={ringCircumference * (1 - excessRatio)} 
+                              className="transition-all duration-300"
+                            />
+                          )}
+                        </svg>
+
+                        {/* Palomita (Fade-in + Scale desde el centro al terminar de cargarse el aro) */}
+                        <motion.div
+                          variants={{
+                            initial: { opacity: 0, scale: 0.4 },
+                            hover: { opacity: 1, scale: 1 }
+                          }}
+                          transition={{ duration: 0.15, delay: 0.18, ease: "backOut" }}
+                          className="absolute inset-0 flex items-center justify-center pointer-events-none"
+                        >
+                          <Check className={`w-3 h-3 stroke-[2.25] transition-colors duration-150 ${
+                            isNightMode 
+                              ? 'text-white group-hover/checkBtn:text-slate-950' 
+                              : 'text-slate-900 group-hover/checkBtn:text-white'
+                          }`} />
+                        </motion.div>
+                      </motion.div>
+                    </button>
+
+                    {/* Icono del Formato (Framed Fade In + Scale + Spring Expand on hover) */}
+                    <motion.div
+                      variants={{
+                        initial: { width: 0, opacity: 0, scale: 0.75, marginRight: 0 },
+                        hover: { width: "auto", opacity: 1, scale: 1, marginRight: 4 }
+                      }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      className="overflow-hidden flex items-center justify-center shrink-0"
+                    >
+                      <FormatoShape formatoKey={t.formato || t.format} size="sm" isNightMode={isNightMode} />
+                    </motion.div>
+                    
+                      {/* Texto con Animación de Deslizamiento (Slide text X: 0 -> 4px) */}
+                      <motion.div
+                        variants={{
+                          initial: { x: 0 },
+                          hover: { x: 4 }
+                        }}
+                        transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                        className="min-w-0"
+                      >
+                        <div className={`text-[14px] font-black truncate tracking-tight ${isNightMode ? 'text-white' : 'text-amber-950'}`}>{taskTitle}</div>
+                        <div className={`text-[12px] font-bold truncate ${
+                          isCompleted
+                            ? (isNightMode ? 'text-emerald-400' : 'text-emerald-700')
+                            : dueInfo.isOverdue
+                              ? (isNightMode ? 'text-rose-400' : 'text-rose-700')
+                              : (isNightMode ? 'text-white/60' : 'text-amber-900/70')
+                        }`}>
+                          {taskRemainingText}
+                        </div>
+                      </motion.div>
+                  </div>
+
+                  {/* Botón en Píldora (+ Sesión / Stop) */}
+                  <button
+                    onClick={() => handleToggleSession(t)}
+                    title={isActive ? "Detener Sesión" : "Iniciar Sesión de Trabajo"}
+                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 transition-all shrink-0 shadow-sm ${
+                      isActive
+                        ? "bg-rose-500 text-white hover:bg-rose-600"
+                        : isNightMode
+                          ? "bg-white text-slate-950 hover:bg-slate-200"
+                          : "bg-amber-950 text-amber-50 hover:bg-amber-900"
+                    }`}
+                  >
+                    {isActive ? (
+                      <>
+                        <Square className="w-3 h-3 fill-current" />
+                        <span>Stop</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Sesión</span>
+                      </>
+                    )}
+                  </button>
+                </motion.div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* 2. SECCIÓN INFERIOR: HISTORIAL DEL ESTUDIO */}
+      <div className={`flex-1 flex flex-col min-h-0 pt-2 border-t ${isNightMode ? 'border-white/5' : 'border-slate-300/60'}`}>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className={`text-xs font-black uppercase tracking-wider ${isNightMode ? 'text-white' : 'text-slate-900'}`}>Historial del Estudio</h3>
+          <span className={`px-2.5 py-0.5 min-w-[24px] h-[20px] rounded-[13px] text-[11px] font-mono font-bold flex items-center justify-center shrink-0 ${
+            isNightMode ? 'bg-white/10 text-white' : 'bg-slate-200 text-slate-800'
+          }`}>
+            {sessions.length}
+          </span>
+        </div>
+
+        {/* Feed del historial agrupado por fecha */}
+        <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-1">
+          {isLoading ? (
+            <div className={`py-8 text-center text-xs ${isNightMode ? 'text-white/30' : 'text-slate-500'}`}>Cargando historial del estudio...</div>
+          ) : groupedSessions.length === 0 ? (
+            <div className={`py-8 text-center text-xs font-medium ${isNightMode ? 'text-white/30' : 'text-slate-600'}`}>
+              No se han registrado sesiones de trabajo recientemente. Haz clic en <strong className={isNightMode ? 'text-white' : 'text-slate-900'}>+ Sesión</strong> arriba para iniciar la primera.
+            </div>
+          ) : (
+            groupedSessions.map(({ groupName, items }) => (
+              <div key={groupName} className="space-y-1.5">
+                <div className={`text-[10px] font-extrabold uppercase tracking-widest pt-1 pb-0.5 ${
+                  isNightMode ? 'text-white/30' : 'text-amber-900/70'
+                }`}>
+                  {groupName}
+                </div>
+
+                <div className="space-y-1.5 pt-0.5">
+                  {items.map((s) => {
+                    const taskIdStr = String(s.task_id);
+                    const projIdStr = String(s.project_id);
+
+                    const task = taskMap.get(taskIdStr) || (taskIdStr.includes("kt-") ? taskMap.get(taskIdStr.split("-")[2]) : null);
+                    let project = projectMap.get(projIdStr);
+                    if (!project && task) {
+                      const tProjId = String(task.projectId || task.proyecto_id || "");
+                      if (tProjId) project = projectMap.get(tProjId);
+                      if (!project && task.projectName) project = projectMap.get(String(task.projectName).toLowerCase().trim());
+                      if (!project && task.project) project = task.project;
+                    }
+                    if (!project && (s as any).project_name) {
+                      project = projectMap.get(String((s as any).project_name).toLowerCase().trim());
+                    }
+
+                    const clientName = (project?.cliente_id ? clientMap.get(project.cliente_id) : null) || project?.client || task?.client || null;
+                    const taskTitle = task?.titulo || task?.taskTitle || task?.title || s.summary || "Tarea de Sesión";
+                    const projectName = project?.nombre || project?.title || task?.projectName || "Proyecto";
+
+                    const badge = getOriginBadge(s.origin);
+                    const relTime = getRelativeTime(s.startTime);
+                    const dotBgColor = getProjectBgColor(project, task);
+
+                    return (
+                      <motion.div
+                        key={s.id}
+                        initial="initial"
+                        whileHover="hover"
+                        className={`p-2.5 rounded-2xl transition-colors duration-200 flex items-center justify-between gap-2 cursor-pointer select-none ${
+                          isNightMode 
+                            ? "bg-white/[0.025] hover:bg-white/[0.045]" 
+                            : "bg-amber-100/90 hover:bg-amber-200/80 shadow-sm"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {/* Dot de color del proyecto (Mismo HSL que Kanban) */}
+                          <span 
+                            className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                            style={{ backgroundColor: dotBgColor }}
+                            title={projectName} 
+                          />
+
+                          {/* Icono del Formato (Fade In + Scale + Expand on hover) */}
+                          <motion.div
+                            variants={{
+                              initial: { width: 0, opacity: 0, scale: 0.75, marginRight: 0 },
+                              hover: { width: "auto", opacity: 1, scale: 1, marginRight: 4 }
+                            }}
+                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                            className="overflow-hidden flex items-center justify-center shrink-0"
+                          >
+                            <FormatoShape formatoKey={task?.formato || task?.format} size="sm" isNightMode={isNightMode} />
+                          </motion.div>
+
+                          {/* Texto con Animación de Deslizamiento (Slide text X: 0 -> 4px) */}
+                          <motion.div
+                            variants={{
+                              initial: { x: 0 },
+                              hover: { x: 4 }
+                            }}
+                            transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                            className="min-w-0"
+                          >
+                            <h4 className={`text-xs font-bold tracking-tight truncate transition-colors ${
+                              isNightMode ? 'text-white' : 'text-amber-950'
+                            }`}>
+                              {taskTitle}
+                            </h4>
+                            <div className={`flex items-center gap-1.5 text-[9px] mt-0.5 truncate ${
+                              isNightMode ? 'text-white/40' : 'text-amber-900/70'
+                            }`}>
+                              <span className={`font-semibold ${isNightMode ? 'text-white/70' : 'text-amber-900'}`}>{projectName}</span>
+                              {clientName && (
+                                <>
+                                  <span>•</span>
+                                  <span className={`font-semibold ${isNightMode ? 'text-white/80' : 'text-amber-950 font-bold'}`}>{clientName}</span>
+                                </>
+                              )}
+                              <span>•</span>
+                              <span className="flex items-center gap-1">
+                                {badge.icon}
+                                <span>{badge.label}</span>
+                              </span>
+                            </div>
+                          </motion.div>
+                        </div>
+
+                        {/* Duración & Tiempo relativo */}
+                        <div className="text-right shrink-0">
+                          <div className={`text-xs font-black ${isNightMode ? 'text-white' : 'text-amber-950'}`}>{s.durationMins > 0 ? `${s.durationMins} min` : "En curso"}</div>
+                          <div className={`text-[9px] font-medium ${isNightMode ? 'text-white/30' : 'text-amber-900/60'}`}>{relTime}</div>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -7,6 +7,8 @@ import { Loader2, Plus, ListTodo, Filter, Clock } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { getFormato } from "@/app/taski/utils/formatos";
+
 export function TasksView() {
   const { data, isLoading } = useData();
   const openModal = useUIStore((s) => s.openModal);
@@ -69,7 +71,7 @@ export function TasksView() {
                     <div className="flex flex-col">
                       <span className="text-sm font-bold group-hover:text-blue-400 transition-colors">{t.titulo}</span>
                       <span className="text-[10px] text-white/20 font-medium tracking-tight mt-0.5 uppercase">
-                        {t.formato || "General"}
+                        {getFormato(t.formato)?.nombre || t.formato || "General"}
                       </span>
                     </div>
                   </td>

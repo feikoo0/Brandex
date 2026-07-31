@@ -13,6 +13,8 @@ import DependencyTree from "./DependencyTree";
 import { cn } from "@/lib/utils";
 import { differenceInDays, isBefore, parseISO, format } from "date-fns";
 
+import { useProjectSummary } from "@/hooks/useProjectSummary";
+
 interface ProjectPillProps {
   project: Project;
   allTasks: Task[];
@@ -29,23 +31,19 @@ export default function ProjectPill({
   role,
 }: ProjectPillProps) {
   const { expandedProjectId, setExpandedProject, scratchpadPins, removePin } = useUIStore();
+  const summary = useProjectSummary(project.id);
   const projectPins = scratchpadPins.filter((p) => p.projectId === project.id);
   const [isHovered, setIsHovered] = useState(false);
   const [isBlooming, setIsBlooming] = useState(false);
 
   const isExpanded = expandedProjectId === project.id;
 
-  // Filter tasks belonging to this project
-  const projectTasks = allTasks.filter((t) => t.proyecto_ids?.includes(project.id) || project.tarea_ids?.includes(t.id));
-  const totalTasks = projectTasks.length;
-  const completedTasks = projectTasks.filter((t) => DONE_STATES.has(t.estado)).length;
-  
-  // Calculate completion percentage
-  const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-
-  // Find client name
-  const client = clients.find((c) => project.cliente_ids?.includes(c.id));
-  const clientName = client ? client.nombre : "Sin Cliente";
+  // Filter tasks and metrics via useProjectSummary
+  const projectTasks = summary.tasks.length > 0 ? summary.tasks : allTasks.filter((t) => t.proyecto_ids?.includes(project.id) || project.tarea_ids?.includes(t.id));
+  const totalTasks = summary.totalTasks;
+  const completedTasks = summary.completedTasks;
+  const progressPercent = summary.progressPercent;
+  const clientName = summary.clientName;
 
   // Parse dates and determine if overdue
   let isOverdue = false;
