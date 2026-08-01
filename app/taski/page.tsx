@@ -874,8 +874,8 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 text-xs font-bold transition-colors duration-200 ${
                   isSearchActive
-                    ? isNightMode ? "text-white px-3" : "text-slate-900 px-3"
-                    : isNightMode ? "text-slate-400 hover:text-slate-200 cursor-pointer px-0" : "text-slate-600 hover:text-slate-900 cursor-pointer px-0"
+                    ? isNightMode ? "text-[#ffffffd6] px-3" : "text-slate-900 px-3"
+                    : isNightMode ? "text-[#ffffffd6] hover:text-white cursor-pointer px-0" : "text-slate-600 hover:text-slate-900 cursor-pointer px-0"
                 }`}
                 style={{
                   display: "inline-flex",
@@ -907,7 +907,7 @@ export default function BrandexV3Page() {
                     autoFocus
                   />
                 ) : (
-                  <span className="relative z-10">Search</span>
+                  <span className={`relative z-10 ${isNightMode ? "text-[#ffffffd6]" : ""}`}>Search</span>
                 )}
               </motion.button>
 
