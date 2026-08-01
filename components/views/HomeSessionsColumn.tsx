@@ -369,7 +369,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                   key={t.id}
                   initial="initial"
                   whileHover="hover"
-                  className={`group/taskRow p-2.5 rounded-2xl transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none shadow-[0_5px_16px_-4px_#00000012] ${
+                  className={`group/taskRow p-2.5 rounded-[24px] transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none shadow-[0_5px_16px_-4px_#00000012] ${
                     isActive
                       ? isNightMode 
                         ? "bg-[#333333] text-white" 
