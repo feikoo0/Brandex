@@ -796,7 +796,7 @@ export default function BrandexV3Page() {
                   transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                   className="flex flex-row items-center h-[64px] gap-2.5 leading-tight shrink-0 select-none"
                 >
-                  <span className={`text-xl md:text-2xl font-extrabold tracking-tight transition-colors duration-500 ${
+                  <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
                     isNightMode ? 'text-slate-50' : 'text-slate-900'
                   }`}>
                     {activeTab === "proyectos" ? "Panel de Proyectos" :
@@ -808,7 +808,7 @@ export default function BrandexV3Page() {
                      activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
                   </span>
                   {activeTab !== "proyectos_v2" && (
-                    <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
+                    <span className={`text-xl md:text-2xl font-normal tracking-tight transition-colors duration-500 ${
                       isNightMode ? 'text-slate-400' : 'text-slate-600'
                     }`}>
                       {activeTab === "proyectos" ? "flujo y entregables activos" :
