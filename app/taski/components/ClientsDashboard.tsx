@@ -392,7 +392,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
           <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
             isNightMode ? "bg-neutral-900 border-neutral-800 text-neutral-50 shadow-sm" : "bg-white border-slate-200 text-slate-900 shadow-sm"
           }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Presupuesto Total Contratado</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff8f]">Presupuesto Total Contratado</span>
             <span className="text-2xl font-black mt-1">{activeClient.totalBudget}</span>
             <span className="text-[10px] text-emerald-500 font-bold">Valor acumulado de contratos</span>
           </div>
@@ -400,7 +400,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
           <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
             isNightMode ? "bg-neutral-900 border-neutral-800 text-neutral-50 shadow-sm" : "bg-white border-slate-200 text-slate-900 shadow-sm"
           }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Monto Facturado / Pagado</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff8f]">Monto Facturado / Pagado</span>
             <span className="text-2xl font-black mt-1 text-emerald-500">{activeClient.paidAmount}</span>
             <span className="text-[10px] text-emerald-500 font-bold">Liquidadas exitosamente</span>
           </div>
@@ -408,7 +408,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
           <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
             isNightMode ? "bg-neutral-900 border-neutral-800 text-neutral-50 shadow-sm" : "bg-white border-slate-200 text-slate-900 shadow-sm"
           }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Balance Pendiente por Cobrar</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff8f]">Balance Pendiente por Cobrar</span>
             <span className="text-2xl font-black mt-1 text-amber-500">{activeClient.pendingBalance}</span>
             <span className="text-[10px] text-amber-500 font-bold">Hitos por entregar</span>
           </div>
@@ -416,7 +416,7 @@ export const ClientsDashboard: React.FC<ClientsDashboardProps> = ({
           <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
             isNightMode ? "bg-neutral-900 border-neutral-800 text-neutral-50 shadow-sm" : "bg-white border-slate-200 text-slate-900 shadow-sm"
           }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Proyectos Activos</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff8f]">Proyectos Activos</span>
             <span className="text-2xl font-black mt-1">{clientProjects.length}</span>
             <span className="text-[10px] text-purple-500 font-bold">En el pipeline activo</span>
           </div>

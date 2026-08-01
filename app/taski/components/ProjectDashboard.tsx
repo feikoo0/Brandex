@@ -1148,15 +1148,15 @@ export function ProjectDashboard({
               }`}
             >
               <div className="flex items-center gap-2 leading-none flex-wrap">
-                <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-                <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Termina en</span>
+                <Calendar className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+                <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Termina en</span>
                 <InlineEditable 
                   value={project.daysRemaining || "2 Días"} 
                   onSave={(val) => onUpdateDaysRemaining && onUpdateDaysRemaining(project.id, val)}
                   className={`text-[13px] font-black inline-block leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`} 
                 />
                 {project.deadline && project.deadline !== '-' && (
-                  <span className={`text-[13px] font-medium leading-none ml-0.5 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                  <span className={`text-[13px] font-medium leading-none ml-0.5 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`}>
                     ({project.deadline})
                   </span>
                 )}
@@ -1177,8 +1177,8 @@ export function ProjectDashboard({
             }`}
           >
             <div className="flex items-center gap-1 leading-none">
-              <DollarSign className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Costo:</span>
+              <DollarSign className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Costo:</span>
               <InlineEditable 
                 value={project.cost || "$0"} 
                 onSave={(val) => onUpdateCost && onUpdateCost(project.id, val)}
@@ -1200,8 +1200,8 @@ export function ProjectDashboard({
             }`}
           >
             <div className="flex items-center gap-2 leading-none">
-              <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Tiempo:</span>
+              <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Tiempo:</span>
               <InlineEditable 
                 value={project.burnRate || "0h / 0h"} 
                 onSave={(val) => onUpdateBurnRate && onUpdateBurnRate(project.id, val)}
@@ -1223,8 +1223,8 @@ export function ProjectDashboard({
             }`}
           >
             <div className="flex items-center gap-2 leading-none">
-              <Flag className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Prioridad:</span>
+              <Flag className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Prioridad:</span>
               <div className={`px-2 py-0.5 rounded text-[9px] font-extrabold tracking-wider uppercase border w-fit leading-none ${
                 project.priority === 'Urgente' ? 'bg-rose-500/10 border-rose-500/30 text-rose-500' :
                 project.priority === 'Alta' ? 'bg-orange-500/10 border-orange-500/30 text-orange-500' :
@@ -1249,8 +1249,8 @@ export function ProjectDashboard({
             }`}
           >
             <div className="flex items-center gap-2 leading-none">
-              <ClipboardList className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Tareas:</span>
+              <ClipboardList className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Tareas:</span>
               <span className={`text-[13px] font-black leading-none ${isNightMode ? 'text-slate-50' : 'text-slate-900'}`}>{dynamicProgress.progress}</span>
             </div>
           </motion.div>
@@ -1268,8 +1268,8 @@ export function ProjectDashboard({
             }`}
           >
             <div className="flex items-center gap-2 leading-none">
-              <TrendingUp className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-slate-400' : 'text-slate-500'}`} strokeWidth={2} />
-              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-slate-400' : 'text-slate-600'}`}>Avance:</span>
+              <TrendingUp className={`w-3.5 h-3.5 flex-shrink-0 ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-500'}`} strokeWidth={2} />
+              <span className={`text-[13px] font-bold leading-none ${isNightMode ? 'text-[#ffffff8f]' : 'text-slate-600'}`}>Avance:</span>
               <div className={`w-16 h-1.5 rounded-full overflow-hidden ${isNightMode ? 'bg-slate-800' : 'bg-slate-100'}`}>
                 <div 
                   className={`h-full rounded-full transition-all duration-500 ease-out ${isNightMode ? 'bg-sky-400' : 'bg-slate-900'}`} 
