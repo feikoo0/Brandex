@@ -1035,11 +1035,11 @@ export default function BrandexV3Page() {
                   title="Agrupar y ordenar"
                   className={`flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 ${
                     isNightMode
-                      ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
+                      ? "bg-[#1f1f1f] border-[#ffffff1f] text-[#ffffffd6] hover:bg-[#282828] hover:text-white"
                       : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <Layers className={`w-4 h-4 ${isNightMode ? "text-slate-400" : "text-slate-700"}`} />
+                  <Layers className={`w-[13.55px] h-[13.55px] ${isNightMode ? "text-[#ffffffd6]" : "text-slate-700"}`} />
                 </button>
 
                 {/* Dropdown Menu */}
@@ -1142,12 +1142,12 @@ export default function BrandexV3Page() {
                 title={isNightMode ? "Activar modo claro" : "Activar modo oscuro"}
                 className={`flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 ${
                   isNightMode
-                    ? "bg-[oklch(0.55_0.01_286_/_6%)] border-white/5 text-slate-350 hover:text-white hover:border-white/10"
+                    ? "bg-[#1f1f1f] border-[#ffffff1f] text-[#ffffffd6] hover:bg-[#282828] hover:text-white"
                     : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                 }`}
               >
                 {isNightMode ? (
-                  <Sun className="w-4 h-4 text-slate-400 stroke-[2]" />
+                  <Sun className="w-[13.55px] h-[13.55px] text-[#ffffffd6] stroke-[2]" />
                 ) : (
                   <Moon className="w-4 h-4 text-slate-700 stroke-[2]" />
                 )}
