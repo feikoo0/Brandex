@@ -642,12 +642,12 @@ export default function BrandexV3Page() {
 
 
   return (
-    <main className={`relative w-full max-w-full h-screen overflow-hidden overflow-x-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#070709] text-neutral-100' : 'bg-[#dce1e8] text-slate-900'}`}>
+    <main className={`relative w-full max-w-full h-screen overflow-hidden overflow-x-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#181817] text-neutral-100' : 'bg-[#dce1e8] text-slate-900'}`}>
 
 
       {/* Background Container */}
       <div className="absolute inset-0 overflow-hidden z-0 bg-transparent pointer-events-none">
-        <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#070709]' : 'bg-[#dce1e8]'}`} />
+        <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#181817]' : 'bg-[#dce1e8]'}`} />
       </div>
 
       {/* ── Unified Logo Button (always same position) ── */}
