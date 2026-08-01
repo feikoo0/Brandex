@@ -31,11 +31,13 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
-          '"Product Sans"',
+          "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",
-          "SF Pro Display",
-          "Segoe UI",
+          '"SF Pro Display"',
+          '"SF Pro Text"',
+          '"Segoe UI"',
+          "Roboto",
           "sans-serif",
         ],
       },
