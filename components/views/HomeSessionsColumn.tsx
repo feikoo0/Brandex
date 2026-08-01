@@ -369,14 +369,14 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                   key={t.id}
                   initial="initial"
                   whileHover="hover"
-                  className={`group/taskRow p-2.5 rounded-2xl transition-colors duration-200 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                  className={`group/taskRow p-2.5 rounded-2xl transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer select-none shadow-[0_5px_16px_-4px_#00000012] ${
                     isActive
                       ? isNightMode 
                         ? "bg-[#333333] text-white" 
-                        : "bg-amber-200/90 text-amber-950 shadow-sm"
+                        : "bg-amber-200/90 text-amber-950"
                       : isNightMode 
                         ? "bg-[#1f1f1f] hover:bg-[#282828]" 
-                        : "bg-amber-100/90 hover:bg-amber-200/80 shadow-sm"
+                        : "bg-amber-100/90 hover:bg-amber-200/80"
                   }`}
                 >
                   {/* Aro de progreso circular interactivo (20px) en estado base y hover */}
