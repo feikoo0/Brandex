@@ -895,7 +895,7 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Search className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : "text-slate-900"}`} />
+                <Search className={`w-[13.55px] h-[13.55px] shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : "text-slate-900"}`} />
                 {isSearchActive ? (
                   <input
                     type="text"
@@ -942,7 +942,7 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <LayoutGrid className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "kanban" ? "text-slate-900" : "text-slate-700")}`} />
+                <LayoutGrid className={`w-[13.55px] h-[13.55px] shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "kanban" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Kanban</span>
               </motion.button>
 
@@ -977,7 +977,7 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Table className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "tabla" ? "text-slate-900" : "text-slate-700")}`} />
+                <Table className={`w-[13.55px] h-[13.55px] shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "tabla" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Base de datos</span>
               </motion.button>
 
@@ -1012,7 +1012,7 @@ export default function BrandexV3Page() {
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <CalendarDays className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "timeline" ? "text-slate-900" : "text-slate-700")}`} />
+                <CalendarDays className={`w-[13.55px] h-[13.55px] shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "timeline" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Timeline</span>
               </motion.button>
             </motion.div>
