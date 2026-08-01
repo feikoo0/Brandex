@@ -851,7 +851,9 @@ export default function BrandexV3Page() {
           {(activeTab === "home" || activeTab === "proyectos_v2") && (
             <motion.div 
               layout
-              className="flex items-center rounded-full bg-[oklch(0.55_0.01_286_/_4%)] dark:bg-[oklch(0.55_0.01_286_/_6%)] border border-white/5 p-1 w-fit shrink-0"
+              className={`flex items-center rounded-full p-1 w-fit shrink-0 border transition-colors duration-300 ${
+                isNightMode ? "bg-[#121212] border-[#ffffff1f]" : "bg-slate-100 border-slate-200"
+              }`}
             >
               {/* Search Tab */}
               <motion.button
@@ -882,18 +884,18 @@ export default function BrandexV3Page() {
                 {homeView === "buscar" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#1f1f1f] border-[#ffffff1f] shadow-sm" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {!isSearchActive && hoveredTab === "buscar" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#282828] border-white/10" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Search className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-slate-400" : "text-slate-900"}`} />
+                <Search className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : "text-slate-900"}`} />
                 {isSearchActive ? (
                   <input
                     type="text"
@@ -901,7 +903,7 @@ export default function BrandexV3Page() {
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onClick={(e) => e.stopPropagation()}
                     placeholder="Buscar proyectos o tareas..."
-                    className={`bg-transparent border-none outline-none text-xs w-full relative z-10 ${isNightMode ? "text-white placeholder:text-slate-500" : "text-slate-900 font-semibold placeholder:text-slate-400"}`}
+                    className={`bg-transparent border-none outline-none text-xs w-full relative z-10 ${isNightMode ? "text-[#ffffffd6] placeholder:text-[#ffffff6b]" : "text-slate-900 font-semibold placeholder:text-slate-400"}`}
                     autoFocus
                   />
                 ) : (
@@ -922,25 +924,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "kanban"
-                    ? isNightMode ? "text-white" : "text-slate-900"
-                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
+                    ? isNightMode ? "text-[#ffffffd6]" : "text-slate-900"
+                    : isNightMode ? "text-[#ffffffd6] hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "kanban" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#1f1f1f] border-[#ffffff1f] shadow-sm" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "kanban" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#282828] border-white/10" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <LayoutGrid className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "kanban" ? "text-white" : "text-slate-400") : (homeView === "kanban" ? "text-slate-900" : "text-slate-700")}`} />
+                <LayoutGrid className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "kanban" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Kanban</span>
               </motion.button>
 
@@ -957,25 +959,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "tabla"
-                    ? isNightMode ? "text-white" : "text-slate-900"
-                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
+                    ? isNightMode ? "text-[#ffffffd6]" : "text-slate-900"
+                    : isNightMode ? "text-[#ffffffd6] hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "tabla" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#1f1f1f] border-[#ffffff1f] shadow-sm" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "tabla" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#282828] border-white/10" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Table className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "tabla" ? "text-white" : "text-slate-400") : (homeView === "tabla" ? "text-slate-900" : "text-slate-700")}`} />
+                <Table className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "tabla" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Base de datos</span>
               </motion.button>
 
@@ -992,25 +994,25 @@ export default function BrandexV3Page() {
                 transition={{ type: "spring", stiffness: 350, damping: 28 }}
                 className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
                   homeView === "timeline"
-                    ? isNightMode ? "text-white" : "text-slate-900"
-                    : isNightMode ? "text-slate-400 hover:text-slate-200" : "text-slate-600 hover:text-slate-900"
+                    ? isNightMode ? "text-[#ffffffd6]" : "text-slate-900"
+                    : isNightMode ? "text-[#ffffffd6] hover:text-white" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 {homeView === "timeline" && (
                   <motion.span
                     layoutId="activeViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/10 dark:bg-white/[0.08] border-white/10 shadow-[0_1px_3px_rgba(0,0,0,0.2)]" : "bg-white border-slate-200 shadow-sm"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#1f1f1f] border-[#ffffff1f] shadow-sm" : "bg-white border-slate-200 shadow-sm"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
                 {hoveredTab === "timeline" && (
                   <motion.span
                     layoutId="hoverViewIndicator"
-                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-white/5 dark:bg-white/[0.04] border-white/5" : "bg-slate-100 border-slate-200/60"}`}
+                    className={`absolute inset-0 rounded-full border ${isNightMode ? "bg-[#282828] border-white/10" : "bg-slate-100 border-slate-200/60"}`}
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <CalendarDays className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? (homeView === "timeline" ? "text-white" : "text-slate-400") : (homeView === "timeline" ? "text-slate-900" : "text-slate-700")}`} />
+                <CalendarDays className={`w-4 h-4 shrink-0 relative z-10 ${isNightMode ? "text-[#ffffffd6]" : (homeView === "timeline" ? "text-slate-900" : "text-slate-700")}`} />
                 <span className="relative z-10">Timeline</span>
               </motion.button>
             </motion.div>
