@@ -372,10 +372,10 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                   className={`group/taskRow p-2.5 rounded-2xl transition-colors duration-200 flex items-center justify-between gap-3 cursor-pointer select-none ${
                     isActive
                       ? isNightMode 
-                        ? "bg-white/10 text-white" 
+                        ? "bg-[#333333] text-white" 
                         : "bg-amber-200/90 text-amber-950 shadow-sm"
                       : isNightMode 
-                        ? "bg-white/[0.03] hover:bg-white/[0.05]" 
+                        ? "bg-[#1f1f1f] hover:bg-[#282828]" 
                         : "bg-amber-100/90 hover:bg-amber-200/80 shadow-sm"
                   }`}
                 >
