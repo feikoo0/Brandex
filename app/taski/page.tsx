@@ -764,7 +764,7 @@ export default function BrandexV3Page() {
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         className={`absolute top-[10px] bottom-[10px] right-[6px] z-30 rounded-[24px] border overflow-hidden pointer-events-auto transition-colors duration-500 ${
           isNightMode 
-            ? 'bg-[#121215] border-white/[0.08]' 
+            ? 'bg-[#121212] border-white/[0.08]' 
             : 'bg-[#fffce2] border-slate-300/70'
         }`}
       >
@@ -1482,7 +1482,7 @@ export default function BrandexV3Page() {
       {activeTab === "proyectos" && (
         <div className={`absolute bottom-4 left-6 w-[280px] h-24 bg-gradient-to-t pointer-events-none z-50 transition-all duration-500 ${
           isNightMode
-            ? "from-[#121215] via-[#121215]/90 to-transparent"
+            ? "from-[#121212] via-[#121212]/90 to-transparent"
             : isNeumorphic
               ? "from-[#e6eef8] via-[#e6eef8]/90 to-transparent"
               : "from-[#fffce2] via-[#fffce2]/90 to-transparent"

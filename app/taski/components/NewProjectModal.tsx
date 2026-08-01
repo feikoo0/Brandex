@@ -867,7 +867,7 @@ export default function NewProjectModal({
             style={{ minWidth: "900px", maxWidth: "900px" }}
           >
             <div className="cx_overflowHidden---fxjU" style={{ height: "600px" }}>
-              <div className={`site_templates_view--container--V7GbF flex flex-col h-full ${isNightMode ? "bg-[#121215] text-white" : "bg-[#fffce2] text-slate-900"}`}>
+              <div className={`site_templates_view--container--V7GbF flex flex-col h-full ${isNightMode ? "bg-[#121212] text-white" : "bg-[#fffce2] text-slate-900"}`}>
                 
                 {/* Header (Only rendered when exploring templates) */}
                 {viewMode === "templates" && (
@@ -1134,7 +1134,7 @@ export default function NewProjectModal({
                                       </div>
 
                                       {/* Card Footer Metadata (Título 14px, Cliente 12px + • hace... 12px a la derecha del cliente, Total de tareas 12px abajo) */}
-                                      <div className={`sites_template_tile--templateCoverBottomRow--3TUmT p-3 ${isNightMode ? "bg-[#121215]" : "bg-[#fffce2]"} border-t border-white/5 shrink-0 flex flex-col justify-center min-h-[64px]`}>
+                                      <div className={`sites_template_tile--templateCoverBottomRow--3TUmT p-3 ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"} border-t border-white/5 shrink-0 flex flex-col justify-center min-h-[64px]`}>
                                         <div className="text-[14px] font-bold text-white/95 truncate" title={p.title}>
                                           {p.title}
                                         </div>
@@ -1161,7 +1161,7 @@ export default function NewProjectModal({
                     )
                     ) : (
                       /* FAST CREATE MODAL ESTILO LINEAR EXACTO */
-                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#121215] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
+                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#121212] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
                         
                         {/* MAIN FORM */}
                         <form onSubmit={handleFormSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
@@ -1790,7 +1790,7 @@ export default function NewProjectModal({
                           </div>
 
                           {/* FOOTER BAR */}
-                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#121215]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
+                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
                             {/* Left: Paperclip Icon */}
                             <div className="flex items-center gap-1 text-[#71717a]">
                               <button
