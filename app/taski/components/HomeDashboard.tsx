@@ -846,7 +846,7 @@ export function HomeDashboard({
   };
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
-  const bgStyle = headerBgStyle;
+  const bgStyle = isNightMode ? "bg-[#1f1f1f]" : "bg-black/[0.03]";
   const r1BgStyle = isNightMode ? "bg-[#111113]" : "bg-[#fffce2]";
   const r1BorderStyle = isNightMode ? "border border-white/10" : "border border-slate-200";
   const cardBgStyle = isNightMode ? "bg-white/[0.04]" : "bg-black/[0.04]";
