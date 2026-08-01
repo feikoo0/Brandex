@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X, PanelLeftOpen } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
@@ -202,6 +202,8 @@ export default function BrandexV3Page() {
   });
   const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
+  const [isLogoHovered, setIsLogoHovered] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Initialize from localStorage on mount
   useEffect(() => {
@@ -620,11 +622,7 @@ export default function BrandexV3Page() {
   const getIcon = (id: string, isActive: boolean) => {
     const fill = isActive ? "currentColor" : "none";
     const strokeWidth = isActive ? 1.5 : 1.75;
-    const className = `w-[20px] h-[20px] transition-all duration-300 shrink-0 ${
-      isNightMode
-        ? isActive ? "text-white opacity-100" : "text-neutral-500 group-hover:text-white"
-        : isActive ? "text-slate-900 opacity-100" : "text-slate-500 group-hover:text-slate-800"
-    }`;
+    const className = "w-[13.55px] h-[13.55px] transition-all duration-300 shrink-0 text-[#ffffffd6] opacity-100";
 
     switch (id) {
       case "home": return <Home className={className} fill={fill} strokeWidth={strokeWidth} />;
@@ -652,103 +650,130 @@ export default function BrandexV3Page() {
         <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#070709]' : 'bg-[#dce1e8]'}`} />
       </div>
 
-      {/* Top Left Logo Wrapper */}
-      <div className="absolute top-[28px] left-3.5 w-10 h-14 flex items-center justify-center z-50">
-        <Link href="/taski" className="group flex items-center justify-center">
-          <Image 
-            src="/taski-icon.png?v=3" 
-            alt="Taski Icon" 
-            width={28} 
-            height={28} 
-            referrerPolicy="no-referrer"
-            className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
-          />
-        </Link>
-      </div>
-
-      {/* Left Sidebar Menu Container (Instagram Web Style) */}
-      <div className="absolute left-3.5 top-0 bottom-0 z-50 flex flex-col items-start justify-center pointer-events-none">
-        <div
-          onMouseEnter={() => setIsSidebarHovered(true)}
-          onMouseLeave={() => {
-            setIsSidebarHovered(false);
-            setHoveredMenuItem(null);
+      {/* ── Unified Logo Button (always same position) ── */}
+      <div 
+        className="absolute top-[43px] left-[17px] z-[60] pointer-events-auto"
+        onMouseEnter={() => setIsLogoHovered(true)}
+        onMouseLeave={() => setIsLogoHovered(false)}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            if (isMenuOpen) {
+              setIsMenuOpen(false);
+              setIsSidebarHovered(false);
+            } else {
+              setIsMenuOpen(true);
+            }
+            playSound('click');
           }}
-          className="flex flex-col gap-1.5 pointer-events-auto bg-transparent border-transparent"
+          className="relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 hover:bg-white/10 cursor-pointer group"
+          title={isMenuOpen ? "Cerrar menú" : "Abrir menú"}
         >
-          <nav className="flex flex-col gap-1 items-start">
-            {menuItems.map((item) => {
-              const isActive = activeTab === item.id;
-              const isHovered = hoveredMenuItem === item.id;
-
-              return (
-                <motion.div
-                  key={item.id}
-                  onMouseEnter={() => setHoveredMenuItem(item.id)}
-                  onClick={() => {
-                    setActiveTab(item.id);
-                    playSound('click');
-                  }}
-                  animate={{ width: isSidebarHovered ? 160 : 40 }}
-                  transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                  className={`relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
-                    isNightMode
-                      ? isActive
-                        ? "bg-white/10 text-white"
-                        : isHovered
-                          ? "bg-white/5 text-neutral-200"
-                          : "bg-transparent"
-                      : isActive
-                        ? "bg-slate-200/80 text-slate-900"
-                        : isHovered
-                          ? "bg-slate-100 text-slate-800"
-                          : "bg-transparent"
-                  }`}
-                >
-                  {/* Icon */}
-                  <div className="flex items-center justify-center shrink-0 w-10 h-10">
-                    {getIcon(item.id, isActive)}
-                  </div>
-
-                  {/* Text label */}
-                  <AnimatePresence>
-                    {isSidebarHovered && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -6, filter: "blur(4px)" }}
-                        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
-                        exit={{ opacity: 0, x: -6, filter: "blur(4px)" }}
-                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                        className={`text-[13px] whitespace-nowrap select-none pr-3 ${
-                          isActive 
-                            ? isNightMode ? "font-bold opacity-100 text-white" : "font-bold opacity-100 text-slate-900" 
-                            : isNightMode ? "font-medium opacity-80 text-zinc-300 hover:text-white" : "font-medium opacity-70 text-slate-600 hover:text-slate-900"
-                        }`}
-                      >
-                        {item.label}
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              );
-            })}
-          </nav>
-        </div>
+          <AnimatePresence mode="popLayout">
+            {isLogoHovered ? (
+              <motion.div
+                key={isMenuOpen ? "close-icon" : "expand-icon"}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center justify-center"
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`object-contain ${isNightMode ? 'text-white' : 'text-slate-800'}`}>
+                  <rect width="18" height="18" x="3" y="3" rx="5" />
+                  <path d="M9 3v18" />
+                  <path d={isMenuOpen ? "m16 9-3 3 3 3" : "m14 9 3 3-3 3"} />
+                </svg>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="logo-icon"
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.85 }}
+                transition={{ duration: 0.15 }}
+                className="flex items-center justify-center"
+              >
+                <Image 
+                  src="/taski-icon.png?v=3" 
+                  alt="Taski Icon" 
+                  width={28} 
+                  height={28} 
+                  referrerPolicy="no-referrer"
+                  className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </button>
       </div>
 
-      {/* Main Content Rounded Rectangle Container */}
+      {/* Left Sidebar Menu when Menu is OPEN */}
+      {isMenuOpen && (
+        <div className="absolute left-[16px] top-[114px] bottom-0 z-50 flex flex-col items-start pointer-events-none">
+          <div
+            onMouseLeave={() => setHoveredMenuItem(null)}
+            className="flex flex-col gap-0 pointer-events-auto bg-transparent border-transparent"
+          >
+            <nav className="flex flex-col gap-0 items-start">
+              {menuItems.map((item) => {
+                const isActive = activeTab === item.id;
+                const isHovered = hoveredMenuItem === item.id;
+
+                return (
+                  <motion.div
+                    key={item.id}
+                    onMouseEnter={() => setHoveredMenuItem(item.id)}
+                    onClick={() => {
+                      setActiveTab(item.id);
+                      playSound('click');
+                    }}
+                    animate={{ width: 160 }}
+                    transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                    className={`group relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
+                      isActive
+                        ? "bg-white/10 text-[#ffffffd6]"
+                        : isHovered
+                          ? "bg-white/5 text-[#ffffffd6]"
+                          : "bg-transparent text-[#ffffffd6]"
+                    }`}
+                  >
+                    {/* Icon */}
+                    <div className="flex items-center justify-center shrink-0 w-10 h-10">
+                      {getIcon(item.id, isActive)}
+                    </div>
+
+                    {/* Text label */}
+                    <span
+                      className="text-[14px] font-normal whitespace-nowrap select-none pr-3 transition-all duration-200 text-[#ffffffd6]"
+                    >
+                      {item.label}
+                    </span>
+                  </motion.div>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Container */}
       <motion.div 
-        animate={{ left: isSidebarHovered ? 192 : 68 }}
+        animate={{ left: isMenuOpen ? 196 : 6 }}
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-        className={`absolute top-0 bottom-0 right-0 z-30 rounded-l-[24px] rounded-r-none border-l border-t border-b overflow-hidden pointer-events-auto transition-colors duration-500 ${
+        className={`absolute top-[10px] bottom-[10px] right-[6px] z-30 rounded-[24px] border overflow-hidden pointer-events-auto transition-colors duration-500 ${
           isNightMode 
             ? 'bg-[#121215] border-white/[0.08]' 
             : 'bg-[#fffce2] border-slate-300/70'
         }`}
       >
-        {/* Dynamic 2-line Title next to Logo + Home KPIs & TimeHeatmap */}
         {/* Dynamic Header Wrapper aligned with the 12-column grid */}
         <div className="absolute top-5 left-6 right-6 h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
-        <div className="col-span-9 flex items-center h-full">
+        <div className="col-span-9 flex items-center h-full gap-2">
+          {/* Spacer for unified logo */}
+          <div className="w-9 shrink-0" />
+
           {/* LEFT ZONE: Title */}
           <div className="flex-1 basis-0 flex items-center min-w-0">
             <motion.div 
