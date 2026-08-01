@@ -490,8 +490,8 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                         transition={{ type: "spring", stiffness: 350, damping: 25 }}
                         className="min-w-0"
                       >
-                        <div className={`text-[14px] font-black truncate tracking-tight ${isNightMode ? 'text-white' : 'text-amber-950'}`}>{taskTitle}</div>
-                        <div className={`text-[12px] font-bold truncate ${
+                        <div className={`text-[14px] font-bold truncate tracking-tight ${isNightMode ? 'text-white' : 'text-amber-950'}`}>{taskTitle}</div>
+                        <div className={`text-[12px] font-normal truncate ${
                           isCompleted
                             ? (isNightMode ? 'text-emerald-400' : 'text-emerald-700')
                             : dueInfo.isOverdue
