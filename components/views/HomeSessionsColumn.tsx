@@ -24,17 +24,37 @@ function getOriginBadge(origin: SessionOrigin) {
   }
 }
 
+function getLastSessionText(taskSessions: SessionDoc[]): string | null {
+  if (!taskSessions || taskSessions.length === 0) return null;
+  let latestTime: number = 0;
+  for (const s of taskSessions) {
+    const raw = s.startTime;
+    if (!raw) continue;
+    const ms = raw.toMillis ? raw.toMillis() : new Date(raw).getTime();
+    if (!isNaN(ms) && ms > latestTime) {
+      latestTime = ms;
+    }
+  }
+  if (latestTime === 0) return null;
+
+  const diffMins = Math.max(0, Math.floor((Date.now() - latestTime) / 60000));
+  if (diffMins < 60) {
+    return `Última sesión hace ${diffMins}m`;
+  } else {
+    const diffHours = Math.floor(diffMins / 60);
+    return `Última sesión hace ${diffHours}h`;
+  }
+}
+
 function getRelativeTime(timestamp: any): string {
   if (!timestamp) return "Recientemente";
   const ms = timestamp.toMillis ? timestamp.toMillis() : new Date(timestamp).getTime();
+  if (isNaN(ms)) return "Recientemente";
   const diffMins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
 
-  if (diffMins < 1) return "Ahora mismo";
-  if (diffMins < 60) return `Hace ${diffMins} min`;
+  if (diffMins < 60) return `Hace ${diffMins}m`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `Hace ${diffHours} h`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `Hace ${diffDays} d`;
+  return `Hace ${diffHours}h`;
 }
 
 function getDateGroupTitle(timestamp: any): string {
@@ -353,16 +373,19 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
               const remH = Math.floor(leftMins / 60);
               const remM = leftMins % 60;
 
-              let taskRemainingText = "0min para terminar";
+              let taskRemainingText = "Restan 0min";
               if (isCompleted) {
                 taskRemainingText = "Completada";
               } else if (remH > 0 && remM > 0) {
-                taskRemainingText = `${remH}h ${remM}min para terminar`;
+                taskRemainingText = `Restan ${remH}h ${remM}min`;
               } else if (remH > 0 && remM === 0) {
-                taskRemainingText = `${remH}h para terminar`;
+                taskRemainingText = `Restan ${remH}h`;
               } else if (remH === 0 && remM > 0) {
-                taskRemainingText = `${remM}min para terminar`;
+                taskRemainingText = `Restan ${remM}min`;
               }
+
+              const lastSessionText = getLastSessionText(taskSessions);
+              const lastSessionDisplay = lastSessionText || "Sin sesión";
 
               return (
                 <motion.div
@@ -498,7 +521,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                               ? (isNightMode ? 'text-rose-400' : 'text-rose-700')
                               : (isNightMode ? 'text-white/60' : 'text-amber-900/70')
                         }`}>
-                          {taskRemainingText}
+                          {lastSessionDisplay} • {taskRemainingText}
                         </div>
                       </motion.div>
                   </div>
