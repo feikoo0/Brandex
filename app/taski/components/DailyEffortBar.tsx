@@ -90,21 +90,21 @@ export const DailyEffortBar: React.FC<DailyEffortBarProps> = ({
     <div className="w-full flex flex-col gap-2">
       {/* Encabezado limpio: horas y minutos restantes hoy y avance abajo */}
       <div className="flex flex-col gap-0.5">
-        <div className={`tracking-tight flex items-baseline gap-2 ${isNightMode ? 'text-white' : 'text-slate-900'}`}>
+        <div className={`tracking-tight flex items-baseline gap-2 ${isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'}`}>
           {totalHours === 0 ? (
-            <span className={`text-sm font-bold ${isNightMode ? 'text-white/50' : 'text-slate-500'}`}>Sin tareas para hoy</span>
+            <span className={`text-sm font-medium ${isNightMode ? 'text-[#ffffff6b]' : 'text-slate-500'}`}>Sin tareas para hoy</span>
           ) : rawRemainingMins === 0 ? (
-            <span className={`text-[18px] font-black ${isNightMode ? 'text-emerald-400' : 'text-emerald-600'}`}>¡Día completado! (0min por terminar)</span>
+            <span className={`text-[18px] font-bold ${isNightMode ? 'text-emerald-400' : 'text-emerald-600'}`}>¡Día completado! (0min por terminar)</span>
           ) : (
             <>
-              <span className={`text-[24px] font-black leading-none ${isNightMode ? 'text-white' : 'text-slate-900'}`}>{remainingText}</span>
-              <span className={`text-[14px] font-bold ${isNightMode ? 'text-white/70' : 'text-slate-600'}`}>para terminar hoy</span>
+              <span className={`text-[24px] font-medium leading-none ${isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'}`}>{remainingText}</span>
+              <span className={`text-[14px] font-normal ${isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'}`}>para terminar hoy</span>
             </>
           )}
         </div>
 
         {totalHours > 0 && (
-          <div className={`text-[11px] font-semibold ${isNightMode ? 'text-white/50' : 'text-slate-500'}`}>
+          <div className={`text-[11px] font-normal ${isNightMode ? 'text-[#ffffff6b]' : 'text-slate-500'}`}>
             {executedText}
           </div>
         )}
