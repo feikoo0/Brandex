@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X, PanelLeftOpen } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X, PanelLeftOpen, Kanban, ListFilter, Database, ChevronRight, ChevronLeft, MoreHorizontal, ArrowRight, User } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc } from "firebase/firestore";
@@ -115,6 +115,7 @@ function getProjectBgColor(project: Project): string {
 
 export default function BrandexV3Page() {
   const [activeTab, setActiveTab] = useState("home");
+  const [isMoreExpanded, setIsMoreExpanded] = useState(false);
   const [homeView, setHomeView] = useState<"buscar" | "kanban" | "tabla" | "timeline">("kanban");
   const [previousHomeView, setPreviousHomeView] = useState<"kanban" | "tabla" | "timeline">("kanban");
   const [searchQuery, setSearchQuery] = useState("");
@@ -204,6 +205,7 @@ export default function BrandexV3Page() {
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [isLogoHovered, setIsLogoHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showAllProjectsList, setShowAllProjectsList] = useState(false);
 
   // Initialize from localStorage on mount
   useEffect(() => {
@@ -607,16 +609,24 @@ export default function BrandexV3Page() {
     playSound('pop');
   };
 
-  const menuItems = [
-    { id: "home", label: "Inicio", path: "/" },
+  const primaryMenuItems = [
+    { id: "inicio", label: "Inicio", path: "/inicio" },
+    { id: "home", label: "Work", path: "/" },
     { id: "proyectos", label: "Proyectos", path: "/proyectos" },
-    { id: "proyectos_v2", label: "Proyectos V2", path: "/proyectos-v2" },
-    { id: "equipo", label: "Equipo", path: "/equipo" },
-    { id: "clientes", label: "Clientes", path: "/cliente" },
-    { id: "cliente_v2", label: "Panel Cliente V2", path: "/cliente-v2" },
     { id: "finanzas", label: "Finanzas", path: "/admin" },
-    { id: "ajustes", label: "Ajustes", path: "#" },
   ];
+
+  const secondaryMenuItems = [
+    { id: "clientes", label: "Clientes", path: "/cliente" },
+    { id: "equipo", label: "Equipo", path: "/equipo" },
+    { id: "recursos", label: "Recursos", path: "/recursos" },
+  ];
+
+  useEffect(() => {
+    if (secondaryMenuItems.some((item) => item.id === activeTab)) {
+      setIsMoreExpanded(true);
+    }
+  }, [activeTab]);
 
   // Map icon component manually for typing compatibility and style outlines vs solid fills
   const getIcon = (id: string, isActive: boolean) => {
@@ -625,19 +635,140 @@ export default function BrandexV3Page() {
     const className = "w-[13.55px] h-[13.55px] transition-all duration-300 shrink-0 text-[#ffffffd6] opacity-100";
 
     switch (id) {
-      case "home": return <Home className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "inicio": return <Home className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "home": return <Kanban className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos": return <Folder className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos_v2": return <Layers className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "clientes": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "cliente_v2": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "finanzas": return <DollarSign className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "recursos": return <Database className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "ajustes": return <Settings className={className} fill={fill} strokeWidth={strokeWidth} />;
       default: return null;
     }
   };
 
   const activeProjectData = projects.find(p => p.id === activeProject);
+
+  const getProjectTimestamp = (p: Project): number => {
+    const dateStr = p.fecha_creacion || (p as any).createdAt || (p as any).created_at || p.startDate;
+    if (!dateStr) return typeof p.id === "number" ? p.id : 0;
+    const d = new Date(dateStr);
+    if (!isNaN(d.getTime())) return d.getTime();
+    return typeof p.id === "number" ? p.id : 0;
+  };
+
+  const sortedProjects = [...projects].sort((a, b) => getProjectTimestamp(b) - getProjectTimestamp(a));
+  const recentProjects = showAllProjectsList ? sortedProjects : sortedProjects.slice(0, 5);
+
+  const getRelativeTimeString = (dateInput?: string | Date | number): string => {
+    if (!dateInput) return "Hace un momento";
+    const now = new Date();
+    const currentYear = now.getFullYear();
+
+    let date: Date | null = null;
+
+    if (dateInput instanceof Date) {
+      date = isNaN(dateInput.getTime()) ? null : dateInput;
+    } else if (typeof dateInput === "number") {
+      const d = new Date(dateInput);
+      date = isNaN(d.getTime()) ? null : d;
+    } else {
+      const str = String(dateInput).trim();
+      if (!str || str === "-") return "Hace un momento";
+
+      if (str.includes("T") || str.includes("Z")) {
+        const d = new Date(str);
+        if (!isNaN(d.getTime())) date = d;
+      } else if (str.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const d = new Date(`${str}T00:00:00`);
+        if (!isNaN(d.getTime())) date = d;
+      } else {
+        const friendlyMatch = str.match(/^(\d{1,2})\s+([A-Za-z]{3,4})$/i);
+        if (friendlyMatch) {
+          const day = friendlyMatch[1];
+          const monthStr = friendlyMatch[2];
+          const d = new Date(`${day} ${monthStr} ${currentYear}`);
+          if (!isNaN(d.getTime())) {
+            if (d.getTime() > now.getTime() + 86400000) {
+              d.setFullYear(currentYear - 1);
+            }
+            date = d;
+          }
+        }
+
+        if (!date) {
+          let d = new Date(str);
+          if (!isNaN(d.getTime())) {
+            if (d.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
+              d.setFullYear(currentYear);
+              if (d.getTime() > now.getTime() + 86400000) {
+                d.setFullYear(currentYear - 1);
+              }
+            }
+            date = d;
+          }
+        }
+      }
+    }
+
+    if (!date) return "Hace un momento";
+
+    const diffMs = now.getTime() - date.getTime();
+    if (diffMs <= 0 || diffMs < 60000) {
+      return "Hace un momento";
+    }
+
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins < 60) {
+      return `Hace ${diffMins} ${diffMins === 1 ? "minuto" : "minutos"}`;
+    }
+
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) {
+      return `Hace ${diffHours} ${diffHours === 1 ? "hora" : "horas"}`;
+    }
+
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) {
+      return `Hace ${diffDays} ${diffDays === 1 ? "día" : "días"}`;
+    }
+
+    const diffWeeks = Math.floor(diffDays / 7);
+    if (diffWeeks < 4) {
+      return `Hace ${diffWeeks} ${diffWeeks === 1 ? "semana" : "semanas"}`;
+    }
+
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) {
+      return `Hace ${diffMonths} ${diffMonths === 1 ? "mes" : "meses"}`;
+    }
+
+    const diffYears = Math.floor(diffDays / 365);
+    return `Hace ${diffYears} ${diffYears === 1 ? "año" : "años"}`;
+  };
+
+  const getStatusTextColor = (status?: string): string => {
+    if (!status) return "text-[#ffffff6b]";
+    const lower = status.toLowerCase();
+    if (lower.includes("completad") || lower.includes("terminad") || lower.includes("listo") || lower.includes("aprobad")) {
+      return "text-emerald-400 font-medium";
+    }
+    if (lower.includes("proceso") || lower.includes("curso") || lower.includes("activ")) {
+      return "text-sky-400 font-medium";
+    }
+    if (lower.includes("revis")) {
+      return "text-amber-400 font-medium";
+    }
+    if (lower.includes("paus") || lower.includes("deten")) {
+      return "text-rose-400 font-medium";
+    }
+    if (lower.includes("planif") || lower.includes("pendient")) {
+      return "text-violet-400 font-medium";
+    }
+    return "text-[#ffffff6b] font-medium";
+  };
 
 
 
@@ -650,74 +781,122 @@ export default function BrandexV3Page() {
         <div className={`absolute inset-0 transition-colors duration-500 ${isNightMode ? 'bg-[#181817]' : 'bg-[#dce1e8]'}`} />
       </div>
 
-      {/* ── Unified Logo Button (always same position) ── */}
-      <div 
-        className="absolute top-[43px] left-[17px] z-[60] pointer-events-auto"
-        onMouseEnter={() => setIsLogoHovered(true)}
-        onMouseLeave={() => setIsLogoHovered(false)}
-      >
-        <button
-          type="button"
-          onClick={() => {
-            if (isMenuOpen) {
+      {/* ── Unified Logo & Sidebar Toggle Header ── */}
+      {!isMenuOpen ? (
+        <div 
+          className="absolute top-[43px] left-[17px] z-[60] pointer-events-auto"
+          onMouseEnter={() => setIsLogoHovered(true)}
+          onMouseLeave={() => setIsLogoHovered(false)}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setIsMenuOpen(true);
+              playSound('click');
+            }}
+            className="relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 hover:bg-white/10 cursor-pointer group"
+            title="Abrir menú"
+          >
+            <AnimatePresence mode="popLayout">
+              {isLogoHovered ? (
+                <motion.div
+                  key="expand-icon"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.15 }}
+                  className="flex items-center justify-center"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="object-contain text-[#ffffff6b] transition-colors duration-200">
+                    <rect width="18" height="18" x="3" y="3" rx="5" />
+                    <path d="M9 3v18" />
+                    <path d="m14 9 3 3-3 3" />
+                  </svg>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="logo-icon"
+                  initial={{ opacity: 0, scale: 0.85 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.85 }}
+                  transition={{ duration: 0.15 }}
+                  className="flex items-center justify-center"
+                >
+                  <Image 
+                    src="/taski-icon.png?v=3" 
+                    alt="Taski Icon" 
+                    width={28} 
+                    height={28} 
+                    referrerPolicy="no-referrer"
+                    className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </button>
+        </div>
+      ) : (
+        <div className="absolute top-[43px] left-[11px] w-[232px] z-[60] pointer-events-auto flex items-center justify-between">
+          <div className="w-10 h-10 flex items-center justify-center">
+            <Image 
+              src="/taski-icon.png?v=3" 
+              alt="Taski Icon" 
+              width={28} 
+              height={28} 
+              referrerPolicy="no-referrer"
+              className={`object-contain opacity-90 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
               setIsMenuOpen(false);
               setIsSidebarHovered(false);
-            } else {
-              setIsMenuOpen(true);
-            }
-            playSound('click');
-          }}
-          className="relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 hover:bg-white/10 cursor-pointer group"
-          title={isMenuOpen ? "Cerrar menú" : "Abrir menú"}
-        >
-          <AnimatePresence mode="popLayout">
-            {isLogoHovered ? (
-              <motion.div
-                key={isMenuOpen ? "close-icon" : "expand-icon"}
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                transition={{ duration: 0.15 }}
-                className="flex items-center justify-center"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`object-contain ${isNightMode ? 'text-white' : 'text-slate-800'}`}>
-                  <rect width="18" height="18" x="3" y="3" rx="5" />
-                  <path d="M9 3v18" />
-                  <path d={isMenuOpen ? "m16 9-3 3 3 3" : "m14 9 3 3-3 3"} />
-                </svg>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="logo-icon"
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.85 }}
-                transition={{ duration: 0.15 }}
-                className="flex items-center justify-center"
-              >
-                <Image 
-                  src="/taski-icon.png?v=3" 
-                  alt="Taski Icon" 
-                  width={28} 
-                  height={28} 
-                  referrerPolicy="no-referrer"
-                  className={`object-contain opacity-90 group-hover:opacity-100 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </button>
-      </div>
+              playSound('click');
+            }}
+            className="relative w-10 h-10 flex items-center justify-center rounded-xl transition-all duration-200 hover:bg-white/10 text-[#ffffff6b] hover:text-white cursor-pointer group"
+            title="Contraer menú"
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="object-contain text-[#ffffff6b] group-hover:text-white transition-colors duration-200">
+              <rect width="18" height="18" x="3" y="3" rx="5" />
+              <path d="M9 3v18" />
+              <path d="m16 9-3 3 3 3" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Left Sidebar Menu when Menu is OPEN */}
       {isMenuOpen && (
-        <div className="absolute left-[16px] top-[114px] bottom-0 z-50 flex flex-col items-start pointer-events-none">
+        <div className="absolute left-[10px] top-[94px] bottom-[20px] z-50 flex flex-col justify-between items-start pointer-events-none">
           <div
             onMouseLeave={() => setHoveredMenuItem(null)}
-            className="flex flex-col gap-0 pointer-events-auto bg-transparent border-transparent"
+            className="flex flex-col gap-0 pointer-events-auto bg-transparent border-transparent overflow-y-auto max-h-[calc(100vh-175px)] p-1.5 -m-1.5 custom-scrollbar"
           >
-            <nav className="flex flex-col gap-0 items-start">
-              {menuItems.map((item) => {
+            <nav className="flex flex-col gap-0 items-start p-1">
+              {/* Botón "Nuevo proyecto" */}
+              <motion.button
+                type="button"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1, width: 232 }}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => {
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                }}
+                className="mb-[10px] group relative flex items-center h-10 w-[232px] rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-[#ffffffd6] cursor-pointer select-none overflow-hidden transition-all duration-300 border border-[#ffffff1f] shadow-sm shrink-0"
+              >
+                <div className="flex items-center justify-center shrink-0 w-8 h-10">
+                  <Plus className="w-[13.55px] h-[13.55px] text-[#ffffffd6] stroke-[2.25] shrink-0" />
+                </div>
+                <span className="text-[14px] font-normal whitespace-nowrap select-none pr-3 transition-all duration-200 text-[#ffffffd6] -translate-x-[2px] -translate-y-[1px]">
+                  Nuevo proyecto
+                </span>
+              </motion.button>
+
+              {primaryMenuItems.map((item) => {
                 const isActive = activeTab === item.id;
                 const isHovered = hoveredMenuItem === item.id;
 
@@ -729,7 +908,7 @@ export default function BrandexV3Page() {
                       setActiveTab(item.id);
                       playSound('click');
                     }}
-                    animate={{ width: 160 }}
+                    animate={{ width: 232 }}
                     transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                     className={`group relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
                       isActive
@@ -740,7 +919,7 @@ export default function BrandexV3Page() {
                     }`}
                   >
                     {/* Icon */}
-                    <div className="flex items-center justify-center shrink-0 w-10 h-10">
+                    <div className="flex items-center justify-center shrink-0 w-8 h-10">
                       {getIcon(item.id, isActive)}
                     </div>
 
@@ -753,14 +932,185 @@ export default function BrandexV3Page() {
                   </motion.div>
                 );
               })}
+
+              {/* Botón "Más" / "Contraer" */}
+              <motion.div
+                onMouseEnter={() => setHoveredMenuItem("more_toggle")}
+                onClick={() => {
+                  setIsMoreExpanded((prev) => !prev);
+                  playSound('click');
+                }}
+                animate={{ width: 232 }}
+                transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                className={`group relative flex items-center justify-between h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
+                  hoveredMenuItem === "more_toggle"
+                    ? "bg-white/5 text-[#ffffffd6]"
+                    : "bg-transparent text-[#ffffffd6]"
+                }`}
+              >
+                <div className="flex items-center gap-0 min-w-0">
+                  <div className="flex items-center justify-center shrink-0 w-8 h-10">
+                    <MoreHorizontal
+                      className={`w-[13.55px] h-[13.55px] transition-colors duration-200 ${
+                        isMoreExpanded ? "text-[#ffffff6b]" : "text-[#ffffffd6]"
+                      }`}
+                    />
+                  </div>
+                  <span
+                    className={`text-[14px] font-normal whitespace-nowrap select-none transition-colors duration-200 ${
+                      isMoreExpanded ? "text-[#ffffff6b]" : "text-[#ffffffd6]"
+                    }`}
+                  >
+                    {isMoreExpanded ? "Contraer" : "Más"}
+                  </span>
+                </div>
+
+                {/* Flecha a la derecha dentro del contenedor en hover */}
+                <div className="pr-3 flex items-center justify-center transition-all duration-200 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5">
+                  <ChevronRight
+                    className={`w-3.5 h-3.5 transition-all duration-300 ${
+                      isMoreExpanded ? "text-[#ffffff6b] rotate-90" : "text-[#ffffffd6]"
+                    }`}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Secondary Menu Items (Clientes, Equipo, Recursos) when Expanded */}
+              <AnimatePresence initial={false}>
+                {isMoreExpanded && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                    className="flex flex-col gap-0 overflow-hidden w-full"
+                  >
+                    {secondaryMenuItems.map((item) => {
+                      const isActive = activeTab === item.id;
+                      const isHovered = hoveredMenuItem === item.id;
+
+                      return (
+                        <motion.div
+                          key={item.id}
+                          onMouseEnter={() => setHoveredMenuItem(item.id)}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            playSound('click');
+                          }}
+                          animate={{ width: 232 }}
+                          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                          className={`group relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
+                            isActive
+                              ? "bg-white/10 text-[#ffffffd6]"
+                              : isHovered
+                                ? "bg-white/5 text-[#ffffffd6]"
+                                : "bg-transparent text-[#ffffffd6]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-center shrink-0 w-8 h-10">
+                            {getIcon(item.id, isActive)}
+                          </div>
+                          <span className="text-[14px] font-normal whitespace-nowrap select-none pr-3 transition-all duration-200 text-[#ffffffd6]">
+                            {item.label}
+                          </span>
+                        </motion.div>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              {/* Sección "Recientes" + Botón "Mostrar más" / "Mostrar menos" (Texto e icono con el mismo color exacto #ffffff6b) */}
+              <div className="group/recentHeader mt-4 mb-2 px-2 w-[232px] flex items-center justify-between text-[14px] font-normal text-[#ffffff6b] select-none shrink-0">
+                <span className="leading-none text-[#ffffff6b]">Recientes</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAllProjectsList((prev) => !prev);
+                    playSound('click');
+                  }}
+                  className="flex items-center gap-1.5 text-[#ffffff6b] cursor-pointer select-none leading-none"
+                  title={showAllProjectsList ? "Mostrar menos" : "Mostrar más"}
+                >
+                  <span className="text-[14px] font-normal leading-none text-[#ffffff6b] opacity-0 group-hover/recentHeader:opacity-100 max-w-0 group-hover/recentHeader:max-w-[110px] overflow-hidden whitespace-nowrap transition-all duration-200">
+                    {showAllProjectsList ? "Mostrar menos" : "Mostrar más"}
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 text-[#ffffff6b] transition-transform duration-300 ${showAllProjectsList ? "rotate-180" : ""}`} />
+                </button>
+              </div>
+
+              {/* Lista de proyectos recientes / extendida con scroll elevado sin tapar con tarjeta de usuario */}
+              <div className="flex flex-col gap-0 w-full max-h-[calc(100vh-480px)] min-h-[60px] overflow-y-auto custom-scrollbar pr-1 pb-3 mb-2">
+                {recentProjects.length > 0 ? (
+                  recentProjects.map((project) => (
+                    <motion.div
+                      key={project.id}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => {
+                        setActiveProject(project.id);
+                        setActiveTab("proyectos");
+                        playSound('click');
+                      }}
+                      className="group relative flex flex-col justify-between px-3 py-3 h-[60px] w-[232px] rounded-2xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 bg-transparent hover:bg-white/[0.05] shrink-0"
+                    >
+                      {/* Arriba: Título del proyecto */}
+                      <span className="text-[14px] font-medium text-[#ffffffd6] truncate leading-tight">
+                        {project.title}
+                      </span>
+
+                      {/* Abajo: Tiempo relativo y Estado juntos separados por ' • ' */}
+                      <div className="flex items-center gap-1.5 text-[12px] select-none leading-none text-[#ffffff6b] truncate">
+                        <span className="truncate">
+                          {getRelativeTimeString(project.fecha_creacion || (project as any).createdAt || (project as any).created_at || project.startDate)}
+                        </span>
+                        {project.status && (
+                          <>
+                            <span className="text-[#ffffff40] shrink-0">•</span>
+                            <span className={`shrink-0 ${getStatusTextColor(project.status)}`}>
+                              {project.status}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <div className="flex flex-col justify-center px-3.5 h-[60px] w-[232px] rounded-2xl border-0 bg-white/[0.02] text-[#ffffff40]">
+                    <span className="text-[12px] font-normal">No hay proyectos</span>
+                  </div>
+                )}
+              </div>
             </nav>
           </div>
+
+          {/* Tarjeta de Usuario hasta abajo */}
+          <motion.div
+            whileHover={{ scale: 1.01 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => {
+              setActiveTab("ajustes");
+              playSound('click');
+            }}
+            className="pointer-events-auto mt-auto group relative flex items-center gap-2.5 h-10 w-[232px] px-2 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 bg-transparent hover:bg-white/5 shrink-0"
+          >
+            {/* Círculo para foto de perfil a la izquierda */}
+            <div className="relative w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 via-indigo-500 to-sky-400 p-[1.5px] shrink-0 shadow-sm flex items-center justify-center">
+              <div className="w-full h-full rounded-full bg-[#181817] flex items-center justify-center overflow-hidden">
+                <User className="w-3.5 h-3.5 text-[#ffffffd6] group-hover:scale-110 transition-transform duration-200" />
+              </div>
+            </div>
+
+            {/* Nombre de usuario a 14px alineado al centro */}
+            <span className="text-[14px] font-normal text-[#ffffffd6] group-hover:text-white truncate leading-none">
+              Feiko
+            </span>
+          </motion.div>
         </div>
       )}
 
       {/* Main Content Container */}
       <motion.div 
-        animate={{ left: isMenuOpen ? 196 : 6 }}
+        animate={{ left: isMenuOpen ? 258 : 6 }}
         transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
         className={`absolute top-[10px] bottom-[10px] right-[6px] z-30 rounded-[24px] border overflow-hidden pointer-events-auto transition-colors duration-500 ${
           isNightMode 
@@ -799,15 +1149,17 @@ export default function BrandexV3Page() {
                   <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
                     isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'
                   }`}>
-                    {activeTab === "proyectos" ? "Panel de Proyectos" :
+                    {activeTab === "inicio" ? "Inicio" :
+                     activeTab === "proyectos" ? "Panel de Proyectos" :
                      activeTab === "proyectos_v2" ? "Panel de Proyectos" :
                      activeTab === "equipo" ? "Espacio de Equipo" :
                      activeTab === "clientes" ? "Directorio de Clientes" :
                      activeTab === "cliente_v2" ? "Panel Cliente V2" :
                      activeTab === "finanzas" ? "Métricas Financieras" :
+                     activeTab === "recursos" ? "Biblioteca de Recursos" :
                      activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
                   </span>
-                  {activeTab !== "proyectos_v2" && (
+                  {activeTab !== "proyectos_v2" && activeTab !== "inicio" && (
                     <span className={`text-xl md:text-2xl font-normal tracking-tight transition-colors duration-500 ${
                       isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
                     }`}>
@@ -816,6 +1168,7 @@ export default function BrandexV3Page() {
                        activeTab === "clientes" ? "marcas asociadas y contratos" :
                        activeTab === "cliente_v2" ? "visión 360° de marca y proyectos" :
                        activeTab === "finanzas" ? "facturación y margen operativo" :
+                       activeTab === "recursos" ? "repositorio de assets y documentación" :
                        activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
                     </span>
                   )}
@@ -1039,7 +1392,7 @@ export default function BrandexV3Page() {
                       : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
                   }`}
                 >
-                  <Layers className={`w-[13.55px] h-[13.55px] ${isNightMode ? "text-[#ffffffd6]" : "text-slate-700"}`} />
+                  <ListFilter className={`w-[13.55px] h-[13.55px] ${isNightMode ? "text-[#ffffffd6]" : "text-slate-700"}`} />
                 </button>
 
                 {/* Dropdown Menu */}
@@ -1135,35 +1488,6 @@ export default function BrandexV3Page() {
                   )}
                 </AnimatePresence>
               </div>
-
-              {/* Modo Claro Toggle Button */}
-              <button
-                onClick={toggleNightMode}
-                title={isNightMode ? "Activar modo claro" : "Activar modo oscuro"}
-                className={`flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 ${
-                  isNightMode
-                    ? "bg-[#1f1f1f] border-[#ffffff1f] text-[#ffffffd6] hover:bg-[#282828] hover:text-white"
-                    : "bg-[oklch(0.55_0.01_286_/_4%)] border-slate-200 text-slate-750 hover:text-slate-900 hover:border-slate-300"
-                }`}
-              >
-                {isNightMode ? (
-                  <Sun className="w-[13.55px] h-[13.55px] text-[#ffffffd6] stroke-[2]" />
-                ) : (
-                  <Moon className="w-4 h-4 text-slate-700 stroke-[2]" />
-                )}
-              </button>
-
-              {/* 4. Nuevo Proyecto Button (High Contrast White) */}
-              <button
-                onClick={() => {
-                  playSound('click');
-                  setShowNewProjectModal(true);
-                }}
-                className="flex items-center justify-center h-8 rounded-full px-4 text-xs font-bold gap-1.5 bg-white text-slate-950 hover:bg-slate-100 active:scale-95 shadow-[0_2px_8px_rgba(255,255,255,0.15)] transition-all duration-200 shrink-0"
-              >
-                <Plus className="w-4 h-4 text-slate-950 stroke-[3]" />
-                <span>Nuevo proyecto</span>
-              </button>
             </div>
           )}
           </div>{/* END RIGHT ZONE */}
@@ -1534,7 +1858,12 @@ export default function BrandexV3Page() {
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="absolute top-[80px] left-6 right-6 bottom-4 z-30 pointer-events-auto flex flex-col gap-6 overflow-x-hidden"
           >
-            {/* Render Home Dashboard */}
+            {/* Render Blank Inicio Page */}
+            {activeTab === "inicio" && (
+              <div className="w-full h-full flex items-center justify-center pointer-events-none" />
+            )}
+
+            {/* Render Home Dashboard (Work) */}
             {activeTab === "home" && (
               <HomeDashboard
                 projects={projects}
@@ -1638,8 +1967,8 @@ export default function BrandexV3Page() {
               />
             )}
 
-            {/* Tab Header Pill & Details (For Finanzas & Ajustes) */}
-            {(activeTab === "finanzas" || activeTab === "ajustes") && (
+            {/* Tab Header Pill & Details (For Finanzas, Recursos & Ajustes) */}
+            {(activeTab === "finanzas" || activeTab === "ajustes" || activeTab === "recursos") && (
               <div className="flex flex-col gap-1">
                 <div className={`relative px-4 py-1.5 rounded-full text-[11px] font-bold tracking-widest uppercase flex items-center justify-center w-fit overflow-hidden border shadow-lg cursor-default select-none transition-all duration-500 ${
                   isNeumorphic 
@@ -1648,26 +1977,27 @@ export default function BrandexV3Page() {
                 }`}>
                   {!isNeumorphic && <div className="absolute -top-4 -left-4 w-12 h-12 bg-white opacity-10 rounded-full blur-[10px] pointer-events-none" />}
                   <span className="relative z-10">
-                    {activeTab === "finanzas" ? "Finanzas" : "Ajustes"}
+                    {activeTab === "finanzas" ? "Finanzas" : activeTab === "recursos" ? "Recursos" : "Ajustes"}
                   </span>
                 </div>
                 
                 <h1 className={`text-4xl md:text-5xl font-extralight tracking-tight mt-3 transition-colors duration-500 ${
                   isNeumorphic ? 'text-slate-800' : 'text-white/95'
                 }`}>
-                  {activeTab === "finanzas" ? "Métricas Financieras" : "Ajustes del Sistema"}
+                  {activeTab === "finanzas" ? "Métricas Financieras" : activeTab === "recursos" ? "Biblioteca de Recursos" : "Ajustes del Sistema"}
                 </h1>
                 <p className={`text-[14px] font-light max-w-xl mt-2 leading-relaxed transition-colors duration-500 ${
                   isNeumorphic ? 'text-slate-500' : 'text-white/50'
                 }`}>
                   {activeTab === "finanzas" ? "Supervisa presupuestos, costos operativos, facturación y márgenes de ganancia." : 
+                   activeTab === "recursos" ? "Repositorio central de assets de diseño, plantillas de marca, guías y documentos compartidos." :
                    "Ajustes de personalización, conexiones de bases de datos, integraciones de API y preferencias del sistema."}
                 </p>
               </div>
             )}
 
-            {/* Canvas Body (For Finanzas & Ajustes) */}
-            {(activeTab === "finanzas" || activeTab === "ajustes") && (
+            {/* Canvas Body (For Finanzas, Recursos & Ajustes) */}
+            {(activeTab === "finanzas" || activeTab === "ajustes" || activeTab === "recursos") && (
               <div className={`flex-1 w-full relative rounded-[32px] overflow-hidden p-8 flex flex-col justify-between transition-all duration-500 ${
                 isNightMode
                   ? "neu-dark-flat border border-white/5 shadow-2xl"
@@ -1708,6 +2038,7 @@ export default function BrandexV3Page() {
                       }`}
                     >
                       {activeTab === "finanzas" ? <DollarSign className="w-8 h-8" strokeWidth={1} /> :
+                       activeTab === "recursos" ? <Database className="w-8 h-8" strokeWidth={1} /> :
                        <Settings className="w-8 h-8" strokeWidth={1} />}
                     </motion.div>
                     <span className={`text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-500 ${
@@ -1716,7 +2047,9 @@ export default function BrandexV3Page() {
                     <span className={`text-[13px] font-extralight max-w-sm mt-1.5 leading-relaxed transition-colors duration-500 ${
                       isNeumorphic ? "text-slate-500" : "text-white/40"
                     }`}>
-                      Módulo interactivo listo para conectar con tu base de datos de Notion y servicios de IA.
+                      {activeTab === "recursos" 
+                        ? "Repositorio central de assets de diseño, manuales de marca y archivos compartidos."
+                        : "Módulo interactivo listo para conectar con tu base de datos de Notion y servicios de IA."}
                     </span>
                   </div>
                 </div>

@@ -80,7 +80,7 @@ export default function CreateProjectTypeModal({
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="relative w-full max-w-sm bg-[#1e1e1e] border border-white/10 rounded-2xl p-5 shadow-2xl z-10 text-white"
+          className="relative w-full max-w-sm bg-[#1f1f1f] border border-white/10 rounded-2xl p-5 shadow-2xl z-10 text-white"
         >
           <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
             <div className="flex items-center gap-2">

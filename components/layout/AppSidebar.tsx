@@ -7,7 +7,7 @@ import {
   ChevronUp, LogOut, RefreshCw, UserCircle,
   LayoutDashboard, Layout, Calendar,
   Users, DollarSign, Folder, CheckSquare,
-  Key, Database, LineChart, BarChart, Moon, Sun, Sparkles
+  Key, Database, LineChart, BarChart, Moon, Sun, Sparkles, Plus
 } from "lucide-react";
 import { useAuthStore, useUIStore } from "@/lib/store";
 import { useSync } from "@/hooks/useData";
@@ -48,6 +48,7 @@ export function AppSidebar() {
   const logout   = useAuthStore((s) => s.logout);
   const activeTab = useUIStore((s) => s.activeTab);
   const setTab    = useUIStore((s) => s.setTab);
+  const openModal = useUIStore((s) => s.openModal);
   const isSmartMode = useUIStore((s) => s.isSmartMode);
   const toggleSmartMode = useUIStore((s) => s.toggleSmartMode);
   const syncMutation = useSync();
@@ -68,7 +69,7 @@ export function AppSidebar() {
   return (
     <aside
       className={cn(
-        "h-screen bg-[var(--bg)] border-r border-white/5 flex flex-col items-center transition-all duration-300 ease-in-out relative z-40 dark:bg-[#0a0a0c] bg-white",
+        "h-screen bg-[var(--bg)] border-r border-white/5 flex flex-col items-center transition-all duration-300 ease-in-out relative z-40 dark:bg-[#0a0a0c] bg-white overflow-visible",
       )}
       style={{ width: "70px" }}
     >
@@ -86,6 +87,22 @@ export function AppSidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-visible px-4 space-y-4 pt-2">
+        {/* Nuevo Proyecto Button (White rounded rectangle) */}
+        <div className="w-12 h-12 relative">
+          <button
+            onClick={() => openModal({ type: "proyecto", id: "new" })}
+            title="Nuevo proyecto"
+            className="absolute left-0 top-0 h-12 w-12 flex items-center rounded-2xl bg-white hover:bg-zinc-100 border border-gray-200 dark:border-white/20 text-zinc-900 shadow-md hover:shadow-xl transition-all duration-300 overflow-hidden cursor-pointer group hover:w-[200px] active:scale-95"
+            style={{ zIndex: 110 }}
+          >
+            <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center relative">
+              <Plus className="w-5 h-5 text-zinc-900 stroke-[2.5]" />
+            </div>
+            <span className="whitespace-nowrap font-bold text-[13px] text-zinc-900 opacity-0 group-hover:opacity-100 transition-opacity duration-200 block pr-6">
+              Nuevo proyecto
+            </span>
+          </button>
+        </div>
         {navItems.map((item, i) => {
           if ("sep" in item && item.sep) {
             return <div key={`sep-${i}`} className="w-full h-px dark:bg-white/10 bg-black/10 my-2" />;

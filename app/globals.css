@@ -526,7 +526,7 @@ html, body {
    ───────────────────────────────────────────────────────────────────────────── */
 .sites_template_modal--templateModal--QDA0u {
   border: none !important;
-  box-shadow: none !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
   border-radius: 24px !important;
   color: #ffffff !important;
   overflow: hidden !important;
@@ -541,40 +541,43 @@ html, body {
 }
 
 .site_templates_view--templateTitleText--Iawgi {
-  font-size: 13px !important;
+  font-size: 14px !important;
   font-weight: 600 !important;
   color: rgba(255, 255, 255, 0.9) !important;
 }
 
 .picker_modal_sidebar--sidebarItemBase--8eObg {
   width: 100% !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
   text-align: left !important;
-  padding: 6px 10px !important;
-  border-radius: 6px !important;
-  font-size: 12px !important;
-  color: rgba(255, 255, 255, 0.7) !important;
-  transition: all 0.12s ease !important;
+  padding: 0 12px !important;
+  border-radius: 12px !important;
+  font-size: 14px !important;
+  color: #ffffffd6 !important;
+  transition: all 0.2s ease !important;
   cursor: pointer !important;
 }
 
 .picker_modal_sidebar--sidebarItemBase--8eObg:hover {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: #ffffffd6 !important;
 }
 
 .site_templates_sidebar--selectedSidebarItem--VUUI8 {
-  background-color: rgba(255, 255, 255, 0.12) !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
+  background-color: rgba(255, 255, 255, 0.10) !important;
+  color: #ffffffd6 !important;
+  font-weight: 500 !important;
 }
 
 .picker_modal_sidebar--sidebarSectionHeader--dd25I {
-  font-size: 11px !important;
+  font-size: 14px !important;
   font-weight: 600 !important;
-  color: rgba(255, 255, 255, 0.4) !important;
-  padding: 8px 10px 4px 10px !important;
+  color: #ffffff6b !important;
+  padding: 12px 12px 6px 12px !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.04em !important;
+  letter-spacing: 0.05em !important;
 }
 
 .picker_modal_sidebar--itemDivider--7bNdk {
@@ -584,15 +587,15 @@ html, body {
 }
 
 .sites_blank_site_tile--blankSiteTileContainer--vKC-I {
-  border: 1px dashed rgba(255, 255, 255, 0.2) !important;
-  border-radius: 10px !important;
-  background-color: rgba(255, 255, 255, 0.03) !important;
-  transition: all 0.15s ease !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 16px !important;
+  background-color: transparent !important;
+  transition: all 0.2s ease !important;
 }
 
 .sites_blank_site_tile--blankSiteTileContainer--vKC-I:hover {
-  border-color: rgba(255, 255, 255, 0.4) !important;
-  background-color: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  background-color: rgba(255, 255, 255, 0.03) !important;
 }
 
 

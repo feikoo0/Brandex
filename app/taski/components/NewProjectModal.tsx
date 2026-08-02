@@ -862,18 +862,18 @@ export default function NewProjectModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 10 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative pointer-events-auto shadow-none border-none outline-none"
+            className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative pointer-events-auto shadow-2xl rounded-[24px] overflow-hidden outline-none"
             data-testid="sites-template-modal"
             style={{ minWidth: "900px", maxWidth: "900px" }}
           >
-            <div className="cx_overflowHidden---fxjU" style={{ height: "600px" }}>
-              <div className={`site_templates_view--container--V7GbF flex flex-col h-full ${isNightMode ? "bg-[#121212] text-white" : "bg-[#fffce2] text-slate-900"}`}>
+            <div className="cx_overflowHidden---fxjU rounded-[24px]" style={{ height: "600px" }}>
+              <div className={`site_templates_view--container--V7GbF flex flex-col h-full rounded-[24px] ${isNightMode ? "bg-[#1f1f1f] text-white" : "bg-[#fffce2] text-slate-900"}`}>
                 
                 {/* Header (Only rendered when exploring templates) */}
                 {viewMode === "templates" && (
                   <div className="site_templates_view--header--oGRQz site_templates_view--separator--sreRS flex items-center justify-between px-4 py-3 border-none shrink-0">
                     <div className="site_templates_view--titleTextContainer--6E-7M flex items-center gap-2">
-                      <div className="site_templates_view--templateTitleText--Iawgi text--ui2FontSize13--9P--j text--_fontBase--Qq3Bi ellipsis--ellipsis--IdJAr font-semibold text-xs text-white/90">
+                      <div className="site_templates_view--templateTitleText--Iawgi text-[14px] text--_fontBase--Qq3Bi ellipsis--ellipsis--IdJAr font-semibold text-white/90">
                         Crear un nuevo proyecto
                       </div>
                     </div>
@@ -897,9 +897,9 @@ export default function NewProjectModal({
                   {/* Sidebar (Visible only when exploring templates) */}
                   {viewMode === "templates" && (
                     <div
-                      className="x78zum5 xdt5ytf x1jnr06f x4qgb6o xkj4a21 x1odjw0f x1giekp1 x30g6up x5lhr3w xs1s249 x32b0ac xu3tg80 shrink-0 border-r border-white/10 p-2 space-y-1 overflow-y-auto custom-scrollbar"
+                      className="x78zum5 xdt5ytf x1jnr06f x4qgb6o xkj4a21 x1odjw0f x1giekp1 x30g6up x5lhr3w xs1s249 x32b0ac xu3tg80 shrink-0 border-r border-white/10 p-2.5 space-y-1 overflow-y-auto custom-scrollbar"
                       data-testid="template-picker-sidebar"
-                      style={{ width: "184px" }}
+                      style={{ width: "210px" }}
                     >
                       {/* Explorar */}
                       <button
@@ -908,10 +908,10 @@ export default function NewProjectModal({
                           setIsCreatingTemplateView(false);
                           setSelectedCategory("Explorar");
                         }}
-                        className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors ${
+                        className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full flex items-center h-10 px-3 rounded-xl text-[14px] transition-all duration-200 select-none ${
                           selectedCategory === "Explorar"
-                            ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/15 text-white font-semibold"
-                            : "text-white/70 hover:bg-white/10 hover:text-white"
+                            ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/10 text-[#ffffffd6] font-medium"
+                            : "text-[#ffffffd6] hover:bg-white/5"
                         }`}
                       >
                         <div role="option" aria-selected={selectedCategory === "Explorar"}>
@@ -922,7 +922,7 @@ export default function NewProjectModal({
                       <div className="picker_modal_sidebar--itemDivider--7bNdk my-2 border-b border-white/10" data-testid="sidebar-divider"></div>
 
                       {/* SECTION 1: CLIENTE */}
-                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[10px] font-semibold text-white/40 uppercase tracking-wider px-2 py-1">
+                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[14px] font-semibold text-[#ffffff6b] uppercase tracking-wider px-3 py-1">
                         <span>Cliente</span>
                         <button
                           type="button"
@@ -949,10 +949,10 @@ export default function NewProjectModal({
                               setIsCreatingTemplateView(false);
                               setSelectedCategory(catKey);
                             }}
-                            className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors truncate ${
+                            className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full flex items-center h-10 px-3 rounded-xl text-[14px] transition-all duration-200 truncate select-none ${
                               isSelected
-                                ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/15 text-white font-semibold"
-                                : "text-white/70 hover:bg-white/10 hover:text-white"
+                                ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/10 text-[#ffffffd6] font-medium"
+                                : "text-[#ffffffd6] hover:bg-white/5"
                             }`}
                           >
                             <div role="option" aria-selected={isSelected} className="truncate">
@@ -970,7 +970,7 @@ export default function NewProjectModal({
                             playSound("click");
                             setShowAllClients(!showAllClients);
                           }}
-                          className="w-full text-left px-2.5 py-1 text-[11px] text-white/60 hover:text-white transition-colors font-medium cursor-pointer flex items-center justify-between group"
+                          className="w-full text-left px-3 py-1.5 text-[12px] text-white/60 hover:text-white transition-colors font-medium cursor-pointer flex items-center justify-between group"
                         >
                           <span>{showAllClients ? "Ver menos" : "Ver todos los clientes"}</span>
                           <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 text-white/50 group-hover:text-white ${showAllClients ? "rotate-180" : ""}`} />
@@ -980,7 +980,7 @@ export default function NewProjectModal({
                       <div className="picker_modal_sidebar--itemDivider--7bNdk my-2 border-b border-white/10" data-testid="sidebar-divider"></div>
 
                       {/* SECTION 2: PLANTILLA */}
-                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[10px] font-semibold text-white/40 uppercase tracking-wider px-2 py-1">
+                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[14px] font-semibold text-[#ffffff6b] uppercase tracking-wider px-3 py-1">
                         <span>Plantilla</span>
                         <button
                           type="button"
@@ -1007,10 +1007,10 @@ export default function NewProjectModal({
                               setIsCreatingTemplateView(false);
                               setSelectedCategory(catKey);
                             }}
-                            className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full text-left px-2.5 py-1.5 rounded text-xs transition-colors truncate ${
+                            className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full flex items-center h-10 px-3 rounded-xl text-[14px] transition-all duration-200 truncate select-none ${
                               isSelected
-                                ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/15 text-white font-semibold"
-                                : "text-white/70 hover:bg-white/10 hover:text-white"
+                                ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/10 text-[#ffffffd6] font-medium"
+                                : "text-[#ffffffd6] hover:bg-white/5"
                             }`}
                           >
                             <div role="option" aria-selected={isSelected} className="truncate">
@@ -1028,7 +1028,7 @@ export default function NewProjectModal({
                             playSound("click");
                             setShowAllTemplates(!showAllTemplates);
                           }}
-                          className="w-full text-left px-2.5 py-1 text-[11px] text-sky-400/80 hover:text-sky-300 transition-colors font-medium cursor-pointer"
+                          className="w-full text-left px-3 py-1.5 text-[12px] text-sky-400/80 hover:text-sky-300 transition-colors font-medium cursor-pointer"
                         >
                           {showAllTemplates ? "Ver menos" : "Ver todas las plantillas"}
                         </button>
@@ -1067,11 +1067,11 @@ export default function NewProjectModal({
                                 {/* First Tile: Nuevo proyecto */}
                                 <button
                                   onClick={openCreateForm}
-                                  className="sites_blank_site_tile--blankSiteTileContainer--vKC-I group relative flex flex-col items-center justify-center p-4 rounded-xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.08] hover:border-white/40 transition-all h-[210px] cursor-pointer"
+                                  className="sites_blank_site_tile--blankSiteTileContainer--vKC-I group relative flex flex-col items-center justify-center p-4 rounded-xl border border-solid border-[#ffffff1f] bg-transparent hover:bg-white/[0.03] hover:border-white/25 transition-all h-[210px] cursor-pointer"
                                 >
-                                  <div className="sites_blank_site_tile--blankSiteTile---3-lT flex items-center justify-center w-12 h-12 rounded-full bg-white/5 group-hover:bg-white/15 group-hover:scale-110 transition-all mb-3" data-testid="start-from-scratch">
-                                    <span className="sites_blank_site_tile--blankSiteTileIcon--Y7-7F text-white/70 group-hover:text-white">
-                                      <svg width="24" height="24" fill="none" viewBox="0 0 24 24" data-fpl-icon-size="24L" style={{ width: "36px", height: "36px" }}>
+                                  <div className="sites_blank_site_tile--blankSiteTile---3-lT flex items-center justify-center w-12 h-12 rounded-full bg-white/5 group-hover:bg-white/10 group-hover:scale-105 transition-all mb-3" data-testid="start-from-scratch">
+                                    <span className="sites_blank_site_tile--blankSiteTileIcon--Y7-7F text-[#ffffffd6] group-hover:text-white">
+                                      <svg width="24" height="24" fill="none" viewBox="0 0 24 24" data-fpl-icon-size="24L" style={{ width: "28px", height: "28px" }}>
                                         <path
                                           fill="currentColor"
                                           fillRule="evenodd"
@@ -1081,7 +1081,7 @@ export default function NewProjectModal({
                                       </svg>
                                     </span>
                                   </div>
-                                  <div className="sites_blank_site_tile--blankSiteTileText--VEuZE text-[14px] font-semibold text-white/90 group-hover:text-white text-center">
+                                  <div className="sites_blank_site_tile--blankSiteTileText--VEuZE text-[14px] font-normal text-[#ffffffd6] group-hover:text-white text-center">
                                     {selectedCategory.startsWith("cliente:")
                                       ? `Nuevo proyecto (${selectedCategory.replace("cliente:", "").trim()})`
                                       : selectedCategory.startsWith("plantilla:")
@@ -1134,7 +1134,7 @@ export default function NewProjectModal({
                                       </div>
 
                                       {/* Card Footer Metadata (Título 14px, Cliente 12px + • hace... 12px a la derecha del cliente, Total de tareas 12px abajo) */}
-                                      <div className={`sites_template_tile--templateCoverBottomRow--3TUmT p-3 ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"} border-t border-white/5 shrink-0 flex flex-col justify-center min-h-[64px]`}>
+                                      <div className={`sites_template_tile--templateCoverBottomRow--3TUmT p-3 ${isNightMode ? "bg-[#1f1f1f]" : "bg-[#fffce2]"} border-t border-white/5 shrink-0 flex flex-col justify-center min-h-[64px]`}>
                                         <div className="text-[14px] font-bold text-white/95 truncate" title={p.title}>
                                           {p.title}
                                         </div>
@@ -1161,7 +1161,7 @@ export default function NewProjectModal({
                     )
                     ) : (
                       /* FAST CREATE MODAL ESTILO LINEAR EXACTO */
-                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#121212] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
+                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#1f1f1f] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
                         
                         {/* MAIN FORM */}
                         <form onSubmit={handleFormSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
@@ -1790,7 +1790,7 @@ export default function NewProjectModal({
                           </div>
 
                           {/* FOOTER BAR */}
-                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
+                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#1f1f1f]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
                             {/* Left: Paperclip Icon */}
                             <div className="flex items-center gap-1 text-[#71717a]">
                               <button

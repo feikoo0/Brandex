@@ -120,7 +120,7 @@ export default function CreateClientModal({
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="relative bg-[#1e1e1e] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden z-10 text-white"
+          className="relative bg-[#1f1f1f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden z-10 text-white"
         >
           {/* Modal Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
