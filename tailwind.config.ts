@@ -31,6 +31,8 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
+          '"Aeonik"',
+          '"NB International Pro"',
           "system-ui",
           "-apple-system",
           "BlinkMacSystemFont",
@@ -39,6 +41,15 @@ const config: Config = {
           '"Segoe UI"',
           "Roboto",
           "sans-serif",
+        ],
+        mono: [
+          '"NB International Pro Mono"',
+          "ui-monospace",
+          "SFMono-Regular",
+          "Menlo",
+          "Monaco",
+          "Consolas",
+          "monospace",
         ],
       },
       borderRadius: {
