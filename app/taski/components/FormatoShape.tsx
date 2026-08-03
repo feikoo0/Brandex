@@ -7,7 +7,7 @@ import { getFormato, FormatoConfig } from "../utils/formatos";
 interface FormatoShapeProps {
   formatoKey?: string | null;
   formatoObj?: FormatoConfig | null;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
   className?: string;
   isNightMode?: boolean;
 }
@@ -31,11 +31,14 @@ export default function FormatoShape({
   else if (formato.proporcion === "16:9") aspectClass = "aspect-[16/9]";
 
   // Dimensiones basadas en altura fija con mayor margen interior (padding) para el icono
-  let sizeClasses = "h-8 w-auto";
-  let iconSizeClass = "w-3 h-3";
+  let sizeClasses = "h-6 w-auto";
+  let iconSizeClass = "w-2.5 h-2.5";
 
-  if (size === "sm") {
-    sizeClasses = "h-8 w-auto";
+  if (size === "xs") {
+    sizeClasses = "h-5 w-auto";
+    iconSizeClass = "w-2.5 h-2.5";
+  } else if (size === "sm") {
+    sizeClasses = "h-6 w-auto";
     iconSizeClass = "w-3 h-3";
   } else if (size === "md") {
     sizeClasses = "h-12 w-auto";

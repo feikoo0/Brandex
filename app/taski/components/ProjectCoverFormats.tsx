@@ -9,10 +9,16 @@ import { getFormato, FormatoConfig } from "../utils/formatos";
 interface ProjectCoverFormatsProps {
   tasks?: Task[];
   className?: string;
-  size?: "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  layout?: "bento" | "horizontal";
 }
 
-export default function ProjectCoverFormats({ tasks = [], className = "", size = "xl" }: ProjectCoverFormatsProps) {
+export default function ProjectCoverFormats({ 
+  tasks = [], 
+  className = "", 
+  size = "xl",
+  layout = "bento"
+}: ProjectCoverFormatsProps) {
   // Extract all valid formats from tasks
   const validTaskFormats: { task: Task; config: FormatoConfig }[] = [];
 
@@ -28,7 +34,29 @@ export default function ProjectCoverFormats({ tasks = [], className = "", size =
   if (validTaskFormats.length === 0) {
     return (
       <div className={`flex items-center justify-center text-white/50 ${className}`}>
-        <Folder className="w-12 h-12 stroke-[1.5] opacity-70" />
+        <Folder className="w-5 h-5 stroke-[1.5] opacity-70" />
+      </div>
+    );
+  }
+
+  // Extraer formatos únicos para evitar duplicados en la fila horizontal
+  const uniqueFormats: FormatoConfig[] = [];
+  const seenKeys = new Set<string>();
+
+  validTaskFormats.forEach((item) => {
+    if (!seenKeys.has(item.config.key)) {
+      seenKeys.add(item.config.key);
+      uniqueFormats.push(item.config);
+    }
+  });
+
+  // Modo Horizontal: Alineación limpia de formas de formato en una sola fila
+  if (layout === "horizontal") {
+    return (
+      <div className={`flex items-center gap-1.5 ${className}`}>
+        {uniqueFormats.slice(0, 4).map((fmtConfig) => (
+          <FormatoShape key={fmtConfig.key} formatoObj={fmtConfig} size={size} />
+        ))}
       </div>
     );
   }
@@ -47,7 +75,6 @@ export default function ProjectCoverFormats({ tasks = [], className = "", size =
   }
 
   // Scenario 2: 2+ tasks with mixed formats -> Bento Mosaic Layout
-  // Rank formats by verticality: 9:16 = 4, 4:5 = 3, 1:1 = 2, 16:9 = 1
   const getVerticalityRank = (prop: string) => {
     if (prop === "9:16") return 4;
     if (prop === "4:5") return 3;
@@ -61,7 +88,7 @@ export default function ProjectCoverFormats({ tasks = [], className = "", size =
 
   const mainTile = sortedFormats[0];
   const sideTiles = sortedFormats.slice(1);
-  const maxSideVisible = 2; // Show up to 2 side tiles (or 1 tile + counter if 4+ total)
+  const maxSideVisible = 2;
   const totalCount = validTaskFormats.length;
   const overflowCount = totalCount > 3 ? totalCount - 2 : 0;
 

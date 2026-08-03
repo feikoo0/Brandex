@@ -33,6 +33,7 @@ import { FORMATOS_ESTANDAR, getFormato } from "../utils/formatos";
 import { Project } from "./ProjectDashboard";
 import ProjectCoverFormats from "./ProjectCoverFormats";
 import CreateClientModal, { ClientItem } from "./CreateClientModal";
+import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
 import CreateTemplateModal, { ProjectTemplateItem } from "./CreateTemplateModal";
 import CreateTemplateForm from "./CreateTemplateForm";
 import CreateProjectTypeModal, { ProjectTypeItem } from "./CreateProjectTypeModal";
@@ -78,7 +79,10 @@ export interface ProjectData {
   cost: string;
   startDate: string;
   deadline: string;
+  startDateRaw?: string;
   deadlineRaw?: string;
+  fechaInicio?: string;
+  fechaFin?: string;
   daysRemaining: string;
   burnRate: string;
   tasks: Task[];
@@ -157,6 +161,75 @@ const formatDateToFriendly = (date: Date): string => {
   const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const month = months[date.getMonth()];
   return `${day} ${month}`;
+};
+
+const parseAnyDate = (s?: any): Date | null => {
+  if (!s) return null;
+  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
+  if (typeof s === "object" && s.toDate && typeof s.toDate === "function") {
+    try { return s.toDate(); } catch {}
+  }
+  const str = String(s).trim();
+  if (!str || str.toLowerCase() === "sin fecha" || str.toLowerCase() === "hoy") return null;
+
+  const currentYear = new Date().getFullYear();
+
+  // 1. Formato YYYY-MM-DD o ISO
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d);
+    }
+  }
+
+  // 2. Formato DD/MM/YYYY
+  const latamMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (latamMatch) {
+    const d = parseInt(latamMatch[1], 10);
+    const m = parseInt(latamMatch[2], 10) - 1;
+    const y = parseInt(latamMatch[3], 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d);
+    }
+  }
+
+  // 3. Formato amigable en español (ej: "17 Ago", "3 Ene", "25 Dic")
+  const spanishMonths: Record<string, number> = {
+    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
+  };
+
+  const friendlyMatch = str.match(/^(\d{1,2})\s+([a-zA-Z]{3,4})/i);
+  if (friendlyMatch) {
+    const day = parseInt(friendlyMatch[1], 10);
+    const monthKey = friendlyMatch[2].toLowerCase().substring(0, 3);
+    if (!isNaN(day) && spanishMonths[monthKey] !== undefined) {
+      return new Date(currentYear, spanishMonths[monthKey], day);
+    }
+  }
+
+  const fallback = new Date(str);
+  if (!isNaN(fallback.getTime())) {
+    if (fallback.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
+      fallback.setFullYear(currentYear);
+    }
+    return fallback;
+  }
+
+  return null;
+};
+
+const toYyyyMmDd = (val?: any): string => {
+  if (!val) return "";
+  const d = parseAnyDate(val);
+  if (!d) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 };
 
 const formatTimeAgo = (dateInput?: string | Date | number): string => {
@@ -390,14 +463,36 @@ export default function NewProjectModal({
 
   const populateFromProject = (p: Project) => {
     setActiveEditingProject(p);
-    setTitle(p.title || "");
-    setClient(p.client || "Brandex");
-    setPackageStr(p.package || "Desarrollo Web");
-    setDesc(p.briefCore || p.desc || "");
-    setStatus(p.status || "Planificación");
-    const rawCostDigits = p.cost ? p.cost.replace(/[^0-9]/g, "") : "2500";
+    setTitle(p.title || (p as any).nombre || "");
+    setClient(p.client || (p as any).cliente || "Brandex");
+    setPackageStr(p.package || (p as any).formato || "Desarrollo Web");
+    setDesc(p.briefCore || p.desc || (p as any).descripcion || "");
+    setStatus(p.status || (p as any).estadoProyecto || (p as any).estado || "Planificación");
+    setPriority(p.priority || (p as any).prioridad || "Media");
+    const rawCost = p.cost !== undefined ? p.cost : (p as any).costo;
+    const rawCostDigits = rawCost ? String(rawCost).replace(/[^0-9]/g, "") : "2500";
     setCost(rawCostDigits ? Number(rawCostDigits).toLocaleString("en-US") : "2,500");
     setTasks(p.tasks ? [...p.tasks] : []);
+
+    const rawP = p as any;
+    const startStr = toYyyyMmDd(rawP.startDateRaw || rawP.fechaInicio || rawP.fecha_inicio || rawP.startDate);
+    const endStr = toYyyyMmDd(rawP.deadlineRaw || rawP.fechaFin || rawP.fecha_fin || rawP.deadline || rawP.fechaEntrega);
+
+    if (startStr) {
+      setStartDateRaw(startStr);
+    }
+    if (endStr) {
+      setDeadlineRaw(endStr);
+    } else if (p.tasks && p.tasks.length > 0) {
+      const taskDates = p.tasks
+        .map((t: any) => toYyyyMmDd(t.fecha_limite || t.deadline || t.fechaProg))
+        .filter(Boolean)
+        .sort();
+      if (taskDates.length > 0 && taskDates[taskDates.length - 1]) {
+        setDeadlineRaw(taskDates[taskDates.length - 1]);
+      }
+    }
+
     if (p.team && p.team.length > 0) {
       const matchedIds = teamMemberList
         .filter((m) => p.team?.some((t) => t.name === m.nombre))
@@ -447,6 +542,10 @@ export default function NewProjectModal({
       setStatus("Planificación");
       setPriority("Media");
       setCost("$2,500");
+      const today = new Date();
+      const d14 = new Date(); d14.setDate(today.getDate() + 14);
+      setStartDateRaw(formatDateToInput(today));
+      setDeadlineRaw(formatDateToInput(d14));
       setSelectedWorkerIds([]);
       setTasks([]);
       setIsDetailsCollapsed(false);
@@ -805,7 +904,10 @@ export default function NewProjectModal({
       cost,
       startDate: startFriendly,
       deadline: deadlineFriendly,
+      startDateRaw: startDateRaw,
       deadlineRaw: deadlineRaw,
+      fechaInicio: startDateRaw,
+      fechaFin: deadlineRaw,
       daysRemaining: "14 días",
       burnRate: "0h / 40h",
       tasks: finalTasks,
@@ -1351,12 +1453,10 @@ export default function NewProjectModal({
                                   selectedValue={status}
                                   onSelect={(val) => setStatus(val)}
                                   options={[
-                                    { id: "Backlog", label: "Backlog", shortcut: "1" },
-                                    { id: "Planificación", label: "Planificación", shortcut: "2" },
-                                    { id: "Activo", label: "Activo", shortcut: "3" },
-                                    { id: "En Proceso", label: "En Proceso", shortcut: "4" },
-                                    { id: "En Revisión", label: "En Revisión", shortcut: "5" },
-                                    { id: "Completado", label: "Completado", shortcut: "6" }
+                                    { id: "Planificación", label: "Planificación", icon: <ProjectStatusIcon status="Planificación" className="w-3.5 h-3.5" />, shortcut: "1" },
+                                    { id: "En Proceso", label: "En Proceso", icon: <ProjectStatusIcon status="En Proceso" className="w-3.5 h-3.5" />, shortcut: "2" },
+                                    { id: "En Revisión", label: "En Revisión", icon: <ProjectStatusIcon status="En Revisión" className="w-3.5 h-3.5" />, shortcut: "3" },
+                                    { id: "Completado", label: "Completado", icon: <ProjectStatusIcon status="Completado" className="w-3.5 h-3.5" />, shortcut: "4" }
                                   ]}
                                 />
                               </div>
@@ -1491,7 +1591,11 @@ export default function NewProjectModal({
                                   <Calendar className="w-3 h-3 text-white shrink-0" />
                                   <span>
                                     {startDateRaw && deadlineRaw
-                                      ? `${startDateRaw} → ${deadlineRaw}`
+                                      ? `${formatDateToFriendly(parseAnyDate(startDateRaw) || new Date())} → ${formatDateToFriendly(parseAnyDate(deadlineRaw) || new Date())}`
+                                      : deadlineRaw
+                                      ? formatDateToFriendly(parseAnyDate(deadlineRaw) || new Date())
+                                      : startDateRaw
+                                      ? formatDateToFriendly(parseAnyDate(startDateRaw) || new Date())
                                       : "Fechas"}
                                   </span>
                                 </button>

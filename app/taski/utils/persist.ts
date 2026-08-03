@@ -44,22 +44,34 @@ export const persistProjectUpdate = async (
 
   try {
     const cleanData = JSON.parse(JSON.stringify(partialData));
+
+    // Harmonize all field aliases for seamless 3-view synchronization
+    if (cleanData.title) { cleanData.nombre = cleanData.title; }
+    if (cleanData.nombre) { cleanData.title = cleanData.nombre; }
+    if (cleanData.client) { cleanData.cliente = cleanData.client; }
+    if (cleanData.cliente) { cleanData.client = cleanData.cliente; }
+    if (cleanData.desc) { cleanData.descripcion = cleanData.desc; }
+    if (cleanData.descripcion) { cleanData.desc = cleanData.descripcion; }
+    if (cleanData.status) { cleanData.estadoProyecto = cleanData.status; cleanData.estado = cleanData.status; }
+    if (cleanData.estadoProyecto) { cleanData.status = cleanData.estadoProyecto; }
+    if (cleanData.priority) { cleanData.prioridad = cleanData.priority; }
+    if (cleanData.prioridad) { cleanData.priority = cleanData.prioridad; }
+    if (cleanData.startDateRaw) { cleanData.fechaInicio = cleanData.startDateRaw; }
+    if (cleanData.fechaInicio) { cleanData.startDateRaw = cleanData.fechaInicio; }
+    if (cleanData.deadlineRaw) { cleanData.fechaFin = cleanData.deadlineRaw; }
+    if (cleanData.fechaFin) { cleanData.deadlineRaw = cleanData.fechaFin; }
+    if (cleanData.cost) {
+      cleanData.costo = parseFloat(String(cleanData.cost).replace(/[^0-9.]/g, "")) || 0;
+    } else if (cleanData.costo !== undefined) {
+      cleanData.cost = typeof cleanData.costo === "number" ? `$${cleanData.costo}` : String(cleanData.costo);
+    }
+
     const docRef = doc(db, "v3_projects", String(projectId));
     await setDoc(docRef, cleanData, { merge: true });
 
     try {
       const nativeRef = doc(db, "projects", String(projectId));
-      const nativeData: Record<string, any> = {};
-      if (cleanData.title) { nativeData.nombre = cleanData.title; nativeData.title = cleanData.title; }
-      if (cleanData.client) { nativeData.cliente = cleanData.client; nativeData.client = cleanData.client; }
-      if (cleanData.package) { nativeData.package = cleanData.package; nativeData.tipo_proyecto = cleanData.package; }
-      if (cleanData.desc) { nativeData.desc = cleanData.desc; }
-      if (cleanData.status) { nativeData.status = cleanData.status; nativeData.estado = cleanData.status; }
-      if (cleanData.cost) { nativeData.cost = cleanData.cost; nativeData.precio = cleanData.cost; }
-
-      if (Object.keys(nativeData).length > 0) {
-        await setDoc(nativeRef, nativeData, { merge: true });
-      }
+      await setDoc(nativeRef, cleanData, { merge: true });
 
       if (cleanData.tasks && Array.isArray(cleanData.tasks)) {
         for (const t of cleanData.tasks) {

@@ -860,71 +860,112 @@ const MOCK_RECURSOS = [
   }
 ];
 
-// ── Sync All Data (Firestore Direct Native Collections) ──────────────────────
+// ── Sync All Data (Firestore Direct Native & v3 Collections) ──────────────────────
 export async function syncAllData(forceSync = false) {
   try {
-    const [cSnap, pSnap, tSnap, wSnap] = await Promise.all([
-      getDocs(collection(db, "clients")),
-      getDocs(collection(db, "projects")),
-      getDocs(collection(db, "tasks")),
-      getDocs(collection(db, "workers"))
+    const [v3Snap, pSnap, tSnap, cSnap, wSnap] = await Promise.all([
+      getDocs(collection(db, "v3_projects")).catch(() => ({ empty: true, docs: [] } as any)),
+      getDocs(collection(db, "projects")).catch(() => ({ empty: true, docs: [] } as any)),
+      getDocs(collection(db, "tasks")).catch(() => ({ empty: true, docs: [] } as any)),
+      getDocs(collection(db, "clients")).catch(() => ({ empty: true, docs: [] } as any)),
+      getDocs(collection(db, "workers")).catch(() => ({ empty: true, docs: [] } as any)),
     ]);
 
-    if (!cSnap.empty || !pSnap.empty) {
-      const clientes = cSnap.docs.map(d => d.data() as any);
-      const trabajadores = wSnap.docs.map(d => d.data() as any);
+    const rawClients = cSnap.docs ? cSnap.docs.map((d: any) => d.data() as any) : [];
+    const rawWorkers = wSnap.docs ? wSnap.docs.map((d: any) => d.data() as any) : [];
+    const rawTasks = tSnap.docs ? tSnap.docs.map((d: any) => d.data() as any) : [];
 
-      const clientMap = new Map(clientes.map((c: any) => [c.id, c.nombre]));
+    const clientMap = new Map(rawClients.map((c: any) => [String(c.id), c.nombre || c.name]));
 
-      const proyectos = pSnap.docs.map(d => {
-        const p = d.data() as any;
-        return {
-          ...p,
-          cliente_ids: p.cliente_id ? [p.cliente_id] : [],
-          cliente: p.cliente_id ? (clientMap.get(p.cliente_id) || "") : ""
-        };
+    // Combine v3_projects and projects documents, with v3_projects taking priority
+    const projectsMap = new Map<string, any>();
+    
+    if (pSnap.docs) {
+      pSnap.docs.forEach((d: any) => {
+        const p = d.data();
+        projectsMap.set(String(p.id || d.id), { id: String(p.id || d.id), ...p });
       });
+    }
 
-      const tareas = tSnap.docs.map(d => {
-        const t = d.data() as any;
-        return {
-          ...t,
-          proyecto_ids: t.proyecto_id ? [t.proyecto_id] : []
-        };
+    if (v3Snap.docs) {
+      v3Snap.docs.forEach((d: any) => {
+        const p = d.data();
+        const existing = projectsMap.get(String(p.id || d.id)) || {};
+        projectsMap.set(String(p.id || d.id), { ...existing, ...p, id: String(p.id || d.id) });
       });
+    }
 
-      return { clientes, proyectos, tareas, trabajadores, recursos: [] };
+    const proyectos = Array.from(projectsMap.values()).map((p: any) => {
+      const nombre = p.nombre || p.title || "Sin título";
+      const title = p.title || p.nombre || "Sin título";
+      const cliente = p.cliente || p.client || (p.cliente_id ? clientMap.get(String(p.cliente_id)) : "") || "Brandex";
+      const client = p.client || p.cliente || (p.cliente_id ? clientMap.get(String(p.cliente_id)) : "") || "Brandex";
+      const descripcion = p.descripcion || p.desc || p.briefCore || "";
+      const desc = p.desc || p.descripcion || p.briefCore || "";
+      const estadoProyecto = p.estadoProyecto || p.status || p.estado || "Planificación";
+      const status = p.status || p.estadoProyecto || p.estado || "Planificación";
+      const prioridad = p.prioridad || p.priority || "Media";
+      const priority = p.priority || p.prioridad || "Media";
+      
+      const fechaInicio = p.fechaInicio || p.startDateRaw || p.startDate || "";
+      const startDateRaw = p.startDateRaw || p.fechaInicio || "";
+      const fechaFin = p.fechaFin || p.deadlineRaw || p.deadline || "";
+      const deadlineRaw = p.deadlineRaw || p.fechaFin || "";
+
+      const rawCost = p.costo !== undefined ? p.costo : p.cost;
+      const costo = typeof rawCost === "number" ? rawCost : (parseFloat(String(rawCost || "").replace(/[^0-9.]/g, "")) || 0);
+      const cost = p.cost || (costo ? `$${costo.toLocaleString()}` : "$0");
+
+      const cliente_ids = p.cliente_ids || (p.cliente_id ? [String(p.cliente_id)] : []);
+
+      return {
+        ...p,
+        id: String(p.id),
+        nombre,
+        title,
+        cliente,
+        client,
+        cliente_ids,
+        descripcion,
+        desc,
+        estadoProyecto,
+        status,
+        prioridad,
+        priority,
+        costo,
+        cost,
+        fechaInicio,
+        startDateRaw,
+        fechaFin,
+        deadlineRaw,
+        tasks: p.tasks || []
+      };
+    });
+
+    const tareas = rawTasks.map((t: any) => ({
+      ...t,
+      id: String(t.id),
+      titulo: t.titulo || t.title || "Tarea sin título",
+      title: t.title || t.titulo || "Tarea sin título",
+      estado: t.estado || t.status || "Pendiente",
+      status: t.status || t.estado || "Pendiente",
+      formato: t.formato || t.format || "post_imagen",
+      format: t.format || t.formato || "post_imagen",
+      proyecto_ids: t.proyecto_ids || (t.proyecto_id || t.project_id ? [String(t.proyecto_id || t.project_id)] : [])
+    }));
+
+    if (proyectos.length > 0 || rawClients.length > 0) {
+      return {
+        clientes: rawClients.length > 0 ? rawClients : MOCK_CLIENTES,
+        proyectos: proyectos.length > 0 ? proyectos : MOCK_PROYECTOS,
+        tareas: tareas.length > 0 ? tareas : MOCK_TAREAS,
+        trabajadores: rawWorkers.length > 0 ? rawWorkers : MOCK_TRABAJADORES,
+        recursos: MOCK_RECURSOS
+      };
     }
   } catch (err) {
-    console.error("Error reading native Firestore collections:", err);
+    console.error("Error reading Firestore collections in syncAllData:", err);
   }
-
-  const [c, p, t, r, w] = await Promise.all([
-    getCacheDoc("clientes"),
-    getCacheDoc("proyectos"),
-    getCacheDoc("tareas"),
-    getCacheDoc("recursos"),
-    getCacheDoc("trabajadores")
-  ]);
-
-  if (c && p && t && r && w && (c.length > 0 || p.length > 0)) {
-    return {
-      clientes: c,
-      proyectos: p,
-      tareas: t,
-      recursos: r,
-      trabajadores: w
-    };
-  }
-
-  console.log(">>> No cache exists. Writing premium mock data to Firestore Cache.");
-  await Promise.all([
-    setCacheDoc("clientes", MOCK_CLIENTES),
-    setCacheDoc("proyectos", MOCK_PROYECTOS),
-    setCacheDoc("tareas", MOCK_TAREAS),
-    setCacheDoc("recursos", MOCK_RECURSOS),
-    setCacheDoc("trabajadores", MOCK_TRABAJADORES)
-  ]);
 
   return {
     clientes: MOCK_CLIENTES,
@@ -1042,26 +1083,20 @@ export async function createLocalProject(data: any) {
 }
 
 export async function updateLocalProject(id: string, data: any) {
-  const fields: any = {};
-  if ("nombre" in data) fields.nombre = data.nombre;
-  if ("cliente_ids" in data) fields.cliente_ids = data.cliente_ids;
-  else if ("cliente_id" in data) fields.cliente_ids = data.cliente_id ? [data.cliente_id] : [];
-  if ("asignado_ids" in data) fields.asignado_ids = data.asignado_ids;
-  if ("asignado" in data) fields.asignado = data.asignado;
-  if ("estadoProyecto" in data) fields.estadoProyecto = data.estadoProyecto;
-  if ("estado" in data) fields.estado = data.estado;
-  if ("area" in data) fields.area = data.area;
-  if ("formato" in data) fields.formato = data.formato;
-  if ("prioridad" in data) fields.prioridad = data.prioridad;
-  if ("ciclo" in data) fields.ciclo = data.ciclo;
-  if ("esfuerzo" in data) fields.esfuerzo = data.esfuerzo;
-  if ("plataformas" in data) fields.plataformas = data.plataformas;
-  if ("fechaInicio" in data) fields.fechaInicio = data.fechaInicio;
-  if ("fechaFin" in data) fields.fechaFin = data.fechaFin;
-  if ("recursosDrive" in data) fields.recursosDrive = data.recursosDrive;
-  if ("costo" in data) fields.costo = parseFloat(data.costo) || 0;
-  if ("tarea_ids" in data) fields.tarea_ids = data.tarea_ids;
-  if ("descripcion" in data) fields.descripcion = data.descripcion;
+  const fields: any = { ...data };
+  delete fields.id;
+
+  if ("cliente_id" in data && !("cliente_ids" in data)) {
+    fields.cliente_ids = data.cliente_id ? [data.cliente_id] : [];
+  }
+  if ("costo" in data) {
+    fields.costo = typeof data.costo === "number" ? data.costo : parseFloat(data.costo) || 0;
+  }
+  if ("estadoProyecto" in data) {
+    fields.estado = data.estadoProyecto;
+  } else if ("estado" in data) {
+    fields.estadoProyecto = data.estado;
+  }
 
   await updateCachedItem("proyectos", id, fields);
   return { id, ...fields };

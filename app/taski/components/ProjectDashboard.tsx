@@ -65,6 +65,10 @@ export interface Project {
   customColor?: { h: number; s: number; l: number };
   customGradientStyle?: string;
   customGlowStyle?: string;
+  startDateRaw?: string;
+  deadlineRaw?: string;
+  fechaInicio?: string;
+  fechaFin?: string;
   fecha_creacion?: string;
 }
 

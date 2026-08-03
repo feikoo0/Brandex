@@ -177,6 +177,22 @@ export function useProjectSummary(projectId: string | number | null | undefined)
     const spentHours = Math.round((totalMins / 60) * 10) / 10;
     const burnRateText = `${spentHours}h / 40h`;
 
+    let fechaInicio = rawProject.fechaInicio || rawProject.fecha_inicio || rawProject.startDate || rawProject.start_date || rawProject.fechaCreacion || rawProject.fecha_creacion || rawProject.createdAt || rawProject.created_at || "";
+    let fechaFin = rawProject.fechaFin || rawProject.fecha_fin || rawProject.endDate || rawProject.end_date || rawProject.deadline || rawProject.fechaEntrega || rawProject.fecha_entrega || rawProject.fecha || "";
+
+    if (!fechaFin && tasks.length > 0) {
+      const taskDates = tasks
+        .map((t: any) => t.fechaEntrega || t.fecha_entrega || t.deadline || t.fechaProg || t.fecha)
+        .filter(Boolean)
+        .sort();
+      if (taskDates.length > 0) {
+        fechaFin = taskDates[taskDates.length - 1];
+        if (!fechaInicio) {
+          fechaInicio = taskDates[0];
+        }
+      }
+    }
+
     return {
       project,
       client,
@@ -193,8 +209,8 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       prioridad: project.prioridad || "Media",
       esfuerzo: project.esfuerzo || "Medio",
       tiempoEstimado: (project as any).tiempoEstimado || "1h",
-      fechaInicio: project.fechaInicio || "",
-      fechaFin: project.fechaFin || "",
+      fechaInicio,
+      fechaFin,
       costo: typeof project.costo === "number" ? project.costo : 0,
       isLoading,
     };

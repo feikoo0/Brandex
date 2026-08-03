@@ -46,9 +46,7 @@ export const AREAS = [
 
 // --- PROYECTOS (Alineado exactamente con NewProjectModal) ---
 export const PROJ_STATUS_OPTS = [
-  "Backlog",
   "Planificación",
-  "Activo",
   "En Proceso",
   "En Revisión",
   "Completado"

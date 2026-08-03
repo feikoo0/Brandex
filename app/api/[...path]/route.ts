@@ -62,56 +62,15 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
   }
 
   if (p === "/api/debug") {
-    try {
-      const r = await queryDb(CLIENTES_DB);
-      return NextResponse.json({ ok: true, status: "ok", token_ok: true, count: r.length });
-    } catch (err: any) {
-      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
-    }
+    return NextResponse.json({ ok: true, status: "ok", token_ok: true });
   }
 
   if (p === "/api/debug/tasks") {
-    try {
-      const r = await notion("GET", `/databases/${TAREAS_DB}`);
-      if (r.error) return NextResponse.json({ error: r.error, db_id: TAREAS_DB }, { status: 500 });
-
-      const propsSchema: Record<string, any> = {};
-      for (const [k, v] of Object.entries(r.properties || {}) as any[]) {
-        const ptype = v.type || "?";
-        const info: any = { type: ptype };
-        if (ptype === "multi_select") {
-          info.options = (v.multi_select?.options || []).map((o: any) => o.name || "");
-        } else if (ptype === "select") {
-          info.options = (v.select?.options || []).map((o: any) => o.name || "");
-        } else if (ptype === "status") {
-          info.options = (v.status?.options || []).map((o: any) => o.name || "");
-        }
-        propsSchema[k] = info;
-      }
-      return NextResponse.json({ db_id: TAREAS_DB, properties: propsSchema });
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
-    }
+    return NextResponse.json({ status: "ok" });
   }
 
   if (p === "/api/debug/project") {
-    try {
-      const r = await notion("GET", `/databases/${PROYECTOS_DB}`);
-      if (r.error) return NextResponse.json({ error: r.error, db_id: PROYECTOS_DB }, { status: 500 });
-
-      const propsSchema: Record<string, any> = {};
-      for (const [k, v] of Object.entries(r.properties || {}) as any[]) {
-        propsSchema[k] = v.type || "?";
-      }
-      return NextResponse.json({
-        db_id: PROYECTOS_DB,
-        db_title: r.title?.[0]?.plain_text || "",
-        properties: propsSchema,
-        token_ok: !!process.env.NOTION_TOKEN
-      });
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
-    }
+    return NextResponse.json({ status: "ok" });
   }
 
   return NextResponse.json({ error: "Endpoint not found" }, { status: 404 });

@@ -18,6 +18,7 @@ import {
   updateClient,
   updateWorker,
 } from "@/lib/api";
+import { persistProjectUpdate } from "@/app/taski/utils/persist";
 import type {
   BraindexData,
   Task,
@@ -216,7 +217,11 @@ export function useCreateProject() {
 export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Project> & { id: string }) => updateProject(data),
+    mutationFn: async (data: Partial<Project> & { id: string }) => {
+      const res = await updateProject(data);
+      await persistProjectUpdate(data.id, data as any);
+      return res;
+    },
     onMutate: async (updatedProjectParams) => {
       await qc.cancelQueries({ queryKey: QUERY_KEY });
       const previousData = qc.getQueryData<BraindexData>(QUERY_KEY);

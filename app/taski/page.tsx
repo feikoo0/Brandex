@@ -529,6 +529,10 @@ export default function BrandexV3Page() {
       burnRate: data.burnRate,
       startDate: data.startDate,
       deadline: data.deadline,
+      startDateRaw: data.startDateRaw,
+      deadlineRaw: data.deadlineRaw,
+      fechaInicio: data.fechaInicio || data.startDateRaw,
+      fechaFin: data.fechaFin || data.deadlineRaw,
       daysRemaining: data.daysRemaining,
       briefCore: data.desc || "Escribe el core brief aquí.",
       priority: data.priority,
@@ -1739,7 +1743,13 @@ export default function BrandexV3Page() {
                 customGlowStyle: evalProj.customGlowStyle,
                 statusColor: evalProj.statusColor,
                 progress: evalProj.progress,
-                percent: evalProj.percent
+                percent: evalProj.percent,
+                startDate: evalProj.startDate,
+                deadline: evalProj.deadline,
+                startDateRaw: (evalProj as any).startDateRaw,
+                deadlineRaw: (evalProj as any).deadlineRaw,
+                fechaInicio: (evalProj as any).fechaInicio || (evalProj as any).startDateRaw,
+                fechaFin: (evalProj as any).fechaFin || (evalProj as any).deadlineRaw
               });
               return evalProj;
             })
