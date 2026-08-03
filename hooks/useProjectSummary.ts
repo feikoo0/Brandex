@@ -36,8 +36,8 @@ export interface ProjectSummary {
 }
 
 /**
- * Hook reactivo unificado para obtener todos los datos, agregados y cliente resolviendo `cliente_id`
- * de cualquier proyecto en las colecciones nativas de Firestore.
+ * Hook reactivo unificado para obtener todos los datos, agregados y cliente resolviendo `cliente_id`,
+ * `cliente_ids`, o `cliente` (texto plano) de cualquier proyecto en las colecciones de Taski.
  */
 export function useProjectSummary(projectId: string | number | null | undefined): ProjectSummary {
   const { data, isLoading } = useData();
@@ -74,7 +74,7 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       return {
         project: null,
         client: null,
-        clientName: "Proyecto no encontrado",
+        clientName: "Sin cliente",
         tasks: [],
         totalTasks: 0,
         completedTasks: 0,
@@ -94,26 +94,57 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       };
     }
 
-    // Resolver cliente vía cliente_id relacional
+    const rawProject = project as any;
+
+    // ── RESOLUCIÓN ROBUSTA DEL CLIENTE ──
     let client: Client | null = null;
-    const clientId = (project as any).cliente_id || (project.cliente_ids && project.cliente_ids[0]);
-    if (clientId) {
-      client = data.clientes.find((c) => c.id === clientId) || null;
+    const possibleClientIds = new Set<string>();
+
+    if (rawProject.cliente_id) possibleClientIds.add(String(rawProject.cliente_id));
+    if (Array.isArray(rawProject.cliente_ids)) {
+      rawProject.cliente_ids.forEach((id: any) => id && possibleClientIds.add(String(id)));
     }
 
-    const clientName = client?.nombre || (project as any).cliente || "Sin cliente";
+    // 1. Buscar por ID en la lista de clientes
+    if (possibleClientIds.size > 0) {
+      client = data.clientes.find((c) => possibleClientIds.has(String(c.id))) || null;
+    }
 
-    // Resolver tareas hijas vía proyecto_id
+    // 2. Buscar por coincidencia de nombre si no se encontró por ID
+    const directClientName = rawProject.cliente || rawProject.client || rawProject.clientName || rawProject.clienteNombre;
+
+    if (!client && directClientName) {
+      client = data.clientes.find(
+        (c) => c.nombre.toLowerCase().trim() === String(directClientName).toLowerCase().trim()
+      ) || null;
+    }
+
+    // 3. Si aún no se encuentra, revisar las tareas del proyecto por si tienen el cliente asignado
     const tasks = data.tareas.filter((t) => {
-      if ((t as any).proyecto_id) return (t as any).proyecto_id === idStr;
-      if (t.proyecto_ids && t.proyecto_ids.length > 0) return t.proyecto_ids.includes(idStr);
+      if ((t as any).proyecto_id) return String((t as any).proyecto_id) === idStr;
+      if (t.proyecto_ids && t.proyecto_ids.length > 0) return t.proyecto_ids.map(String).includes(idStr);
       return false;
     });
+
+    if (!client) {
+      for (const t of tasks) {
+        const tClientId = (t as any).cliente_id || (t.cliente_ids && t.cliente_ids[0]);
+        if (tClientId) {
+          client = data.clientes.find(
+            (c) => String(c.id) === String(tClientId) || c.nombre.toLowerCase().trim() === String(tClientId).toLowerCase().trim()
+          ) || null;
+          if (client) break;
+        }
+      }
+    }
+
+    // Nombre final resuelto del cliente
+    const clientName = client?.nombre || directClientName || (tasks[0] as any)?.cliente || "Sin cliente";
 
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter((t) => {
       const st = (t.estado || "").toLowerCase();
-      return st === "completado" || st === "hecho" || st === "aprobado";
+      return st === "completado" || st === "hecho" || st === "aprobado" || st === "entregado";
     }).length;
 
     const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
@@ -157,7 +188,7 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       formatos,
       totalRealMins: totalMins,
       burnRateText,
-      status: project.estado || (project as any).estadoProyecto || "Activo",
+      status: project.estadoProyecto || project.estado || "Activo",
       area: project.area || "",
       prioridad: project.prioridad || "Media",
       esfuerzo: project.esfuerzo || "Medio",

@@ -26,7 +26,6 @@ function getIconForTab(tab: string) {
     case "clientes": return <Users className="w-3.5 h-3.5 flex-shrink-0" />;
     case "pipeline": return <LineChart className="w-3.5 h-3.5 flex-shrink-0" />;
     case "proyectos": return <Folder className="w-3.5 h-3.5 flex-shrink-0" />;
-    case "proyectos_v2": return <Folder className="w-3.5 h-3.5 flex-shrink-0" />;
     case "tareas": return <CheckSquare className="w-3.5 h-3.5 flex-shrink-0" />;
     case "talent": return <Users className="w-3.5 h-3.5 flex-shrink-0" />;
     case "analytics": return <BarChart className="w-3.5 h-3.5 flex-shrink-0" />;

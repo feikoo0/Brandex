@@ -19,6 +19,7 @@ import { ClientsDashboard } from "./components/ClientsDashboard";
 import { ClientV2Dashboard } from "./components/ClientV2Dashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { ProjectsV2Dashboard } from "./components/ProjectsV2Dashboard";
+import { ProjectsView } from "@/components/views/ProjectsView";
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { persistProjectUpdate } from "./utils/persist";
 import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting } from "@/lib/utils";
@@ -846,7 +847,7 @@ export default function BrandexV3Page() {
               referrerPolicy="no-referrer"
               className={`object-contain opacity-90 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
             />
-            <span className={`text-[24px] font-medium tracking-wide select-none ${isNightMode ? 'text-white/90' : 'text-slate-800'}`}>
+            <span className={`text-[28px] font-medium tracking-wide select-none ${isNightMode ? 'text-white/90' : 'text-slate-800'}`}>
               Taski
             </span>
           </div>
@@ -1154,7 +1155,6 @@ export default function BrandexV3Page() {
                   }`}>
                     {activeTab === "inicio" ? "Inicio" :
                      activeTab === "proyectos" ? "Panel de Proyectos" :
-                     activeTab === "proyectos_v2" ? "Panel de Proyectos" :
                      activeTab === "equipo" ? "Espacio de Equipo" :
                      activeTab === "clientes" ? "Directorio de Clientes" :
                      activeTab === "cliente_v2" ? "Panel Cliente V2" :
@@ -1162,7 +1162,7 @@ export default function BrandexV3Page() {
                      activeTab === "recursos" ? "Biblioteca de Recursos" :
                      activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
                   </span>
-                  {activeTab !== "proyectos_v2" && activeTab !== "inicio" && (
+                  {activeTab !== "inicio" && (
                     <span className={`text-xl md:text-2xl font-normal tracking-tight transition-colors duration-500 ${
                       isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
                     }`}>
@@ -1204,7 +1204,7 @@ export default function BrandexV3Page() {
               </motion.button>
             )}
           </AnimatePresence>
-          {(activeTab === "home" || activeTab === "proyectos_v2") && (
+          {activeTab === "home" && (
             <motion.div 
               layout
               className={`flex items-center rounded-full p-1 w-fit shrink-0 border transition-colors duration-300 ${
@@ -1377,7 +1377,7 @@ export default function BrandexV3Page() {
 
           {/* RIGHT ZONE: Action Buttons */}
           <div className="flex-1 basis-0 flex items-center justify-end">
-          {(activeTab === "home" || activeTab === "proyectos_v2") && (
+          {activeTab === "home" && (
             <div className="flex items-center gap-3 shrink-0">
 
 
@@ -1502,352 +1502,11 @@ export default function BrandexV3Page() {
         <SaveStatusBadge isNightMode={isNightMode} />
       </div>
 
-      {/* Column Header Pill */}
+      {/* Render Projects View (Catálogo & Fullscreen) */}
       {activeTab === "proyectos" && (
-        <div className="absolute top-[80px] left-6 z-50 pointer-events-auto">
-          <div className={`relative px-4 py-1.5 rounded-full text-[11px] font-bold tracking-widest uppercase flex items-center justify-center w-fit overflow-hidden border shadow-md cursor-default select-none transition-all duration-300 ${
-            isNeumorphic 
-              ? 'bg-[#e6eef8] text-slate-800 shadow-[3px_3px_6px_#b8c4d9,-3px_-3px_6px_#ffffff] border-white/40' 
-              : 'liquid-glass-btn text-white/95 border-white/10'
-          }`}>
-            {!isNeumorphic && <div className="absolute -top-4 -left-4 w-12 h-12 bg-white opacity-10 rounded-full blur-[10px] pointer-events-none" />}
-            <span className="relative z-10">Proyectos</span>
-          </div>
+        <div className="absolute top-[75px] left-6 right-6 bottom-4 z-30 pointer-events-auto">
+          <ProjectsView />
         </div>
-      )}
-
-      {/* Info Cards Column */}
-      {activeTab === "proyectos" && (
-        <div 
-          onScroll={handleScroll}
-          className="absolute top-[124px] left-6 w-[280px] bottom-4 overflow-y-auto hide-scrollbar z-30 pb-20 pt-2 pointer-events-auto snap-y snap-mandatory"
-          style={{
-            maskImage: 'linear-gradient(to bottom, transparent 0px, transparent 16px, black 36px, black 100%)',
-            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0px, transparent 16px, black 36px, black 100%)'
-          }}
-        >
-
-
-        <div className="flex flex-col gap-6 relative z-10">
-          {projects.map((card) => {
-            const isActiveProject = activeProject === card.id;
-            const dynamicProgress = getDynamicProgress(card);
-            const isEditingColor = editingColorProjectId === card.id;
-            const { h, s } = getProjectHSL(card);
-            
-            return (
-            <div 
-              key={card.id}
-              onMouseEnter={() => playSound('click')}
-              onClick={() => {
-                if (isEditingColor) return;
-                setActiveProject(card.id);
-                setEditingProjectModal(card);
-                setShowNewProjectModal(true);
-                playSound('click');
-              }}
-              style={{ backgroundColor: getProjectBgColor(card) }}
-              className={`relative w-[280px] h-[140px] rounded-[20px] p-4 flex flex-col shrink-0 cursor-pointer transition-all duration-300 pointer-events-auto snap-start border border-white/10 overflow-hidden shadow-lg ${
-                isActiveProject ? "ring-2 ring-white/40 scale-[1.02]" : "hover:scale-[1.02]"
-              }`}
-            >
-              {/* Soft White Radial Highlight (Light overlay on top corner for depth) */}
-              <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
-                <div className="absolute -top-10 -left-10 w-32 h-32 bg-white/15 rounded-full blur-[20px]" />
-              </div>
-              
-              {/* Header: Logo + Title/Client + Pill */}
-              <div className="relative z-10 flex items-center gap-3 w-full">
-                  <div className="relative flex-shrink-0 group/logo">
-                    <motion.div 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playSound('pop');
-                        setEditingColorProjectId(isEditingColor ? null : card.id);
-                      }}
-                      animate={{ rotate: isEditingColor ? 360 : 0 }}
-                      transition={{ type: "spring", stiffness: 100, damping: 15 }}
-                      className="w-9 h-9 rounded-full bg-black/20 border border-white/5 flex items-center justify-center shadow-inner cursor-pointer hover:scale-105 active:scale-95 hover:bg-white/10 hover:border-white/20 hover:shadow-[0_0_12px_rgba(255,255,255,0.15)] transition-all duration-300"
-                    >
-                      <Image src="/taski-icon.png?v=3" alt="Taski Icon" width={20} height={20} className="object-contain opacity-90" />
-                    </motion.div>
-                    
-                    {/* Tooltip for hover affordance (placed outside the rotating motion.div) */}
-                    {!isEditingColor && (
-                      <div className="absolute bottom-11 left-1/2 -translate-x-1/2 px-2 py-1 bg-black/80 backdrop-blur-md border border-white/10 rounded-lg opacity-0 pointer-events-none group-hover/logo:opacity-100 transition-opacity duration-200 whitespace-nowrap text-[9px] font-black uppercase tracking-wider text-white z-50 shadow-xl">
-                        Cambiar Color
-                      </div>
-                    )}
-                  </div>
-                  
-                  {isEditingColor ? (
-                    <h3 className={`${isNightMode ? 'text-zinc-100' : isNeumorphic ? 'text-slate-800' : 'text-white/90'} font-bold text-[13px] tracking-wide leading-tight`}>
-                      Elige un color
-                    </h3>
-                  ) : (
-                    <div className="flex flex-col min-w-0 flex-1">
-                      {/* Title and Priority Pill Row */}
-                      <div className="flex items-center justify-between gap-2 w-full">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          {/* Quick delete trash icon */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm(`¿Estás seguro de que deseas eliminar el proyecto "${card.title}" y todas sus tareas?`)) {
-                                deleteProject(card.id);
-                              }
-                            }}
-                            className="p-1 rounded-full text-zinc-500 hover:text-rose-500 hover:bg-rose-500/10 transition-colors duration-200 shrink-0"
-                            title="Eliminar Proyecto"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <h3 className={`${isNightMode ? 'text-zinc-100' : isNeumorphic ? 'text-slate-800' : 'text-white/90'} font-bold text-[13px] truncate tracking-wide leading-tight`} title={card.title}>
-                            {card.title}
-                          </h3>
-                        </div>
-                        
-                        {/* Priority Pill with Dropdown */}
-                        <div className="relative flex-shrink-0">
-                          <div 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              playSound('pop');
-                              setOpenDropdownId(openDropdownId === card.id ? null : card.id);
-                            }}
-                            className={`px-2 py-[2px] rounded-full border text-[8px] font-black uppercase tracking-[0.1em] cursor-pointer hover:scale-105 active:scale-95 transition-all shadow-lg leading-none flex items-center justify-center ${
-                              card.priority === "Urgente" ? "bg-rose-500/20 border-rose-500/40 text-rose-400" : 
-                              card.priority === "Alta" ? "bg-orange-500/20 border-orange-500/40 text-orange-400" : 
-                              card.priority === "Media" ? "bg-yellow-500/20 border-yellow-500/40 text-yellow-400" : "bg-emerald-500/20 border-emerald-500/40 text-emerald-400"
-                            }`}
-                          >
-                            {card.priority}
-                          </div>
-                          
-                          {/* Dropdown Menu (Escapes the card) */}
-                          {openDropdownId === card.id && (
-                            <div className="absolute top-0 left-full ml-4 w-[75px] z-[100] flex flex-col gap-1.5">
-                              {[
-                                { label: 'Urgente', classes: 'bg-rose-500/20 border-rose-500/40 text-rose-400' },
-                                { label: 'Alta', classes: 'bg-orange-500/20 border-orange-500/40 text-orange-400' },
-                                { label: 'Media', classes: 'bg-yellow-500/20 border-yellow-500/40 text-yellow-400' },
-                                { label: 'Baja', classes: 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' }
-                              ].filter(p => p.label !== card.priority).map(p => (
-                                  <div 
-                                    key={p.label} 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      playSound('pop');
-                                      updatePriority(card.id, p.label);
-                                      setOpenDropdownId(null);
-                                    }}
-                                  className={`px-2 py-[3px] rounded-full border text-[7.5px] font-black uppercase tracking-[0.1em] cursor-pointer hover:scale-105 active:scale-95 transition-all shadow-lg leading-none flex items-center justify-center backdrop-blur-xl ${p.classes}`}
-                                >
-                                  {p.label}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Client Subtitle */}
-                      <span className={`${isNightMode ? 'text-zinc-400' : isNeumorphic ? 'text-slate-400' : 'text-white/40'} text-[9px] font-bold uppercase tracking-widest truncate mt-0.5`} title={card.client}>
-                        Cliente: {card.client}
-                      </span>
-                    </div>
-                  )}
-              </div>
-
-              {isEditingColor ? (
-                <div className="relative z-10 flex flex-col w-full min-h-0 flex-1 justify-center">
-                  {/* Preset color selection carousel */}
-                  <div className="flex items-center gap-1.5 w-full mt-1.5 select-none overflow-hidden flex-shrink-0">
-                    <div 
-                      className="w-5 h-5 rounded-full border border-white/40 shadow-inner flex-shrink-0 relative"
-                      style={{
-                        backgroundColor: `hsl(${h}, ${s}%, 55%)`
-                      }}
-                      title="Color Personalizado"
-                    >
-                      <div className="absolute inset-0 rounded-full border border-black/20" />
-                    </div>
-
-                    <div className="w-px h-4 bg-white/15 flex-shrink-0" />
-
-                    <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar flex-1 py-0.5 mask-linear-right">
-                      {COLOR_PRESETS.map((preset, idx) => (
-                        <button
-                          key={idx}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            playSound('pop');
-                            updateProjectColor(card.id, preset.h, preset.s, preset.l);
-                          }}
-                          className={`w-5 h-5 rounded-full border cursor-pointer hover:scale-110 active:scale-95 transition-all flex-shrink-0 relative flex items-center justify-center ${
-                            Math.abs(preset.h - h) < 3 && Math.abs(preset.s - s) < 3 
-                              ? 'border-white/60 scale-105 shadow-[0_0_8px_rgba(255,255,255,0.2)]' 
-                              : 'border-white/10 hover:border-white/30'
-                          }`}
-                          style={{
-                            backgroundColor: `hsl(${preset.h}, ${preset.s}%, 55%)`
-                          }}
-                          title={preset.name}
-                        >
-                          <div className="absolute inset-0 rounded-full border border-black/10" />
-                          {Math.abs(preset.h - h) < 3 && Math.abs(preset.s - s) < 3 && (
-                            <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Dual Sliders: Hue and Saturation */}
-                  <div className="flex flex-col gap-1 mt-1.5 w-full">
-                    {/* Hue Slider */}
-                    <div className="relative w-full h-1">
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="360" 
-                        value={h}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          updateProjectColor(card.id, val, s);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full h-1 rounded-full appearance-none outline-none cursor-pointer color-picker-slider relative z-10"
-                        style={{
-                          background: "linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)"
-                        }}
-                      />
-                    </div>
-
-                    {/* Saturation Slider */}
-                    <div className="relative w-full h-1">
-                      <input 
-                        type="range" 
-                        min="0" 
-                        max="100" 
-                        value={s}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value);
-                          updateProjectColor(card.id, h, val);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="w-full h-1 rounded-full appearance-none outline-none cursor-pointer color-picker-slider relative z-10"
-                        style={{
-                          background: `linear-gradient(to right, hsl(${h}, 0%, 50%), hsl(${h}, 100%, 50%))`
-                        }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* Progress Bars */}
-                  <div className="relative z-10 mt-3 flex flex-col gap-1.5">
-                    <div className={`flex items-center justify-between text-[8px] font-black tracking-[0.15em] uppercase ${isNightMode ? 'text-zinc-400' : isNeumorphic ? 'text-slate-500' : 'text-white/60'}`}>
-                      <span>Progreso del Proyecto</span>
-                      <span className={isNightMode ? 'text-zinc-200 font-bold' : isNeumorphic ? 'text-slate-700' : 'text-white/80'}>{dynamicProgress.progress}</span>
-                    </div>
-                    <div className={`w-full h-2 rounded-full overflow-hidden shadow-inner ${isNightMode ? 'bg-zinc-900 border border-white/5' : isNeumorphic ? 'bg-slate-200' : 'bg-black/40'}`}>
-                      <div 
-                        className="h-full rounded-full transition-all duration-500 ease-out" 
-                        style={{ 
-                          width: dynamicProgress.percent,
-                          backgroundColor: getProjectBgColor(card)
-                        }} 
-                      />
-                    </div>
-                  </div>
-
-                  {/* Bottom Metadata: Cost | Days Remaining */}
-                  <div className="relative z-10 mt-auto flex items-center justify-between w-full">
-                    {/* Cost */}
-                    <div className="flex items-baseline gap-1">
-                      <span className={`${isNightMode ? 'text-zinc-400' : isNeumorphic ? 'text-slate-400' : 'text-white/40'} text-[10px] font-bold`}>$</span>
-                      <span className={`${isNightMode ? 'text-zinc-100 font-black' : isNeumorphic ? 'text-slate-800' : 'text-white/90'} text-[13px] font-black tracking-wide`}>{card.cost?.replace('$', '')}</span>
-                    </div>
-                    
-                    <div className={`w-px h-4 ${isNightMode ? 'bg-zinc-800' : isNeumorphic ? 'bg-slate-300' : 'bg-white/20'}`} />
-
-                    {/* Days Remaining */}
-                    <span className={`${isNightMode ? 'text-zinc-400' : isNeumorphic ? 'text-slate-500' : 'text-white/50'} text-[8.5px] font-bold uppercase tracking-widest truncate text-right`}>
-                      Termina en <span className={isNightMode ? 'text-zinc-200 font-bold' : isNeumorphic ? 'text-slate-700' : 'text-white/90'}>{card.daysRemaining}</span>
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-            );
-          })}
-          
-          {/* Botón Nuevo Proyecto */}
-          <div 
-            onClick={() => {
-              playSound('click');
-              setShowNewProjectModal(true);
-            }}
-            className={`relative w-[280px] h-[60px] rounded-[20px] p-4 flex items-center justify-center shrink-0 cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 pointer-events-auto snap-start border border-dashed group ${
-              isNeumorphic
-                ? "border-slate-400 text-slate-500 hover:text-slate-800 bg-transparent shadow-[inset_3px_3px_6px_#b8c4d9,inset_-3px_-3px_6px_#ffffff]"
-                : "liquid-glass-btn border-white/20 hover:border-white/50 text-white/50 hover:text-white"
-            }`}
-          >
-            <span className="text-[12px] font-bold uppercase tracking-widest flex items-center gap-2 transition-colors">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              Nuevo Proyecto
-            </span>
-          </div>
-        </div>
-      </div>
-      )}
-
-      {/* Scroll Fade Overlay (Bottom) */}
-      {activeTab === "proyectos" && (
-        <div className={`absolute bottom-4 left-6 w-[280px] h-24 bg-gradient-to-t pointer-events-none z-50 transition-all duration-500 ${
-          isNightMode
-            ? "from-[#121212] via-[#121212]/90 to-transparent"
-            : isNeumorphic
-              ? "from-[#e6eef8] via-[#e6eef8]/90 to-transparent"
-              : "from-[#fffce2] via-[#fffce2]/90 to-transparent"
-        }`} />
-      )}
-
-      {/* Selected Project Dashboard */}
-      {activeTab === "proyectos" && (
-        <ProjectDashboard 
-          project={projects.find(p => p.id === activeProject) || null} 
-          onUpdateTitle={updateTitle}
-          onUpdateBriefCore={updateBriefCore}
-          onUpdateDates={updateDates}
-          onUpdateTasks={updateTasks}
-          onUpdateClient={updateClient}
-          onUpdatePackage={updatePackage}
-          onUpdateCost={updateCost}
-          onUpdateBurnRate={updateBurnRate}
-          onUpdateStatus={updateStatus}
-          onUpdatePriority={updatePriority}
-          onUpdateDaysRemaining={updateDaysRemaining}
-          onSelectTask={(taskId) => setActiveTaskId(taskId)}
-          onDeleteProject={deleteProject}
-          onSelectProject={(projId) => {
-            const targetProject = projects.find((p) => String(p.id) === String(projId));
-            if (targetProject) {
-              setActiveProject(targetProject.id);
-              setEditingProjectModal(targetProject);
-              setShowNewProjectModal(true);
-              playSound('click');
-            }
-          }}
-          isNeumorphic={isNeumorphic}
-          isNightMode={isNightMode}
-          isSidebarHovered={isSidebarHovered}
-        />
       )}
 
       {/* Empty Canvas View */}
@@ -1897,36 +1556,7 @@ export default function BrandexV3Page() {
               />
             )}
 
-            {/* Render Projects V2 Dashboard */}
-            {activeTab === "proyectos_v2" && (
-              <ProjectsV2Dashboard
-                projects={projects}
-                onSelectProject={(projId) => {
-                  const targetProject = projects.find((p) => String(p.id) === String(projId));
-                  if (targetProject) {
-                    setActiveProject(targetProject.id);
-                    setActiveTab("proyectos");
-                    playSound('click');
-                  } else {
-                    setActiveProject(Number(projId));
-                    setActiveTab("proyectos");
-                  }
-                }}
-                onEditProject={(proj) => {
-                  setActiveProject(proj.id);
-                  setEditingProjectModal(proj);
-                  setShowNewProjectModal(true);
-                  playSound('click');
-                }}
-                onNewProject={() => {
-                  setEditingProjectModal(null);
-                  setShowNewProjectModal(true);
-                  playSound('click');
-                }}
-                isNeumorphic={isNeumorphic}
-                isNightMode={isNightMode}
-              />
-            )}
+
 
             {/* Render Team Dashboard */}
             {activeTab === "equipo" && (

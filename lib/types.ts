@@ -149,7 +149,7 @@ export interface LoginResponse {
 // ── UI State ──────────────────────────────────────────────────────────────────
 export type AdminTab =
   | "pulse" | "engine" | "timeline" | "pipeline"
-  | "clientes" | "proyectos" | "proyectos_v2" | "tareas" | "talent"
+  | "clientes" | "proyectos" | "tareas" | "talent"
   | "analytics" | "recursos" | "calendario" | "finanzas" | "accesos";
 
 export type CalView = "day" | "week";

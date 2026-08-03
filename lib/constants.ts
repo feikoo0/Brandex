@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  Braindex OS — Constants (Audited with Notion Schema)
+//  Braindex OS — Constants (Audited with Notion Schema & NewProjectModal)
 // ─────────────────────────────────────────────────────────────────────────────
 
 // --- TAREAS (Matriz) ---
@@ -44,20 +44,21 @@ export const AREAS = [
   "COMMUNITY",
 ] as const;
 
-// --- PROYECTOS ---
+// --- PROYECTOS (Alineado exactamente con NewProjectModal) ---
 export const PROJ_STATUS_OPTS = [
-  "🧠 Planificacion",
-  "🟢 Activos",
-  "👁️ En Revision",
-  "✅ Completado",
+  "Backlog",
+  "Planificación",
   "Activo",
+  "En Proceso",
+  "En Revisión",
   "Completado"
 ] as const;
 
 export const PROJ_PRIO_OPTS = [
-  "MODERADO",
-  "⚠️IMPORTANTE",
-  "🔥 U R G E N T E 🔥"
+  "Baja",
+  "Media",
+  "Alta",
+  "Urgente"
 ] as const;
 
 export const PROJ_CICLO_OPTS = [
@@ -83,15 +84,19 @@ export const ACTIVE_STATES = new Set([
   "Revision",
   "Modificar",
   "Activo",
-  "🟢 Activos",
-  "🧠 Planificacion"
+  "Backlog",
+  "Planificación",
+  "Planificacion",
+  "En Proceso",
+  "En Revisión",
+  "En Revision"
 ]);
 
 export const DONE_STATES = new Set([
   "Hecho",
   "Publicado",
-  "✅ Completado",
-  "Completado"
+  "Completado",
+  "Aprobado"
 ]);
 
 export const STATUS_COLORS: Record<string, string> = {
@@ -106,23 +111,25 @@ export const STATUS_COLORS: Record<string, string> = {
   "Publicado":      "#30d158",
   "Cancelado":      "#ff453a",
   // Projects specific
-  "🧠 Planificacion": "#bf5af2",
-  "🟢 Activos":       "#34c759",
-  "👁️ En Revision":   "#ff9f0a",
-  "✅ Completado":    "#30d158",
-  "Activo":          "#34c759",
-  "Completado":      "#30d158",
-  "Pausado":         "#ff9f0a",
-  "En espera":       "#ff9f0a",
+  "Backlog":        "#8e8e93",
+  "Planificación":  "#bf5af2",
+  "Planificacion":  "#bf5af2",
+  "Activo":         "#34c759",
+  "En Proceso":     "#0a84ff",
+  "En Revisión":    "#ff9f0a",
+  "En Revision":    "#ff9f0a",
+  "Completado":     "#30d158",
+  "Pausado":        "#ff9f0a",
+  "En espera":      "#ff9f0a",
 };
 
 export const PRIORITY_COLORS: Record<string, string> = {
-  // Task style
-  "Urgente": "#ff453a",
-  "Alta":    "#ff9f0a",
-  "Media":   "#0a84ff",
-  "Baja":    "#636366",
-  // Project style
+  "Urgente":           "#ff453a",
+  "Alta":              "#ff9f0a",
+  "Media":             "#0a84ff",
+  "Baja":              "#636366",
+  "No Priority":       "#636366",
+  "Sin prioridad":     "#636366",
   "🔥 U R G E N T E 🔥": "#ff453a",
   "⚠️IMPORTANTE":       "#ff9f0a",
   "MODERADO":           "#0a84ff",
@@ -138,49 +145,37 @@ export const ADMIN_NAV = [
   { tab: "engine",    label: "Kanban" },
   { tab: "timeline",  label: "Timeline" },
   { sep: "GESTIÓN" },
-  { tab: "clientes",  label: "Clientes" },
-  { tab: "pipeline",  label: "Pipeline" },
   { tab: "proyectos", label: "Proyectos" },
-  { tab: "proyectos_v2", label: "Proyectos V2" },
-  { tab: "tareas",    label: "Tareas" },
-  { sep: "EQUIPO & DATA" },
-  { tab: "talent",    label: "Equipo" },
-  { tab: "analytics", label: "Analytics" },
-  { tab: "recursos",  label: "Recursos" },
-  { sep: "SISTEMA" },
-  { tab: "calendario", label: "Calendario" },
-  { tab: "finanzas",   label: "Finanzas" },
-  { tab: "accesos",    label: "Accesos" },
-] as const;
+  { tab: "clientes",  label: "Clientes" },
+  { tab: "equipo",    label: "Equipo" },
+  { tab: "accesos",   label: "Accesos" },
+];
 
 export const WORKER_NAV = [
-  { tab: "mis-tareas",   label: "Mis Tareas" },
-  { tab: "mis-proyectos",label: "Mis Proyectos" },
-  { tab: "calendario",   label: "Calendario" },
-] as const;
+  { tab: "pulse",    label: "Mis Tareas" },
+  { tab: "engine",   label: "Kanban" },
+  { tab: "timeline", label: "Timeline" },
+];
 
 export const CLIENT_NAV = [
-  { tab: "mis-proyectos", label: "Mis Proyectos" },
-  { tab: "calendario",    label: "Calendario" },
-] as const;
+  { tab: "pulse",    label: "Mi Marca" },
+  { tab: "timeline", label: "Aprobaciones" },
+];
 
-// --- Project Colors (Timeline & Dots) ---
 export const PROJECT_COLORS = [
-  "bg-blue-500",
-  "bg-purple-500",
-  "bg-pink-500",
-  "bg-orange-500",
-  "bg-teal-500",
-  "bg-indigo-500",
-  "bg-yellow-500",
+  "#3a7bd5",
+  "#9b51e0",
+  "#27ae60",
+  "#e67e22",
+  "#e74c3c",
+  "#1abc9c",
+  "#f1c40f",
+  "#34495e",
 ];
 
-export const CAPSULE_COLORS = [
-  "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  "bg-purple-500/10 text-purple-500 border-purple-500/20",
-  "bg-pink-500/10 text-pink-500 border-pink-500/20",
-  "bg-orange-500/10 text-orange-500 border-orange-500/20",
-  "bg-teal-500/10 text-teal-500 border-teal-500/20",
-  "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-  "bg-yellow-500/10 text-yellow-500 border-yellow-500/20",
-];
+export const CAPSULE_COLORS: Record<string, string> = {
+  "Pendiente": "#3a7bd5",
+  "En proceso": "#0a84ff",
+  "Revision": "#ff9f0a",
+  "Hecho": "#34c759",
+};
