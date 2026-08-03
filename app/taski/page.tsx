@@ -838,7 +838,7 @@ export default function BrandexV3Page() {
       ) : (
         <div className="absolute top-[43px] left-[11px] w-[232px] z-[60] pointer-events-auto flex items-center justify-between">
           <div className="flex items-center pl-2.5">
-            <span className={`text-[22px] font-light tracking-wide select-none ${isNightMode ? 'text-white/90' : 'text-slate-800'}`}>
+            <span className={`text-[24px] font-medium tracking-wide select-none ${isNightMode ? 'text-white/90' : 'text-slate-800'}`}>
               Taski
             </span>
           </div>
