@@ -837,15 +837,10 @@ export default function BrandexV3Page() {
         </div>
       ) : (
         <div className="absolute top-[43px] left-[11px] w-[232px] z-[60] pointer-events-auto flex items-center justify-between">
-          <div className="w-10 h-10 flex items-center justify-center">
-            <Image 
-              src="/taski-icon.png?v=3" 
-              alt="Taski Icon" 
-              width={28} 
-              height={28} 
-              referrerPolicy="no-referrer"
-              className={`object-contain opacity-90 transition-all duration-300 ${isNightMode ? 'brightness-125' : 'invert-[0.15]'}`}
-            />
+          <div className="flex items-center pl-2.5">
+            <span className={`text-[21px] font-bold tracking-tight select-none ${isNightMode ? 'text-white' : 'text-slate-900'}`}>
+              Taski
+            </span>
           </div>
 
           <button
