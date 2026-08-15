@@ -1696,7 +1696,7 @@ export default function BrandexV3Page() {
               <div className={`flex items-center justify-between text-[9px] uppercase tracking-[0.15em] font-bold mt-4 transition-colors duration-500 ${
                 isNeumorphic ? "text-slate-400" : "text-white/30"
               }`}>
-                <span>Taski Engine v1.0.0</span>
+                <span>Taski 1.5</span>
                 <div className="flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   <span>Lienzo Listo</span>

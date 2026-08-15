@@ -3,8 +3,8 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Braindex OS",
-  description: "Sistema de gestión para agencias creativas",
+  title: "Taski 1.5",
+  description: "Taski 1.5 — Sistema de gestión para agencias creativas",
 };
 
 export default function RootLayout({
