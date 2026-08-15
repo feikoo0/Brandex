@@ -216,7 +216,7 @@ export function ProjectsView() {
 
       {/* ── CATALOGO DE PROYECTOS (VISTA EN GRID DE 5 COLUMNAS O TABLA) ── */}
       {displayMode === "grid" ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-0">
           {filteredProjects.map((p) => (
             <ProjectCardItem 
               key={p.id} 

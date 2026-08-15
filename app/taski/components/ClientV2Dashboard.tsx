@@ -37,8 +37,8 @@ export function ClientV2Dashboard({
   isNightMode = true,
 }: ClientV2DashboardProps) {
   // State for Clients
-  const [clients, setClients] = useState<ClientItem[]>(INITIAL_CLIENTS);
-  const [activeClientId, setActiveClientId] = useState<number>(1);
+  const [clients, setClients] = useState<ClientItem[]>(INITIAL_CLIENTS as any);
+  const [activeClientId, setActiveClientId] = useState<string | number>(1);
   const [isClientsLoaded, setIsClientsLoaded] = useState<boolean>(false);
   const [isEditingNotes, setIsEditingNotes] = useState<boolean>(false);
   const [editedNotes, setEditedNotes] = useState<string>('');
@@ -71,18 +71,18 @@ export function ClientV2Dashboard({
         const snap = await getDocs(colRef);
         if (snap.empty) {
           // Seed INITIAL_CLIENTS into Firestore
-          const seedPromises = INITIAL_CLIENTS.map(c => setDoc(doc(db, "v3_clients", String(c.id)), c));
+          const seedPromises = INITIAL_CLIENTS.map((c: any) => setDoc(doc(db, "v3_clients", String(c.id)), c));
           await Promise.all(seedPromises);
-          setClients(INITIAL_CLIENTS);
+          setClients(INITIAL_CLIENTS as any);
         } else {
           const list: ClientItem[] = [];
           snap.forEach(d => list.push(d.data() as ClientItem));
-          list.sort((a, b) => a.id - b.id);
+          list.sort((a: any, b: any) => String(a.id).localeCompare(String(b.id)));
           setClients(list);
         }
       } catch (err) {
         console.error("Error loading v3_clients from Firestore:", err);
-        setClients(INITIAL_CLIENTS);
+        setClients(INITIAL_CLIENTS as any);
       } finally {
         setIsClientsLoaded(true);
       }
@@ -92,7 +92,7 @@ export function ClientV2Dashboard({
 
   // Active client object
   const activeClient = useMemo(() => {
-    return clients.find(c => c.id === activeClientId) || clients[0] || INITIAL_CLIENTS[0];
+    return clients.find(c => String(c.id) === String(activeClientId)) || clients[0] || INITIAL_CLIENTS[0];
   }, [clients, activeClientId]);
 
   // Update active client notes when switching client
@@ -127,7 +127,8 @@ export function ClientV2Dashboard({
       "Prospecto": "bg-amber-500/10 border-amber-500/30 text-amber-400",
       "Concluido": "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
     };
-    const nextIndex = (statuses.indexOf(activeClient.status) + 1) % statuses.length;
+    const currentStatus = (activeClient.status as any) || "Activo";
+    const nextIndex = (statuses.indexOf(currentStatus) + 1) % statuses.length;
     const nextStatus = statuses[nextIndex];
     const nextColor = colors[nextStatus];
 
@@ -145,7 +146,7 @@ export function ClientV2Dashboard({
   // Projects of the active client
   const clientProjects = useMemo(() => {
     if (!activeClient) return [];
-    const clientNameClean = activeClient.name.trim().toLowerCase();
+    const clientNameClean = (activeClient.name || (activeClient as any).nombre || "").trim().toLowerCase();
     return projects.filter(p => {
       if (!p.client) return false;
       const pClientClean = p.client.trim().toLowerCase();

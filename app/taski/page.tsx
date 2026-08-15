@@ -18,8 +18,11 @@ import { TeamDashboard } from "./components/TeamDashboard";
 import { ClientsDashboard } from "./components/ClientsDashboard";
 import { ClientV2Dashboard } from "./components/ClientV2Dashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { InicioDashboard } from "./components/InicioDashboard";
 import { ProjectsV2Dashboard } from "./components/ProjectsV2Dashboard";
 import { ProjectsView } from "@/components/views/ProjectsView";
+import { GlobalNav } from "@/components/navigation/GlobalNav";
+import { FinanzasGlobalesDashboard } from "./components/FinanzasGlobalesDashboard";
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { persistProjectUpdate } from "./utils/persist";
 import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting } from "@/lib/utils";
@@ -1145,42 +1148,33 @@ export default function BrandexV3Page() {
               transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
               className="flex items-center shrink-0 overflow-hidden"
             >
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: -6, filter: "blur(4px)" }}
-                  animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, y: 6, filter: "blur(4px)" }}
-                  transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex flex-row items-center h-[64px] gap-2.5 leading-tight shrink-0 select-none"
-                >
-                  <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
-                    isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'
+              <div className="flex flex-row items-center h-[64px] gap-2.5 leading-tight shrink-0 select-none">
+                <span className={`text-xl md:text-2xl font-medium tracking-tight transition-colors duration-500 ${
+                  isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'
+                }`}>
+                  {activeTab === "inicio" ? "Inicio" :
+                   activeTab === "proyectos" ? "Panel de Proyectos" :
+                   activeTab === "equipo" ? "Espacio de Equipo" :
+                   activeTab === "clientes" ? "Directorio de Clientes" :
+                   activeTab === "cliente_v2" ? "Panel Cliente V2" :
+                   activeTab === "finanzas" ? "Métricas Financieras" :
+                   activeTab === "recursos" ? "Biblioteca de Recursos" :
+                   activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
+                </span>
+                {activeTab !== "inicio" && (
+                  <span className={`text-xl md:text-2xl font-normal tracking-tight transition-colors duration-500 ${
+                    isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
                   }`}>
-                    {activeTab === "inicio" ? "Inicio" :
-                     activeTab === "proyectos" ? "Panel de Proyectos" :
-                     activeTab === "equipo" ? "Espacio de Equipo" :
-                     activeTab === "clientes" ? "Directorio de Clientes" :
-                     activeTab === "cliente_v2" ? "Panel Cliente V2" :
-                     activeTab === "finanzas" ? "Métricas Financieras" :
-                     activeTab === "recursos" ? "Biblioteca de Recursos" :
-                     activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
+                    {activeTab === "proyectos" ? "flujo y entregables activos" :
+                     activeTab === "equipo" ? "colaboradores y carga de trabajo" :
+                     activeTab === "clientes" ? "marcas asociadas y contratos" :
+                     activeTab === "cliente_v2" ? "visión 360° de marca y proyectos" :
+                     activeTab === "finanzas" ? "facturación y margen operativo" :
+                     activeTab === "recursos" ? "repositorio de assets y documentación" :
+                     activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
                   </span>
-                  {activeTab !== "inicio" && (
-                    <span className={`text-xl md:text-2xl font-normal tracking-tight transition-colors duration-500 ${
-                      isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
-                    }`}>
-                      {activeTab === "proyectos" ? "flujo y entregables activos" :
-                       activeTab === "equipo" ? "colaboradores y carga de trabajo" :
-                       activeTab === "clientes" ? "marcas asociadas y contratos" :
-                       activeTab === "cliente_v2" ? "visión 360° de marca y proyectos" :
-                       activeTab === "finanzas" ? "facturación y margen operativo" :
-                       activeTab === "recursos" ? "repositorio de assets y documentación" :
-                       activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
-                    </span>
-                  )}
-                </motion.div>
-              </AnimatePresence>
+                )}
+              </div>
             </motion.div>
           </div>
 
@@ -1508,206 +1502,212 @@ export default function BrandexV3Page() {
 
       {/* Render Projects View (Catálogo & Fullscreen) */}
       {activeTab === "proyectos" && (
-        <div className="absolute top-[75px] left-6 right-6 bottom-4 z-30 pointer-events-auto">
+        <div className="absolute top-[75px] left-6 right-6 bottom-4 z-[70] pointer-events-auto">
           <ProjectsView />
         </div>
       )}
 
       {/* Empty Canvas View */}
-      <AnimatePresence mode="wait">
-        {activeTab !== "proyectos" && (
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 15, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: -15, filter: "blur(8px)" }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="absolute top-[80px] left-6 right-6 bottom-4 z-30 pointer-events-auto flex flex-col gap-6 overflow-x-hidden"
-          >
-            {/* Render Blank Inicio Page */}
-            {activeTab === "inicio" && (
-              <div className="w-full h-full flex items-center justify-center pointer-events-none" />
-            )}
+      {activeTab !== "proyectos" && (
+        <div
+          key={activeTab}
+          className={`absolute z-30 pointer-events-auto overflow-x-hidden ${
+            activeTab === "inicio"
+              ? "inset-0 overflow-hidden"
+              : "top-[80px] left-6 right-6 bottom-4 flex flex-col gap-6"
+          }`}
+        >
+          {/* Render Inicio Page with Hero Dot Background */}
+          {activeTab === "inicio" && (
+            <InicioDashboard />
+          )}
 
-            {/* Render Home Dashboard (Work) */}
-            {activeTab === "home" && (
-              <HomeDashboard
-                projects={projects}
-                onSelectTab={(tab) => setActiveTab(tab)}
-                onSelectProject={(projectId) => {
-                  const targetProject = projects.find((p) => String(p.id) === String(projectId));
-                  if (targetProject) {
-                    setActiveProject(targetProject.id);
-                    setEditingProjectModal(targetProject);
-                    setShowNewProjectModal(true);
-                    playSound('click');
-                  } else {
-                    setActiveProject(projectId);
-                    setActiveTab("proyectos");
-                  }
-                }}
-                isNeumorphic={isNeumorphic}
-                isNightMode={isNightMode}
-                activeView={homeView}
-                onViewChange={setHomeView}
-                viewFilterMode={viewFilterMode}
-                groupingMode={groupingMode}
-                onUpdateProjects={setProjects}
-                isHomeEditMode={isHomeEditMode}
-                onDeleteProject={deleteProject}
-                searchQuery={searchQuery}
-                onSearchQueryChange={setSearchQuery}
-              />
-            )}
-
+          {/* Render Home Dashboard (Work) */}
+          {activeTab === "home" && (
+            <HomeDashboard
+              projects={projects}
+              onSelectTab={(tab) => setActiveTab(tab)}
+              onSelectProject={(projectId) => {
+                const targetProject = projects.find((p) => String(p.id) === String(projectId));
+                if (targetProject) {
+                  setActiveProject(targetProject.id);
+                  setEditingProjectModal(targetProject);
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                } else {
+                  setActiveProject(projectId);
+                  setActiveTab("proyectos");
+                }
+              }}
+              isNeumorphic={isNeumorphic}
+              isNightMode={isNightMode}
+              activeView={homeView}
+              onViewChange={setHomeView}
+              viewFilterMode={viewFilterMode}
+              groupingMode={groupingMode}
+              onUpdateProjects={setProjects}
+              isHomeEditMode={isHomeEditMode}
+              onDeleteProject={deleteProject}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+            />
+          )}
 
 
-            {/* Render Team Dashboard */}
-            {activeTab === "equipo" && (
-              <TeamDashboard 
-                projects={projects}
-                onUpdateProjects={setProjects}
-                isNeumorphic={isNeumorphic}
-                isNightMode={isNightMode}
-              />
-            )}
 
-            {/* Render Clients Dashboard */}
-            {activeTab === "clientes" && (
-              <ClientsDashboard 
-                projects={projects}
-                onUpdateProjects={setProjects}
-                isNeumorphic={isNeumorphic}
-                isNightMode={isNightMode}
-              />
-            )}
+          {/* Render Team Dashboard */}
+          {activeTab === "equipo" && (
+            <TeamDashboard 
+              projects={projects}
+              onUpdateProjects={setProjects}
+              isNeumorphic={isNeumorphic}
+              isNightMode={isNightMode}
+            />
+          )}
 
-            {/* Render Client V2 Dashboard */}
-            {activeTab === "cliente_v2" && (
-              <ClientV2Dashboard 
-                projects={projects}
-                onUpdateProjects={setProjects}
-                onSelectProject={(projId) => {
-                  const targetProject = projects.find((p) => String(p.id) === String(projId));
-                  if (targetProject) {
-                    setActiveProject(targetProject.id);
-                    setEditingProjectModal(targetProject);
-                    setShowNewProjectModal(true);
-                    playSound('click');
-                  } else {
-                    setActiveProject(Number(projId));
-                    setActiveTab("proyectos");
-                  }
-                }}
-                isNeumorphic={isNeumorphic}
-                isNightMode={isNightMode}
-              />
-            )}
+          {/* Render Clients Dashboard */}
+          {activeTab === "clientes" && (
+            <ClientsDashboard 
+              projects={projects}
+              onUpdateProjects={setProjects}
+              isNeumorphic={isNeumorphic}
+              isNightMode={isNightMode}
+            />
+          )}
 
-            {/* Tab Header Pill & Details (For Finanzas, Recursos & Ajustes) */}
-            {(activeTab === "finanzas" || activeTab === "ajustes" || activeTab === "recursos") && (
-              <div className="flex flex-col gap-1">
-                <div className={`relative px-4 py-1.5 rounded-full text-[11px] font-bold tracking-widest uppercase flex items-center justify-center w-fit overflow-hidden border shadow-lg cursor-default select-none transition-all duration-500 ${
-                  isNeumorphic 
-                    ? "bg-slate-100/80 border-slate-200 text-slate-700 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05)]" 
-                    : "liquid-glass-btn border-white/10 text-white/95"
-                }`}>
-                  {!isNeumorphic && <div className="absolute -top-4 -left-4 w-12 h-12 bg-white opacity-10 rounded-full blur-[10px] pointer-events-none" />}
-                  <span className="relative z-10">
-                    {activeTab === "finanzas" ? "Finanzas" : activeTab === "recursos" ? "Recursos" : "Ajustes"}
+          {/* Render Client V2 Dashboard */}
+          {activeTab === "cliente_v2" && (
+            <ClientV2Dashboard 
+              projects={projects}
+              onUpdateProjects={setProjects}
+              onSelectProject={(projId) => {
+                const targetProject = projects.find((p) => String(p.id) === String(projId));
+                if (targetProject) {
+                  setActiveProject(targetProject.id);
+                  setEditingProjectModal(targetProject);
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                } else {
+                  setActiveProject(Number(projId));
+                  setActiveTab("proyectos");
+                }
+              }}
+              isNeumorphic={isNeumorphic}
+              isNightMode={isNightMode}
+            />
+          )}
+
+          {/* Render Finanzas Globales Dashboard */}
+          {activeTab === "finanzas" && (
+            <FinanzasGlobalesDashboard 
+              onSelectClient={(clientId) => {
+                setActiveTab("clientes");
+                playSound('click');
+              }}
+            />
+          )}
+
+          {/* Tab Header Pill & Details (For Recursos & Ajustes) */}
+          {(activeTab === "ajustes" || activeTab === "recursos") && (
+            <div className="flex flex-col gap-1">
+              <div className={`relative px-4 py-1.5 rounded-full text-[11px] font-bold tracking-widest uppercase flex items-center justify-center w-fit overflow-hidden border shadow-lg cursor-default select-none transition-all duration-500 ${
+                isNeumorphic 
+                  ? "bg-slate-100/80 border-slate-200 text-slate-700 shadow-[inset_2px_2px_5px_rgba(0,0,0,0.05)]" 
+                  : "liquid-glass-btn border-white/10 text-white/95"
+              }`}>
+                {!isNeumorphic && <div className="absolute -top-4 -left-4 w-12 h-12 bg-white opacity-10 rounded-full blur-[10px] pointer-events-none" />}
+                <span className="relative z-10">
+                  {activeTab === "recursos" ? "Recursos" : "Ajustes"}
+                </span>
+              </div>
+              
+              <h1 className={`text-4xl md:text-5xl font-extralight tracking-tight mt-3 transition-colors duration-500 ${
+                isNeumorphic ? 'text-slate-800' : 'text-white/95'
+              }`}>
+                {activeTab === "recursos" ? "Biblioteca de Recursos" : "Ajustes del Sistema"}
+              </h1>
+              <p className={`text-[14px] font-light max-w-xl mt-2 leading-relaxed transition-colors duration-500 ${
+                isNeumorphic ? 'text-slate-500' : 'text-white/50'
+              }`}>
+                {activeTab === "recursos" ? "Repositorio central de assets de diseño, plantillas de marca, guías y documentos compartidos." :
+                 "Ajustes de personalización, conexiones de bases de datos, integraciones de API y preferencias del sistema."}
+              </p>
+            </div>
+          )}
+
+          {/* Canvas Body (For Recursos & Ajustes) */}
+          {(activeTab === "ajustes" || activeTab === "recursos") && (
+            <div className={`flex-1 w-full relative rounded-[32px] overflow-hidden p-8 flex flex-col justify-between transition-all duration-500 ${
+              isNightMode
+                ? "neu-dark-flat border border-white/5 shadow-2xl"
+                : "neu-flat border border-white/60 shadow-2xl"
+            }`}>
+              {/* Blueprint Grid / Wireframe Placeholder */}
+              <div className={`flex-1 rounded-[20px] flex items-center justify-center relative overflow-hidden transition-all duration-500 ${
+                isNightMode
+                  ? "neu-dark-inset border border-white/5"
+                  : "neu-inset border border-white/40"
+              }`}>
+                {/* Dot Matrix Pattern */}
+                <div className={`absolute inset-0 opacity-[0.04] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px] ${
+                  isNeumorphic ? "bg-[radial-gradient(#000_1px,transparent_1px)] opacity-[0.03]" : ""
+                }`} />
+                
+                {/* Tech crosshair markings */}
+                <div className={`absolute top-4 left-4 w-4 h-4 border-t border-l ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
+                <div className={`absolute top-4 right-4 w-4 h-4 border-t border-r ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
+                <div className={`absolute bottom-4 left-4 w-4 h-4 border-b border-l ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
+                <div className={`absolute bottom-4 right-4 w-4 h-4 border-b border-r ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
+
+                <div className="flex flex-col items-center text-center px-4 relative z-10">
+                  <motion.div 
+                    animate={{ 
+                      y: [0, -6, 0],
+                      rotate: [0, 2, -2, 0]
+                    }}
+                    transition={{ 
+                      duration: 5, 
+                      repeat: Infinity,
+                      ease: "easeInOut" 
+                    }}
+                    className={`w-16 h-16 rounded-3xl flex items-center justify-center shadow-lg backdrop-blur-md mb-4 transition-all duration-500 ${
+                      isNeumorphic
+                        ? "bg-[#e6eef8] border border-white/70 text-slate-500 shadow-[4px_4px_10px_#b8c4d9,-4px_-4px_10px_#ffffff]"
+                        : "bg-white/[0.04] border border-white/10 text-white/40"
+                    }`}
+                  >
+                    {activeTab === "recursos" ? <Database className="w-8 h-8" strokeWidth={1} /> :
+                     <Settings className="w-8 h-8" strokeWidth={1} />}
+                  </motion.div>
+                  <span className={`text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-500 ${
+                    isNeumorphic ? "text-slate-700" : "text-white/70"
+                  }`}>Lienzo en Construcción</span>
+                  <span className={`text-[13px] font-extralight max-w-sm mt-1.5 leading-relaxed transition-colors duration-500 ${
+                    isNeumorphic ? "text-slate-500" : "text-white/40"
+                  }`}>
+                    {activeTab === "recursos" 
+                      ? "Repositorio central de assets de diseño, manuales de marca y archivos compartidos."
+                      : "Módulo interactivo listo para conectar con tu base de datos de Notion y servicios de IA."}
                   </span>
                 </div>
-                
-                <h1 className={`text-4xl md:text-5xl font-extralight tracking-tight mt-3 transition-colors duration-500 ${
-                  isNeumorphic ? 'text-slate-800' : 'text-white/95'
-                }`}>
-                  {activeTab === "finanzas" ? "Métricas Financieras" : activeTab === "recursos" ? "Biblioteca de Recursos" : "Ajustes del Sistema"}
-                </h1>
-                <p className={`text-[14px] font-light max-w-xl mt-2 leading-relaxed transition-colors duration-500 ${
-                  isNeumorphic ? 'text-slate-500' : 'text-white/50'
-                }`}>
-                  {activeTab === "finanzas" ? "Supervisa presupuestos, costos operativos, facturación y márgenes de ganancia." : 
-                   activeTab === "recursos" ? "Repositorio central de assets de diseño, plantillas de marca, guías y documentos compartidos." :
-                   "Ajustes de personalización, conexiones de bases de datos, integraciones de API y preferencias del sistema."}
-                </p>
               </div>
-            )}
 
-            {/* Canvas Body (For Finanzas, Recursos & Ajustes) */}
-            {(activeTab === "finanzas" || activeTab === "ajustes" || activeTab === "recursos") && (
-              <div className={`flex-1 w-full relative rounded-[32px] overflow-hidden p-8 flex flex-col justify-between transition-all duration-500 ${
-                isNightMode
-                  ? "neu-dark-flat border border-white/5 shadow-2xl"
-                  : "neu-flat border border-white/60 shadow-2xl"
+              {/* Subtle status/metadata line */}
+              <div className={`flex items-center justify-between text-[9px] uppercase tracking-[0.15em] font-bold mt-4 transition-colors duration-500 ${
+                isNeumorphic ? "text-slate-400" : "text-white/30"
               }`}>
-                {/* Blueprint Grid / Wireframe Placeholder */}
-                <div className={`flex-1 rounded-[20px] flex items-center justify-center relative overflow-hidden transition-all duration-500 ${
-                  isNightMode
-                    ? "neu-dark-inset border border-white/5"
-                    : "neu-inset border border-white/40"
-                }`}>
-                  {/* Dot Matrix Pattern */}
-                  <div className={`absolute inset-0 opacity-[0.04] bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px] ${
-                    isNeumorphic ? "bg-[radial-gradient(#000_1px,transparent_1px)] opacity-[0.03]" : ""
-                  }`} />
-                  
-                  {/* Tech crosshair markings */}
-                  <div className={`absolute top-4 left-4 w-4 h-4 border-t border-l ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
-                  <div className={`absolute top-4 right-4 w-4 h-4 border-t border-r ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
-                  <div className={`absolute bottom-4 left-4 w-4 h-4 border-b border-l ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
-                  <div className={`absolute bottom-4 right-4 w-4 h-4 border-b border-r ${isNeumorphic ? "border-slate-400/30" : "border-white/20"}`} />
-
-                  <div className="flex flex-col items-center text-center px-4 relative z-10">
-                    <motion.div 
-                      animate={{ 
-                        y: [0, -6, 0],
-                        rotate: [0, 2, -2, 0]
-                      }}
-                      transition={{ 
-                        duration: 5, 
-                        repeat: Infinity,
-                        ease: "easeInOut" 
-                      }}
-                      className={`w-16 h-16 rounded-3xl flex items-center justify-center shadow-lg backdrop-blur-md mb-4 transition-all duration-500 ${
-                        isNeumorphic
-                          ? "bg-[#e6eef8] border border-white/70 text-slate-500 shadow-[4px_4px_10px_#b8c4d9,-4px_-4px_10px_#ffffff]"
-                          : "bg-white/[0.04] border border-white/10 text-white/40"
-                      }`}
-                    >
-                      {activeTab === "finanzas" ? <DollarSign className="w-8 h-8" strokeWidth={1} /> :
-                       activeTab === "recursos" ? <Database className="w-8 h-8" strokeWidth={1} /> :
-                       <Settings className="w-8 h-8" strokeWidth={1} />}
-                    </motion.div>
-                    <span className={`text-[11px] font-black uppercase tracking-[0.2em] transition-colors duration-500 ${
-                      isNeumorphic ? "text-slate-700" : "text-white/70"
-                    }`}>Lienzo en Construcción</span>
-                    <span className={`text-[13px] font-extralight max-w-sm mt-1.5 leading-relaxed transition-colors duration-500 ${
-                      isNeumorphic ? "text-slate-500" : "text-white/40"
-                    }`}>
-                      {activeTab === "recursos" 
-                        ? "Repositorio central de assets de diseño, manuales de marca y archivos compartidos."
-                        : "Módulo interactivo listo para conectar con tu base de datos de Notion y servicios de IA."}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Subtle status/metadata line */}
-                <div className={`flex items-center justify-between text-[9px] uppercase tracking-[0.15em] font-bold mt-4 transition-colors duration-500 ${
-                  isNeumorphic ? "text-slate-400" : "text-white/30"
-                }`}>
-                  <span>Taski Engine v1.0.0</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Lienzo Listo</span>
-                  </div>
+                <span>Taski Engine v1.0.0</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Lienzo Listo</span>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
 
-          </motion.div>
-        )}
-      </AnimatePresence>
+        </div>
+      )}
       </motion.div>
 
       <NewProjectModal

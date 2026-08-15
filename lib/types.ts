@@ -56,26 +56,102 @@ export interface Project {
   url: string;
 }
 
+// ── Drive & Finance Sub-types ────────────────────────────────────────────────
+export interface DriveLink {
+  id: string;
+  label: string;
+  url: string;
+}
+
+export interface PaymentHistoryItem {
+  id: string;
+  fecha: string;
+  monto: number;
+  estado: "pagado" | "pendiente" | "vencido";
+  comprobante_url?: string;
+}
+
+export interface ClientFinanzas {
+  monto_contrato: number;
+  total_pagado: number;
+  proxima_factura?: any; // Timestamp or ISO string
+  historial_pagos: PaymentHistoryItem[];
+}
+
+export type ClientPlan = "impulso" | "crecimiento" | "estrategico" | "alianza";
+export type ClientRelationshipStatus = "activo" | "pausa" | "prospecto" | "cerrado";
+
 export interface Client {
   id: string;
   nombre: string;
+  name?: string; // Compatibility alias
+  logo?: string;
+  email?: string;
+  tel?: string;
+  telefono?: string;
+  celular?: string;
+  whatsapp?: string;
+  instagram?: string;
+  facebook?: string;
+  tiktok?: string;
+  web?: string;
+  redes?: string;
+  fuente?: string;
+  contacto?: {
+    persona?: string;
+    telefono?: string;
+    email?: string;
+    whatsapp?: string;
+  };
+  contactPerson?: string;
+  industria?: string;
+  industry?: string;
+  plan_contratado?: ClientPlan;
+  estado_relacion?: ClientRelationshipStatus;
+  status?: string;
+  statusColor?: string;
+  fecha_inicio?: any;
+  sinceDate?: string;
+  drive_links?: DriveLink[];
+  notas_internas?: string;
+  notes?: string;
+  finanzas?: ClientFinanzas;
+  totalBudget?: string;
+  paidAmount?: string;
+  pendingBalance?: string;
+  website?: string;
+  potencial?: string;
+  obs?: string;
+  token?: string;
+  drive?: string;
+  url?: string;
+}
+
+export interface Member {
+  id: string;
+  nombre: string;
+  name?: string; // Compatibility alias
+  rol: string;
+  role?: string; // Compatibility alias
   email: string;
-  tel: string;
-  instagram: string;
-  facebook: string;
-  tiktok: string;
-  web: string;
-  whatsapp: string;
-  telefono: string;
-  celular: string;
-  redes: string;
-  industria: string;
-  potencial: string;
-  fuente: string;
-  obs: string;
-  token: string;
-  drive: string;
-  url: string;
+  avatar?: string;
+  specialty?: "Diseño" | "Video" | "Animación" | "Marketing" | "Desarrollo" | string;
+  skills: string[];
+  proyectos_asignados: string[]; // Project IDs
+  drive_links: DriveLink[];
+  disponibilidad: "Disponible" | "En Proyecto" | "Carga Máxima" | "Carga Maxima" | "Vacaciones" | string;
+  status?: string;
+  statusColor?: string;
+  notas_internas: string;
+  bio?: string;
+  telefono?: string;
+  tarifa_hora?: number;
+  rating?: string;
+  completedTasks?: number;
+  totalHoursLogged?: number;
+  workloadPercent?: number;
+  created_at?: any;
+  updated_at?: any;
 }
 
 export interface Worker {

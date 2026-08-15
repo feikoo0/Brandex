@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { motion } from "framer-motion";
 import { MoreHorizontal, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -226,83 +227,96 @@ export function ProjectCardItem({
 
   // ── ESTILO 1: TARJETA CON PORTADA EN CONTENEDOR RECTÁNGULO REDONDEADO ──
   return (
-    <div 
+    <motion.div 
       onClick={() => onOpenFullScreen(p.id)}
-      className="p-2 rounded-2xl overflow-hidden bg-[#1f1f1f] hover:bg-[#262626] transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-sm hover:shadow-md group h-[220px]"
+      className="relative cursor-pointer h-[220px] p-2"
+      initial="initial"
+      whileHover="hover"
     >
-      {/* 1. PORTADA SUPERIOR EN CONTENEDOR RECTÁNGULO REDONDEADO SÓLIDO */}
-      <div 
-        className="flex-1 w-full p-3.5 rounded-xl relative flex flex-col justify-between overflow-hidden transition-colors"
-        style={{ backgroundColor: projColor }}
-      >
-        {/* Fila Superior: Íconos de Formato horizontal ordenados en fila arriba del título */}
-        <div className="z-10 flex items-center justify-start h-6 shrink-0 pointer-events-none">
-          <ProjectCoverFormats tasks={projectTasks as any} size="xs" layout="horizontal" />
-        </div>
+      {/* Rectángulo contenedor de fondo que aparece detrás del contenido haciendo FADE IN + Crecimiento al hacer hover */}
+      <motion.div 
+        variants={{
+          initial: { opacity: 0, scale: 0.88 },
+          hover: { opacity: 1, scale: 1 }
+        }}
+        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+        className="absolute inset-0 rounded-2xl bg-[#26262a] border border-white/20 pointer-events-none z-0 shadow-2xl shadow-black/70" 
+      />
 
-        {/* Contenido en la parte inferior de la portada: Título + Cliente • Estatus + Barra de Progreso */}
-        <div className="z-10 mt-auto flex flex-col gap-1.5">
-          {/* Título del proyecto (Mantenido igual en text-base) */}
-          <h3 className="text-base font-medium text-white tracking-tight line-clamp-1 leading-snug mt-2.5 translate-y-[6px]">
-            {p.nombre}
-          </h3>
-
-          {/* Subtítulo en texto normal: Cantidad de tareas • Nombre del cliente */}
-          <div className="text-[14px] font-medium text-white/90 flex items-center gap-1.5 line-clamp-1">
-            <span>{summary.totalTasks} {summary.totalTasks === 1 ? "Tarea" : "Tareas"}</span>
-            <span className="text-white/60">•</span>
-            <span className="truncate font-normal" title={summary.clientName}>{summary.clientName}</span>
+      {/* Contenido totalmente ESTÁTICO (Portada del color de proyecto + propiedades) sin escalado */}
+      <div className="relative z-10 flex flex-col justify-between h-full w-full pointer-events-none">
+        {/* 1. PORTADA SUPERIOR EN CONTENEDOR RECTÁNGULO REDONDEADO SÓLIDO */}
+        <div 
+          className="flex-1 w-full p-3.5 rounded-xl relative flex flex-col justify-between overflow-hidden pointer-events-auto"
+          style={{ backgroundColor: projColor }}
+        >
+          {/* Fila Superior: Íconos de Formato horizontal ordenados en fila arriba del título */}
+          <div className="z-10 flex items-center justify-start h-6 shrink-0 pointer-events-none">
+            <ProjectCoverFormats tasks={projectTasks as any} size="xs" layout="horizontal" />
           </div>
 
-          {/* Barra de progreso de tareas segmentada */}
-          <div className="flex items-center gap-1 w-full mt-0.5">
-            {Array.from({ length: totalTasksCount }).map((_, idx) => (
-              <div 
-                key={idx}
-                className={cn(
-                  "h-1 flex-1 rounded-full transition-all",
-                  idx < completedCount ? "bg-white" : "bg-white/35"
-                )}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+          {/* Contenido en la parte inferior de la portada: Título + Cliente • Estatus + Barra de Progreso */}
+          <div className="z-10 mt-auto flex flex-col gap-1.5">
+            {/* Título del proyecto (Mantenido igual en text-base) */}
+            <h3 className="text-base font-medium text-white tracking-tight line-clamp-1 leading-snug mt-2.5 translate-y-[6px]">
+              {p.nombre}
+            </h3>
 
-      {/* 2. CUERPO INFERIOR OSCURO (Estado del Proyecto • Fecha de Entrega) */}
-      <div className="pt-2 px-1 pb-0.5 flex items-center justify-between gap-2 bg-transparent min-w-0">
-        {/* Estado + Fechas Conectadas */}
-        <div className="flex items-center gap-1.5 text-[#ffffff6b] font-normal min-w-0 flex-wrap">
-          {summary.status && (
-            <>
-              <ProjectStatusIcon status={summary.status} className="w-3.5 h-3.5 translate-y-[1.5px]" />
-              <span className="text-[14px] font-medium text-[#ffffffd6] whitespace-nowrap">{summary.status}</span>
-              <span className="text-[#ffffff6b]">•</span>
-            </>
-          )}
-          <span className="text-[14px] font-normal text-[#ffffff6b] whitespace-nowrap">{deliveryStatusText}</span>
-        </div>
+            {/* Subtítulo en texto normal: Cantidad de tareas • Nombre del cliente */}
+            <div className="text-[14px] font-medium text-white/90 flex items-center gap-1.5 line-clamp-1">
+              <span>{summary.totalTasks} {summary.totalTasks === 1 ? "Tarea" : "Tareas"}</span>
+              <span className="text-white/60">•</span>
+              <span className="truncate font-normal" title={summary.clientName}>{summary.clientName}</span>
+            </div>
 
-        {/* Avatares del equipo + Costo */}
-        <div className="flex items-center gap-2 shrink-0">
-          {assignedWorkers.length > 0 && (
-            <div className="flex -space-x-1.5">
-              {assignedWorkers.slice(0, 3).map((w: any) => (
+            {/* Barra de progreso de tareas segmentada */}
+            <div className="flex items-center gap-1 w-full mt-0.5">
+              {Array.from({ length: totalTasksCount }).map((_, idx) => (
                 <div 
-                  key={w.id} 
-                  className="w-4.5 h-4.5 rounded-full bg-[#222222] border border-white/20 flex items-center justify-center text-[6.5px] font-bold text-[#ffffffd6]"
-                  title={w.nombre}
-                >
-                  {avatarOf(w.nombre)}
-                </div>
+                  key={idx}
+                  className={cn(
+                    "h-1 flex-1 rounded-full transition-all",
+                    idx < completedCount ? "bg-white" : "bg-white/35"
+                  )}
+                />
               ))}
             </div>
-          )}
+          </div>
+        </div>
 
+        {/* 2. CUERPO INFERIOR OSCURO (Estado del Proyecto • Fecha de Entrega) */}
+        <div className="pt-2 px-1 pb-0.5 flex items-center justify-between gap-2 bg-transparent min-w-0 pointer-events-auto">
+          {/* Estado + Fechas Conectadas */}
+          <div className="flex items-center gap-1.5 text-[#ffffff6b] font-normal min-w-0 flex-wrap">
+            {summary.status && (
+              <>
+                <ProjectStatusIcon status={summary.status} className="w-3.5 h-3.5 translate-y-[1.5px]" />
+                <span className="text-[14px] font-medium text-[#ffffffd6] whitespace-nowrap">{summary.status}</span>
+                <span className="text-[#ffffff6b]">•</span>
+              </>
+            )}
+            <span className="text-[14px] font-normal text-[#ffffff6b] whitespace-nowrap">{deliveryStatusText}</span>
+          </div>
 
+          {/* Avatares del equipo + Costo */}
+          <div className="flex items-center gap-2 shrink-0">
+            {assignedWorkers.length > 0 && (
+              <div className="flex -space-x-1.5">
+                {assignedWorkers.slice(0, 3).map((w: any) => (
+                  <div 
+                    key={w.id} 
+                    className="w-4.5 h-4.5 rounded-full bg-[#222222] border border-white/20 flex items-center justify-center text-[6.5px] font-bold text-[#ffffffd6]"
+                    title={w.nombre}
+                  >
+                    {avatarOf(w.nombre)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

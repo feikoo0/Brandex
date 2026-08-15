@@ -22,7 +22,7 @@ export function ClientsView() {
 
   const clientes = (data?.clientes ?? []).filter(c => 
     c.nombre.toLowerCase().includes(search.toLowerCase()) ||
-    c.potencial.toLowerCase().includes(search.toLowerCase())
+    (c.potencial || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (

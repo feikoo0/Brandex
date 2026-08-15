@@ -50,3 +50,6 @@ next-env.d.ts
 public/actualizacion brandexos*
 public/gitlive-studio*
 
+
+*storybook.log
+storybook-static/

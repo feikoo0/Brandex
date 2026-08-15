@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { 
-  Calendar, DollarSign, Loader2, Plus, Trash2, User, Flag, Tag, X, Maximize2, MoreHorizontal, Paperclip
+  ArrowLeft, Calendar, DollarSign, Loader2, Plus, Trash2, User, Flag, Tag, X, Maximize2, MoreHorizontal, Paperclip
 } from "lucide-react";
 import { useData, useUpdateProject, useUpdateTask, useCreateTask } from "@/hooks/useData";
 import { useProjectSummary } from "@/hooks/useProjectSummary";
@@ -208,147 +209,153 @@ export default function ProjectFullScreenView({
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-[#181818] text-[#ffffffd6] overflow-y-auto custom-scrollbar p-6 rounded-[24px]">
+    <div className="absolute -top-[75px] -left-6 -right-6 -bottom-4 z-[80] bg-[#121212] flex flex-col text-[#ffffffd6] overflow-y-auto custom-scrollbar p-6 rounded-[24px]">
       
       {/* ── 1. ENCABEZADO INTEGRADO DEL COLOR DEL PROYECTO ── */}
       <div 
-        className="p-5 rounded-2xl transition-all duration-300 space-y-3 shadow-lg select-none mb-4 shrink-0"
+        className="p-6 md:p-7 pt-5 pl-14 md:pl-16 rounded-2xl transition-all duration-300 space-y-3 shadow-xl select-none mb-5 shrink-0 min-h-[200px] flex flex-col justify-between relative"
         style={{ backgroundColor: currentProjColor }}
       >
-        {/* TOP INTEGRATED HEADER ROW */}
-        <div className="flex items-center justify-between text-xs">
-          {/* Left: Client Pill + Breadcrumb */}
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <button
-                type="button"
-                role="combobox"
-                onClick={() => {
-                  playSound("click");
-                  setActivePopover(activePopover === "header_client" ? null : "header_client");
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-all cursor-pointer border-none outline-none",
-                  activePopover === "header_client" ? "bg-white text-black font-bold" : "bg-white/20 hover:bg-white/30 text-white"
-                )}
-              >
-                <User className={cn("w-3.5 h-3.5 shrink-0", activePopover === "header_client" ? "text-black" : "text-white")} />
-                <span>{formData.clientName || "Brandex"}</span>
-              </button>
-              <LinearDropdownPopover
-                isOpen={activePopover === "header_client"}
-                onClose={() => setActivePopover(null)}
-                placeholder="Cambiar cliente…"
-                shortcutKey="C"
-                selectedValue={formData.cliente_id}
-                onSelect={(val) => {
-                  const selectedClient = data?.clientes.find((c) => c.id === val);
-                  setFormData((prev) => ({
-                    ...prev,
-                    cliente_id: val || "",
-                    clientName: selectedClient?.nombre || "Brandex",
-                  }));
-                  setActivePopover(null);
-                }}
-                options={(data?.clientes || []).map((c, i) => ({
-                  id: c.id,
-                  label: c.nombre,
-                  shortcut: String(i + 1),
-                }))}
-              />
-            </div>
-            <span className="text-white/70 font-medium">›</span>
-            <span className="text-white/90 font-semibold">Editar proyecto</span>
-          </div>
+        {/* RIGHT WINDOW CONTROLS (Top Right) */}
+        <div className="absolute top-4 right-4 flex items-center gap-1 z-20">
+          <button
+            type="button"
+            onClick={() => {
+              playSound("click");
+              onBack();
+            }}
+            className="p-1.5 rounded text-white/80 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
+            title="Cerrar vista de proyecto"
+          >
+            <X className="w-4 h-4 text-white" />
+          </button>
 
-          {/* Right: Window Controls */}
-          <div className="flex items-center gap-1">
+          {/* 3 Dots Menu Button */}
+          <div className="relative">
             <button
               type="button"
               onClick={() => {
                 playSound("click");
-                onBack();
+                setIsMoreMenuOpen(!isMoreMenuOpen);
               }}
-              className="p-1.5 rounded text-white/80 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
-              title="Expandir"
-            >
-              <Maximize2 className="w-3.5 h-3.5 text-white" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                playSound("click");
-                onBack();
-              }}
-              className="p-1.5 rounded text-white/80 hover:text-white hover:bg-white/20 transition-colors cursor-pointer"
-              title="Cerrar"
-            >
-              <X className="w-4 h-4 text-white" />
-            </button>
-
-            {/* 3 Dots Menu Button */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  playSound("click");
-                  setIsMoreMenuOpen(!isMoreMenuOpen);
-                }}
-                className={cn(
-                  "p-1.5 rounded transition-colors cursor-pointer",
-                  isMoreMenuOpen ? "bg-white/30 text-white" : "text-white/80 hover:text-white hover:bg-white/20"
-                )}
-                title="Opciones del proyecto"
-              >
-                <MoreHorizontal className="w-4 h-4 text-white" />
-              </button>
-
-              {isMoreMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-[#1d1d22] border border-[#2e2e38] shadow-2xl p-1 overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        playSound("trash");
-                        setIsMoreMenuOpen(false);
-                        try {
-                          await deleteDoc(doc(db, "projects", project.id));
-                          await deleteDoc(doc(db, "v3_projects", project.id)).catch(() => {});
-                        } catch (e) {
-                          console.error(e);
-                        }
-                        onBack();
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors cursor-pointer text-left"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                      <span>Eliminar proyecto</span>
-                    </button>
-                  </div>
-                </>
+              className={cn(
+                "p-1.5 rounded transition-colors cursor-pointer",
+                isMoreMenuOpen ? "bg-white/30 text-white" : "text-white/80 hover:text-white hover:bg-white/20"
               )}
-            </div>
+              title="Opciones del proyecto"
+            >
+              <MoreHorizontal className="w-4 h-4 text-white" />
+            </button>
+
+            {isMoreMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)} />
+                <div className="absolute right-0 top-full mt-1.5 z-50 w-48 rounded-xl bg-[#1d1d22] border border-[#2e2e38] shadow-2xl p-1 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      playSound("trash");
+                      setIsMoreMenuOpen(false);
+                      try {
+                        await deleteDoc(doc(db, "projects", project.id));
+                        await deleteDoc(doc(db, "v3_projects", project.id)).catch(() => {});
+                      } catch (e) {
+                        console.error(e);
+                      }
+                      onBack();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors cursor-pointer text-left"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>Eliminar proyecto</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
-        {/* PROJECT TITLE INPUT */}
-        <input
-          type="text"
-          value={formData.nombre}
-          onChange={(e) => setFormData((prev) => ({ ...prev, nombre: e.target.value }))}
-          placeholder="Nuevo proyecto"
-          className="w-full bg-transparent text-[19px] font-bold text-white placeholder-white/70 border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0 caret-white p-0 shadow-none focus:shadow-none"
-        />
+        {/* 1. FILA SUPERIOR: TÍTULO Y SUBTÍTULO DEL PROYECTO */}
+        <div className="flex flex-col gap-1 pr-16">
+          {/* PROJECT TITLE INPUT */}
+          <input
+            type="text"
+            value={formData.nombre}
+            onChange={(e) => setFormData((prev) => ({ ...prev, nombre: e.target.value }))}
+            placeholder="Nuevo proyecto"
+            className="w-full bg-transparent text-[24px] md:text-[28px] font-bold text-white placeholder-white/70 border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0 caret-white p-0 shadow-none focus:shadow-none leading-tight"
+          />
 
-        {/* PROJECT DESCRIPTION / CORE BRIEF TEXTAREA */}
-        <textarea
-          rows={3}
-          placeholder="Escribe el core brief aquí."
-          value={formData.descripcion}
-          onChange={(e) => setFormData((prev) => ({ ...prev, descripcion: e.target.value }))}
-          className="w-full bg-transparent text-[13px] text-white/90 placeholder-white/70 border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0 caret-white resize-none leading-relaxed p-0 min-h-[60px] shadow-none focus:shadow-none"
-        />
+          {/* PROJECT DESCRIPTION / CORE BRIEF TEXTAREA */}
+          <textarea
+            rows={2}
+            placeholder="Escribe el core brief aquí."
+            value={formData.descripcion}
+            onChange={(e) => setFormData((prev) => ({ ...prev, descripcion: e.target.value }))}
+            className="w-full bg-transparent text-[13px] text-white/90 placeholder-white/70 border-none outline-none ring-0 focus:outline-none focus:ring-0 focus:border-none focus-visible:outline-none focus-visible:ring-0 caret-white resize-none leading-relaxed p-0 min-h-[44px] shadow-none focus:shadow-none mt-0.5"
+          />
+        </div>
+
+        {/* 2. FILA INFERIOR: BOTÓN VOLVER + CLIENTE + METADATOS (DEBAJO DEL TÍTULO Y SUBTÍTULO) */}
+        <div className="flex items-center gap-2.5 flex-wrap text-xs pt-1">
+          {/* Botón de regreso al panel de proyectos */}
+          <button
+            type="button"
+            onClick={() => {
+              playSound("click");
+              onBack();
+            }}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/20 hover:bg-white/30 text-white text-xs font-bold transition-all cursor-pointer border border-white/20 shadow-sm shrink-0"
+            title="Volver al panel de proyectos"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-white" />
+            <span>Volver</span>
+          </button>
+
+          <span className="text-white/40 font-light">|</span>
+
+          {/* Selector de cliente en píldora */}
+          <div className="relative">
+            <button
+              type="button"
+              role="combobox"
+              onClick={() => {
+                playSound("click");
+                setActivePopover(activePopover === "header_client" ? null : "header_client");
+              }}
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer border-none outline-none",
+                activePopover === "header_client" ? "bg-white text-black font-bold" : "bg-white/20 hover:bg-white/30 text-white"
+              )}
+            >
+              <User className={cn("w-3.5 h-3.5 shrink-0", activePopover === "header_client" ? "text-black" : "text-white")} />
+              <span>{formData.clientName || "Brandex"}</span>
+            </button>
+            <LinearDropdownPopover
+              isOpen={activePopover === "header_client"}
+              onClose={() => setActivePopover(null)}
+              placeholder="Cambiar cliente…"
+              shortcutKey="C"
+              selectedValue={formData.cliente_id}
+              onSelect={(val) => {
+                const selectedClient = data?.clientes.find((c) => c.id === val);
+                setFormData((prev) => ({
+                  ...prev,
+                  cliente_id: val || "",
+                  clientName: selectedClient?.nombre || "Brandex",
+                }));
+                setActivePopover(null);
+              }}
+              options={(data?.clientes || []).map((c, i) => ({
+                id: c.id,
+                label: c.nombre,
+                shortcut: String(i + 1),
+              }))}
+            />
+          </div>
+          <span className="text-white/70 font-medium">›</span>
+          <span className="text-white/90 font-semibold">Editar proyecto</span>
+        </div>
       </div>
 
       {/* ── 2. BARRA DE PROPIEDADES (PÍLDORAS CON POPOVERS) ── */}

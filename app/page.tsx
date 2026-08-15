@@ -1,69 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Users, UserCircle, ShieldCheck, KeyRound, ArrowRight, ChevronLeft } from "lucide-react";
-import { useAuthStore } from "@/lib/store";
-import { login, loginWithToken } from "@/lib/api";
-import type { Role } from "@/lib/types";
 import Image from "next/image";
-import { motion, AnimatePresence } from "framer-motion";
-import { useData } from "@/hooks/useData";
+import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { useAuthStore } from "@/lib/store";
+import { login } from "@/lib/api";
+import type { Role } from "@/lib/types";
 
 export default function LoginPage() {
-  const router  = useRouter();
+  const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
-  
-  // Fetch data for demo selectors
-  const { data } = useData();
 
-  // States
-  const [token,    setToken]    = useState("");
-  const [usuario,  setUsuario]  = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pointerPos, setPointerPos] = useState({ x: "50%", y: "50%" });
+  const [isHovered, setIsHovered] = useState(false);
+
+  const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
-  const [isTokenMode, setIsTokenMode] = useState(true);
-  
-  const [loading,  setLoading]  = useState(false);
-  const [demoLoading, setDemoLoading] = useState<Role | null>(null);
-  const [demoSelector, setDemoSelector] = useState<"diseno" | "cliente" | null>(null);
-  const [error,    setError]    = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // ── Unified navigation helper ─────────────────────────────────────────────
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setPointerPos({ x: `${x}px`, y: `${y}px` });
+    if (!isHovered) setIsHovered(true);
+  }, [isHovered]);
+
+  const handlePointerLeave = useCallback(() => {
+    setIsHovered(false);
+  }, []);
+
   const navigateByRole = (role: Role, id: string, nombre: string, userToken: string) => {
     setAuth(role, id, nombre, userToken);
     const dest: Record<Role, string> = {
-      admin:   "/admin",
-      diseno:  "/equipo",
+      admin: "/admin",
+      diseno: "/equipo",
       cliente: "/cliente",
     };
     router.push(dest[role] ?? "/admin");
   };
 
-  // ── Token Login ───────────────────────────────────────────────────────────
-  async function handleTokenSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!token.trim()) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = await loginWithToken(token.trim());
-      if (data.ok && data.role) {
-        navigateByRole(data.role as Role, data.id || "", data.nombre || "Usuario", token.trim());
-      } else {
-        setError(data.error ?? "Token no válido o no encontrado");
-      }
-    } catch (err: any) {
-      setError(err.message || "Error al conectar con el servidor");
-    } finally {
-      setLoading(false);
+    if (!usuario.trim() || !password.trim()) {
+      setError("Por favor ingresa tu correo y contraseña");
+      return;
     }
-  }
 
-  // ── Admin (User/Pass) Login ───────────────────────────────────────────────
-  async function handleAdminSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!usuario.trim() || !password.trim()) return;
     setLoading(true);
     setError(null);
 
@@ -75,213 +63,190 @@ export default function LoginPage() {
         setError(data.error ?? "Credenciales incorrectas");
       }
     } catch (err: any) {
-      setError(err.message || "No se pudo conectar con el servidor");
+      setError(err.message || "Error al conectar con el servidor");
     } finally {
       setLoading(false);
     }
   }
 
-  // ── Demo access ───────────────────────────────────────────────────────────
-  function handleDemoAccess(role: Role, id: string, name: string) {
-    setDemoLoading(role);
-    // Para el demo usamos el id original como token falso para simular login
-    navigateByRole(role, id, name, `demo-${id}`);
-  }
-
-  const inputStyle: React.CSSProperties = {
-    background: "rgba(255,255,255,.05)",
-    border: "1.5px solid rgba(255,255,255,.08)",
-    color: "#fff",
-  };
-
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.08, delayChildren: 0.1 }
-    }
-  };
-
-  const itemVariants: any = {
-    hidden: { opacity: 0, y: 15 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 260, damping: 20 } }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a0c] overflow-hidden">
-      {/* Background glow */}
-      <motion.div
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }}
-        className="absolute inset-0 pointer-events-none"
-        style={{ background: "radial-gradient(circle at 50% 0%, rgba(58,123,213,.15) 0%, transparent 70%)" }}
-      />
+    <div
+      ref={containerRef}
+      onPointerMove={handlePointerMove}
+      onPointerLeave={handlePointerLeave}
+      className="relative min-h-screen w-full flex items-center justify-center bg-[#181817] px-4 py-8 select-none font-sans overflow-hidden"
+      style={
+        {
+          "--agent-root-hero-pointer-x": pointerPos.x,
+          "--agent-root-hero-pointer-y": pointerPos.y,
+          "--agent-root-hero-hover-opacity": isHovered ? "0.6" : "0",
+          "--color-sc-hero-dot": "rgba(255, 255, 255, 0.2)",
+        } as React.CSSProperties
+      }
+    >
+      {/* Fondo Interactivo con Patrón de Dots (Idéntico a Inicio en /taski) */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        {/* Capa 1: Fondo oscuro base */}
+        <div className="absolute inset-0 bg-[#181817]" />
 
-      <motion.div 
-        variants={containerVariants} initial="hidden" animate="show"
-        className="relative w-full max-w-sm px-6"
-      >
-        {/* Logo */}
-        <motion.div variants={itemVariants} className="flex flex-col items-center mb-10">
-          <Image src="/taski-logo.png" alt="Logo" width={100} height={100} className="drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]" />
-        </motion.div>
+        {/* Capa 2: Grilla estática de dots enmascarada */}
+        <div
+          className="absolute inset-0 opacity-45"
+          style={{
+            maskImage:
+              "linear-gradient(to right, transparent calc(50% - 28rem), black calc(50% - 18rem), black calc(50% + 18rem), transparent calc(50% + 28rem))",
+            WebkitMaskImage:
+              "linear-gradient(to right, transparent calc(50% - 28rem), black calc(50% - 18rem), black calc(50% + 18rem), transparent calc(50% + 28rem))",
+          }}
+        >
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle, var(--color-sc-hero-dot, rgba(255, 255, 255, 0.2)) 0.0625rem, transparent 0.0625rem), radial-gradient(circle, var(--color-sc-hero-dot, rgba(255, 255, 255, 0.2)) 0.0625rem, transparent 0.0625rem)",
+              backgroundPosition: "0px 0px, 0.368rem 0.736rem",
+              backgroundSize: "0.736rem 1.472rem",
+              maskImage: "linear-gradient(black 0%, black 25%, rgba(0, 0, 0, 0.72) 50%, transparent 80%)",
+              WebkitMaskImage: "linear-gradient(black 0%, black 25%, rgba(0, 0, 0, 0.72) 50%, transparent 80%)",
+            }}
+          />
+        </div>
 
-        <AnimatePresence mode="wait">
-          {demoSelector ? (
-            <motion.div key="demo-selector" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-[#121216] border border-white/10 rounded-2xl p-4 max-h-[300px] flex flex-col">
-              <div className="flex items-center mb-4">
-                <button onClick={() => setDemoSelector(null)} className="text-white/40 hover:text-white transition-colors">
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <span className="flex-1 text-center text-xs font-bold uppercase tracking-widest text-white/60">
-                  Seleccionar {demoSelector === "cliente" ? "Cliente" : "Miembro"}
-                </span>
-                <div className="w-5" />
-              </div>
+        {/* Capa 3: Grilla de dots interactiva con foco spotlight al mover el puntero */}
+        <div
+          className="absolute inset-0 transition-opacity duration-150 ease-[ease] motion-reduce:transition-none [@media(hover:none)]:hidden"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle, var(--color-sc-hero-dot, rgba(255, 255, 255, 0.2)) 0.0625rem, transparent 0.0625rem), radial-gradient(circle, var(--color-sc-hero-dot, rgba(255, 255, 255, 0.2)) 0.0625rem, transparent 0.0625rem)",
+            backgroundPosition: "0px 0px, 0.368rem 0.736rem",
+            backgroundSize: "0.736rem 1.472rem",
+            maskImage:
+              "radial-gradient(circle 14rem at var(--agent-root-hero-pointer-x, 50%) var(--agent-root-hero-pointer-y, 50%), black 0%, rgb(0 0 0 / 0.5) 42%, transparent 76%)",
+            WebkitMaskImage:
+              "radial-gradient(circle 14rem at var(--agent-root-hero-pointer-x, 50%) var(--agent-root-hero-pointer-y, 50%), black 0%, rgb(0 0 0 / 0.5) 42%, transparent 76%)",
+            opacity: "var(--agent-root-hero-hover-opacity, 0)",
+          }}
+        />
 
-              <div className="flex-1 overflow-y-auto pr-2 space-y-2" style={{ scrollbarWidth: "thin" }}>
-                {!data ? (
-                  <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-white/30" /></div>
-                ) : demoSelector === "cliente" ? (
-                  data.clientes.map(c => (
-                    <button key={c.id} onClick={() => handleDemoAccess("cliente", c.id, c.nombre)} className="w-full text-left p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs font-bold">{c.nombre.slice(0, 2).toUpperCase()}</div>
-                      <span className="text-sm font-bold text-white/90 truncate">{c.nombre}</span>
-                    </button>
-                  ))
-                ) : (
-                  data.trabajadores.filter(w => w.rol !== "Admin").map(w => (
-                    <button key={w.id} onClick={() => handleDemoAccess("diseno", w.id, w.nombre)} className="w-full text-left p-3 rounded-xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-xs font-bold">{w.nombre.slice(0, 2).toUpperCase()}</div>
-                      <span className="text-sm font-bold text-white/90 truncate">{w.nombre}</span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </motion.div>
-          ) : isTokenMode ? (
-            <motion.div key="token-mode" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}>
-              <form onSubmit={handleTokenSubmit} className="space-y-4">
-                <div className="relative group">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 group-focus-within:text-blue-400 transition-colors">
-                    <KeyRound className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="text" value={token} onChange={(e) => setToken(e.target.value)}
-                    placeholder="Ingresa tu Token de Acceso" autoFocus
-                    className="w-full pl-11 pr-4 py-4 rounded-2xl text-sm font-bold outline-none transition-all focus:border-blue-500/50 focus:shadow-[0_0_30px_rgba(58,123,213,0.1)]"
-                    style={inputStyle}
-                  />
-                </div>
+        {/* Capa 4: Resplandor difuso superior */}
+        <div className="absolute left-[calc(50%-6.25rem)] top-[-6.625rem] h-[22rem] w-[30rem] rotate-[32deg] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.045)_0%,rgba(255,255,255,0.018)_38%,transparent_72%)] blur-3xl" />
 
-                <motion.button
-                  whileHover={{ scale: 1.02, boxShadow: "0 0 25px rgba(58,123,213,0.3)" }}
-                  whileTap={{ scale: 0.98 }} type="submit" disabled={loading || !token.trim()}
-                  className="w-full py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                  style={{ background: "linear-gradient(135deg, #3a7bd5, #6aafff)", color: "#fff" }}
-                >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                    <>ENTRAR AL SISTEMA <ArrowRight className="w-4 h-4" /></>
-                  )}
-                </motion.button>
-              </form>
-            </motion.div>
-          ) : (
-            <motion.div key="admin-mode" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <form onSubmit={handleAdminSubmit} className="space-y-3">
-                <input
-                  type="text" value={usuario} onChange={(e) => setUsuario(e.target.value)}
-                  placeholder="Usuario Admin"
-                  className="w-full px-4 py-4 rounded-2xl text-sm font-bold outline-none transition-all"
-                  style={inputStyle}
-                />
-                <input
-                  type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Contraseña"
-                  className="w-full px-4 py-4 rounded-2xl text-sm font-bold outline-none transition-all"
-                  style={inputStyle}
-                />
-                <motion.button
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  type="submit" disabled={loading || !usuario.trim() || !password.trim()}
-                  className="w-full py-4 rounded-2xl text-sm font-black flex items-center justify-center gap-2 bg-white text-black transition-all disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                    <>ACCESO ADMINISTRADOR <ShieldCheck className="w-4 h-4" /></>
-                  )}
-                </motion.button>
-              </form>
-            </motion.div>
+        {/* Capa 5: Degradado vertical sutil superior */}
+        <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.015),transparent)]" />
+      </div>
+
+      {/* Capa 2B: Tarjeta Central Redondeada (#181818, rounded-[24px]) */}
+      <div className="relative z-10 w-full max-w-[390px] bg-[#181818] rounded-[24px] p-7 md:p-8">
+        
+        {/* Cabecera: Logo de Taski con el texto de Taski */}
+        <div className="flex flex-col items-center justify-center gap-3 mb-7">
+          <div className="flex items-center justify-center gap-3">
+            <div className="w-9 h-9 relative flex items-center justify-center">
+              <Image
+                src="/taski-icon.png"
+                alt="Taski"
+                width={36}
+                height={36}
+                className="object-contain"
+                priority
+              />
+            </div>
+            <span className="text-2xl font-bold tracking-tight text-[#ffffffd6]">
+              Taski
+            </span>
+          </div>
+          <p className="text-xs text-[#ffffff6b]">
+            Inicia sesión con tu cuenta
+          </p>
+        </div>
+
+        {/* Formulario de Login */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Campo Correo / Usuario (Capa 3: #222222, border-white/10, rounded-xl) */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b]">
+              Correo o usuario
+            </label>
+            <div className="relative flex items-center">
+              <Mail className="w-4 h-4 absolute left-3.5 text-white/30 pointer-events-none" />
+              <input
+                type="text"
+                value={usuario}
+                onChange={(e) => {
+                  setUsuario(e.target.value);
+                  if (error) setError(null);
+                }}
+                placeholder="ejemplo@correo.com"
+                className="w-full bg-[#222222] border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-sm text-[#ffffffd6] placeholder-white/30 outline-none focus:border-white/20 transition-colors"
+                autoComplete="username"
+              />
+            </div>
+          </div>
+
+          {/* Campo Contraseña (Capa 3: #222222, border-white/10, rounded-xl) */}
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b]">
+              Contraseña
+            </label>
+            <div className="relative flex items-center">
+              <Lock className="w-4 h-4 absolute left-3.5 text-white/30 pointer-events-none" />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
+                placeholder="••••••••"
+                className="w-full bg-[#222222] border border-white/10 rounded-xl pl-10 pr-10 py-3.5 text-sm text-[#ffffffd6] placeholder-white/30 outline-none focus:border-white/20 transition-colors"
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 text-white/30 hover:text-white/70 transition-colors cursor-pointer"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Mensaje de error */}
+          {error && (
+            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium text-center">
+              {error}
+            </div>
           )}
-        </AnimatePresence>
 
-        {error && !demoSelector && (
-          <motion.p initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="text-[11px] text-center mt-4 text-red-400 font-bold px-2 uppercase tracking-tight">
-            {error}
-          </motion.p>
-        )}
+          {/* Botón de Acción Principal (Azul Taski #3a7bd5) */}
+          <button
+            type="submit"
+            disabled={loading || !usuario.trim() || !password.trim()}
+            className="w-full py-3.5 px-4 bg-[#3a7bd5] hover:bg-[#316ec2] active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none mt-2 cursor-pointer"
+          >
+            {loading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              "Iniciar Sesión"
+            )}
+          </button>
+        </form>
 
-        {/* Toggles */}
-        {!demoSelector && (
-          <>
-            <motion.div variants={itemVariants} className="flex justify-center mt-6">
-              <button 
-                onClick={() => { setIsTokenMode(!isTokenMode); setError(null); }}
-                className="text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-white/60 transition-colors"
-              >
-                {isTokenMode ? "Acceso Administrador" : "Volver a Token"}
-              </button>
-            </motion.div>
+        {/* Separación Fina (h-px bg-white/10) */}
+        <div className="h-px bg-white/10 my-6" />
 
-            {/* Divider */}
-            <motion.div variants={itemVariants} className="flex items-center gap-3 my-8">
-              <div className="flex-1 h-px bg-white/5" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-white/10">Demos rápidos</span>
-              <div className="flex-1 h-px bg-white/5" />
-            </motion.div>
+        {/* Botón de Acceso Directo (Capa 3: #222222, border-white/10, rounded-xl) */}
+        <button
+          type="button"
+          onClick={() => router.push("/taski")}
+          className="w-full py-3.5 px-4 bg-[#222222] hover:bg-white/[0.08] active:scale-[0.99] text-[#ffffffd6] hover:text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+        >
+          <span>Acceso directo al lienzo Taski</span>
+          <ArrowRight className="w-3.5 h-3.5 text-white/50" />
+        </button>
 
-            {/* Demo buttons */}
-            <motion.div variants={itemVariants} className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => handleDemoAccess("admin", "demo-admin", "Feiko")} disabled={!!demoLoading}
-                className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all"
-              >
-                {demoLoading === "admin" ? <Loader2 className="w-5 h-5 animate-spin" /> : <ShieldCheck className="w-5 h-5 text-emerald-400" />}
-                <span className="text-[9px] font-black uppercase text-white/40">Admin</span>
-              </button>
-
-              <button
-                onClick={() => setDemoSelector("diseno")} disabled={!!demoLoading}
-                className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all"
-              >
-                {demoLoading === "diseno" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Users className="w-5 h-5 text-blue-400" />}
-                <span className="text-[9px] font-black uppercase text-white/40">Equipo</span>
-              </button>
-
-              <button
-                onClick={() => setDemoSelector("cliente")} disabled={!!demoLoading}
-                className="flex flex-col items-center gap-2 py-4 px-2 rounded-2xl border border-white/5 bg-white/[0.02] hover:bg-white/[0.05] transition-all"
-              >
-                {demoLoading === "cliente" ? <Loader2 className="w-5 h-5 animate-spin" /> : <UserCircle className="w-5 h-5 text-purple-400" />}
-                <span className="text-[9px] font-black uppercase text-white/40">Cliente</span>
-              </button>
-            </motion.div>
-
-            {/* Brandex v3 Canvas Route */}
-            <motion.button
-              onClick={() => router.push("/taski")}
-              whileHover={{ scale: 1.02, backgroundColor: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.2)" }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full mt-4 py-4 rounded-2xl border border-white/5 bg-white/[0.02] text-white/60 hover:text-white transition-all flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest"
-            >
-              Lienzo Taski <ArrowRight className="w-3 h-3 text-white/60" />
-            </motion.button>
-          </>
-        )}
-
-        <motion.p variants={itemVariants} className="text-center text-[9px] font-bold mt-10 text-white/10 uppercase tracking-[0.2em]">
-          Braindex OS v2.0 · Secured by Notion
-        </motion.p>
-      </motion.div>
+      </div>
     </div>
   );
 }

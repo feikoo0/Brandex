@@ -14,8 +14,13 @@ export async function POST(req: NextRequest) {
     const u = usuario.trim();
     const p = password.trim();
 
-    if (u.toLowerCase() === adminUser.trim().toLowerCase() && p === adminPass.trim()) {
-      return NextResponse.json({ ok: true, role: "admin", id: "admin", nombre: u, token: "" });
+    if (
+      (u.toLowerCase() === adminUser.trim().toLowerCase() ||
+       u.toLowerCase() === "contacto.milenial@gmail.com" ||
+       u.toLowerCase() === "admin@taski.app") &&
+      p === adminPass.trim()
+    ) {
+      return NextResponse.json({ ok: true, role: "admin", id: "admin", nombre: "Feiko", token: "" });
     }
 
     return NextResponse.json({ ok: false, error: "Usuario o contraseña incorrectos" }, { status: 401 });

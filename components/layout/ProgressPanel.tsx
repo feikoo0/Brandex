@@ -1281,7 +1281,7 @@ function ProjectCard({ project, allTasks, onPin, onOpen, onRemove, isPinned, cli
   return (
     <motion.div ref={nodeRef} style={dragStyle} {...(dragAttributes || {})}
       initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.97 }}
-      className={cn("bg-[#1c1c21] border border-white/[0.06] rounded-2xl overflow-hidden cursor-pointer group",
+      className={cn("bg-[#1c1c21] border border-white/[0.06] rounded-2xl overflow-hidden cursor-pointer group transition-all duration-300 ease-out hover:scale-[1.02] hover:bg-[#222227] hover:border-white/10 hover:shadow-xl",
         isDone && "border-green-500/[0.15]")}
       onClick={onOpen}>
 

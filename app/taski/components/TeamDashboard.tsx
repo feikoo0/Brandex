@@ -1,617 +1,359 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Users, Briefcase, CheckCircle2, Clock, Star, Mail, Award, Plus, 
-  ChevronRight, Play, Pause, FolderPlus, Sparkles, Filter, ShieldCheck, Tag
+  Users, 
+  Search, 
+  Plus, 
+  Filter, 
+  Sparkles, 
+  CheckCircle2, 
+  Clock, 
+  Star,
+  Loader2,
+  X,
+  Check
 } from 'lucide-react';
-import { Project, Task } from './ProjectDashboard';
+import { Project } from './ProjectDashboard';
+import { EntityCard } from '@/components/common/EntityCard';
+import { EntityDetailView } from '@/components/views/EntityDetailView';
+import { useMembers } from '@/hooks/useMembers';
+import type { Member } from '@/lib/types';
 import { playSound } from '../utils/audio';
 
-export interface TeamMember {
-  id: number;
-  name: string;
-  role: string;
-  specialty: "Diseño" | "Video" | "Animación" | "Marketing" | "Desarrollo";
-  avatar: string;
-  email: string;
-  status: "Disponible" | "En Proyecto" | "Carga Máxima";
-  statusColor: string;
-  rating: string;
-  completedTasks: number;
-  totalHoursLogged: number;
-  workloadPercent: number;
-  skills: string[];
-  bio: string;
-}
-
-export const INITIAL_TEAM_MEMBERS: TeamMember[] = [
-  {
-    id: 1,
-    name: "Carlos Mendoza",
-    role: "Lead UI/UX & Spatial Design",
-    specialty: "Diseño",
-    avatar: "CM",
-    email: "carlos.mendoza@taski.io",
-    status: "En Proyecto",
-    statusColor: "bg-blue-500/10 border-blue-500/30 text-blue-400",
-    rating: "4.9",
-    completedTasks: 42,
-    totalHoursLogged: 168,
-    workloadPercent: 85,
-    skills: ["Figma", "Spatial UI", "Glassmorphism", "Design Systems"],
-    bio: "Especialista en interfaces tridimensionales, glassmorphism y micro-interacciones espaciales."
-  },
-  {
-    id: 2,
-    name: "Sofía Valenzuela",
-    role: "Motion Director & 3D Artist",
-    specialty: "Animación",
-    avatar: "SV",
-    email: "sofia.valenzuela@taski.io",
-    status: "En Proyecto",
-    statusColor: "bg-purple-500/10 border-purple-500/30 text-purple-400",
-    rating: "5.0",
-    completedTasks: 38,
-    totalHoursLogged: 210,
-    workloadPercent: 92,
-    skills: ["After Effects", "Blender", "Three.js", "WebGL", "Framer"],
-    bio: "Directora de animación y shaders 3D. Creación de renders hiper-realistas para web."
-  },
-  {
-    id: 3,
-    name: "Mateo Ríos",
-    role: "Video Producer & Editor",
-    specialty: "Video",
-    avatar: "MR",
-    email: "mateo.rios@taski.io",
-    status: "Disponible",
-    statusColor: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-    rating: "4.8",
-    completedTasks: 29,
-    totalHoursLogged: 135,
-    workloadPercent: 45,
-    skills: ["Premiere Pro", "DaVinci Resolve", "Color Grading", "Sound Design"],
-    bio: "Edición cinematográfica, etalonaje digital de alta gama y composición sonora."
-  },
-  {
-    id: 4,
-    name: "Elena Rostova",
-    role: "Growth & Campaign Strategist",
-    specialty: "Marketing",
-    avatar: "ER",
-    email: "elena.rostova@taski.io",
-    status: "En Proyecto",
-    statusColor: "bg-amber-500/10 border-amber-500/30 text-amber-400",
-    rating: "4.9",
-    completedTasks: 51,
-    totalHoursLogged: 195,
-    workloadPercent: 78,
-    skills: ["Brand Strategy", "SEO/SEM", "Conversion Funnels", "Analytics"],
-    bio: "Especialista en estrategia de posicionamiento de marca y embudos de alta conversión."
-  },
-  {
-    id: 5,
-    name: "Lucas Silva",
-    role: "Senior Frontend Engineer",
-    specialty: "Desarrollo",
-    avatar: "LS",
-    email: "lucas.silva@taski.io",
-    status: "Carga Máxima",
-    statusColor: "bg-rose-500/10 border-rose-500/30 text-rose-400",
-    rating: "5.0",
-    completedTasks: 64,
-    totalHoursLogged: 240,
-    workloadPercent: 98,
-    skills: ["Next.js", "TypeScript", "Tailwind CSS", "GLSL Shaders"],
-    bio: "Arquitecto frontend apasionado por el rendimiento a 60fps y código limpio."
-  }
-];
-
-interface TeamDashboardProps {
+export interface TeamDashboardProps {
   projects: Project[];
   onUpdateProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  onSelectProject?: (projectId: number | string) => void;
   isNeumorphic?: boolean;
   isNightMode?: boolean;
 }
 
-export const TeamDashboard: React.FC<TeamDashboardProps> = ({
-  projects,
+export function TeamDashboard({
+  projects = [],
   onUpdateProjects,
-  isNeumorphic = true,
-  isNightMode = false
-}) => {
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>(INITIAL_TEAM_MEMBERS);
-  const [activeMemberId, setActiveMemberId] = useState<number>(1);
-  const [filterSpecialty, setFilterSpecialty] = useState<string>("Todos");
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
-  const [selectedProjectIdToAssign, setSelectedProjectIdToAssign] = useState<number | null>(null);
+  onSelectProject,
+  isNeumorphic = false,
+  isNightMode = true,
+}: TeamDashboardProps) {
+  const { members, isLoading, createMember, updateMember } = useMembers();
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [specialtyFilter, setSpecialtyFilter] = useState<string>("Todos");
+  const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
 
-  const activeMember = teamMembers.find(m => m.id === activeMemberId) || teamMembers[0];
+  // New member form state
+  const [newMemberName, setNewMemberName] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState("Lead Designer");
+  const [newMemberEmail, setNewMemberEmail] = useState("");
+  const [newMemberSpecialty, setNewMemberSpecialty] = useState<string>("Diseño");
 
-  // Projects assigned to active team member (matching skills or client/description)
-  const memberProjects = projects.filter(p => {
-    if (activeMember.id === 1) return p.id % 2 === 1; // Carlos
-    if (activeMember.id === 2) return p.id === 2 || p.id === 7; // Sofía
-    if (activeMember.id === 3) return p.id === 4; // Mateo
-    if (activeMember.id === 4) return p.id === 2 || p.id === 5; // Elena
-    return p.id === 3 || p.id === 6 || p.id === 8; // Lucas
-  });
+  const specialties = ["Todos", "Diseño", "Animación", "Video", "Marketing", "Desarrollo"];
 
-  // Extract assigned tasks
-  const memberTasks = memberProjects.flatMap(p => 
-    (p.tasks || []).map(t => ({ ...t, projectName: p.title, projectId: p.id }))
-  );
+  // Filtered members list
+  const filteredMembers = useMemo(() => {
+    return members.filter((m) => {
+      const matchSearch =
+        m.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.rol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        m.skills.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const filteredMembers = teamMembers.filter(m => 
-    filterSpecialty === "Todos" || m.specialty === filterSpecialty
-  );
+      const matchSpecialty =
+        specialtyFilter === "Todos" ||
+        m.specialty?.toLowerCase() === specialtyFilter.toLowerCase() ||
+        m.rol.toLowerCase().includes(specialtyFilter.toLowerCase());
 
-  const handleAssignProject = () => {
-    if (!selectedProjectIdToAssign) return;
+      return matchSearch && matchSpecialty;
+    });
+  }, [members, searchQuery, specialtyFilter]);
+
+  // Selected member object
+  const selectedMember = useMemo(() => {
+    if (!selectedMemberId) return null;
+    return members.find((m) => String(m.id) === String(selectedMemberId)) || null;
+  }, [members, selectedMemberId]);
+
+  // If a member is selected, render 4-Zone Detail View
+  if (selectedMember) {
+    return (
+      <EntityDetailView
+        entity={selectedMember}
+        entityType="member"
+        allProjects={projects}
+        onBack={() => {
+          setSelectedMemberId(null);
+          playSound('click');
+        }}
+        onOpenProject={(projId) => {
+          if (onSelectProject) onSelectProject(projId);
+        }}
+        onUpdateEntity={async (updated) => {
+          await updateMember(selectedMember.id, updated);
+        }}
+      />
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-[#ffffff6b]" />
+        <span className="text-xs font-semibold text-[#ffffff6b]">Cargando colaboradores...</span>
+      </div>
+    );
+  }
+
+  // KPIs
+  const totalMembers = members.length;
+  const availableMembers = members.filter((m) => (m.disponibilidad || m.status || "").toLowerCase().includes("disponible")).length;
+  const activeProjsAssigned = projects.filter((p) => (p.asignado_ids || []).length > 0).length;
+
+  const handleCreateNewMember = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMemberName.trim()) return;
+
+    await createMember({
+      nombre: newMemberName.trim(),
+      name: newMemberName.trim(),
+      rol: newMemberRole.trim(),
+      role: newMemberRole.trim(),
+      email: newMemberEmail.trim(),
+      specialty: newMemberSpecialty,
+      avatar: newMemberName.slice(0, 2).toUpperCase(),
+      skills: [newMemberSpecialty],
+      disponibilidad: "Disponible",
+      status: "Disponible",
+    });
+
+    setNewMemberName("");
+    setNewMemberRole("Lead Designer");
+    setNewMemberEmail("");
+    setIsAddMemberOpen(false);
     playSound('pop');
-    setIsAssignModalOpen(false);
-    setSelectedProjectIdToAssign(null);
-  };
-
-  const getSpecialtyBadgeColor = (spec: string) => {
-    switch (spec) {
-      case "Diseño": return "bg-cyan-500/10 text-cyan-400 border-cyan-500/30";
-      case "Animación": return "bg-purple-500/10 text-purple-400 border-purple-500/30";
-      case "Video": return "bg-emerald-500/10 text-emerald-400 border-emerald-500/30";
-      case "Marketing": return "bg-amber-500/10 text-amber-400 border-amber-500/30";
-      default: return "bg-blue-500/10 text-blue-400 border-blue-500/30";
-    }
   };
 
   return (
-    <div className="w-full h-full flex gap-6 relative select-none">
-      {/* LEFT COLUMN: Vertical Team Member Cards */}
-      <div className="w-[300px] shrink-0 flex flex-col gap-4 h-full pb-16">
-        {/* Header & Specialty Filter Bar */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Users className={`w-4 h-4 ${isNeumorphic ? 'text-slate-700' : 'text-cyan-400'}`} />
-              <span className={`text-[12px] font-black uppercase tracking-widest ${isNeumorphic ? 'text-slate-800' : 'text-white'}`}>
-                Equipo ({teamMembers.length})
-              </span>
-            </div>
-            <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">
-              Tarjetas Verticales
-            </span>
-          </div>
+    <div className="flex flex-col h-full p-6 overflow-y-auto custom-scrollbar bg-transparent text-[#ffffffd6]">
+      {/* ── 1. KPI SUMMARY BAR ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Equipo Interno</span>
+          <div className="text-2xl font-bold text-[#ffffffd6] mt-1.5">{totalMembers} especialistas</div>
+        </div>
 
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto hide-scrollbar pb-1">
-            {["Todos", "Diseño", "Animación", "Video", "Marketing", "Desarrollo"].map(spec => (
+        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/80">Disponibles</span>
+          <div className="text-2xl font-bold text-emerald-400 mt-1.5">{availableMembers} listos para asignar</div>
+        </div>
+
+        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400/80">Proyectos Asignados</span>
+          <div className="text-2xl font-bold text-blue-400 mt-1.5">{activeProjsAssigned} en curso</div>
+        </div>
+      </div>
+
+      {/* ── 2. CONTROLS BAR: Specialty Filter & Search ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        {/* Left: Specialty Filter Pills */}
+        <div className="flex items-center gap-1.5 p-1 rounded-full bg-[#181818] border border-white/10">
+          {specialties.map((spec) => {
+            const isActive = specialtyFilter === spec;
+            return (
               <button
                 key={spec}
+                type="button"
                 onClick={() => {
-                  setFilterSpecialty(spec);
+                  setSpecialtyFilter(spec);
                   playSound('click');
                 }}
-                className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap border ${
-                  filterSpecialty === spec
-                    ? isNeumorphic
-                      ? "bg-slate-800 text-white border-slate-700 shadow-sm"
-                      : "bg-white text-black border-white shadow-md"
-                    : isNeumorphic
-                      ? "bg-[#e6eef8] text-slate-600 border-white/40 hover:text-slate-900"
-                      : "bg-white/5 text-white/60 border-white/10 hover:text-white"
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
+                  isActive
+                    ? "bg-white/10 text-[#ffffffd6] shadow-sm"
+                    : "text-[#ffffff6b] hover:text-[#ffffffd6]"
                 }`}
               >
                 {spec}
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Vertical Cards Container */}
-        <div className="flex flex-col gap-3.5 overflow-y-auto hide-scrollbar pr-1 pb-12">
-          {filteredMembers.map(member => {
-            const isSelected = member.id === activeMemberId;
-
-            return (
-              <motion.div
-                key={member.id}
-                onClick={() => {
-                  setActiveMemberId(member.id);
-                  playSound('click');
-                }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`p-4 rounded-2xl cursor-pointer transition-all duration-300 relative border flex flex-col gap-3 ${
-                  isNightMode
-                    ? isSelected
-                      ? "bg-transparent border-neutral-100 text-neutral-50"
-                      : "bg-transparent border-neutral-800 text-neutral-300 hover:border-neutral-700"
-                    : isSelected
-                      ? "bg-transparent border-slate-900 text-slate-900"
-                      : "bg-transparent border-slate-200 text-slate-700 hover:border-slate-400"
-                }`}
-              >
-                {/* Member Header Card */}
-                <div className="flex items-center gap-3">
-                  {/* Initials Avatar */}
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 border ${
-                    isNightMode
-                      ? "bg-transparent text-neutral-200 border-neutral-800"
-                      : "bg-transparent text-slate-800 border-slate-200"
-                  }`}>
-                    {member.avatar}
-                  </div>
-
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-bold text-[13px] leading-tight truncate">
-                      {member.name}
-                    </span>
-                    <span className={`text-[10px] font-medium leading-tight truncate mt-0.5 ${
-                      isNightMode ? 'text-neutral-400' : 'text-slate-500'
-                    }`}>
-                      {member.role}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Badges Row */}
-                <div className="flex items-center justify-between gap-2">
-                  <span className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider border ${getSpecialtyBadgeColor(member.specialty)}`}>
-                    {member.specialty}
-                  </span>
-
-                  <div className="flex items-center gap-1">
-                    <Star className="w-3 h-3 text-amber-400 fill-amber-400" />
-                    <span className="text-[10px] font-black">{member.rating}</span>
-                  </div>
-                </div>
-
-                {/* Workload Progress Bar */}
-                <div className="flex flex-col gap-1 mt-1">
-                  <div className="flex justify-between items-center text-[9px] font-bold">
-                    <span className={isNightMode ? 'text-neutral-400' : 'text-slate-500'}>Carga de Trabajo</span>
-                    <span className={member.workloadPercent > 90 ? 'text-rose-400 font-black' : 'text-emerald-400'}>
-                      {member.workloadPercent}%
-                    </span>
-                  </div>
-                  <div className={`w-full h-1.5 rounded-full overflow-hidden ${isNightMode ? 'bg-neutral-800' : 'bg-slate-200'}`}>
-                    <div 
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        member.workloadPercent > 90 
-                          ? 'bg-rose-500' 
-                          : member.workloadPercent > 75 
-                            ? 'bg-amber-400' 
-                            : 'bg-emerald-400'
-                      }`}
-                      style={{ width: `${member.workloadPercent}%` }}
-                    />
-                  </div>
-                </div>
-              </motion.div>
             );
           })}
         </div>
-      </div>
 
-      {/* RIGHT CANVAS: Active Team Member Dashboard */}
-      <div className="flex-1 flex flex-col gap-6 h-full pb-16 pt-2 px-1 overflow-y-auto hide-scrollbar">
-        {/* Profile Banner */}
-        <motion.div 
-          key={activeMember.id}
-          initial={{ opacity: 0, y: 15 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-          className={`p-6 rounded-3xl border relative ${
-            isNightMode
-              ? "bg-transparent border-neutral-800 text-neutral-50"
-              : "bg-transparent border-slate-200 text-slate-800"
-          }`}
-        >
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-            <div className="flex items-center gap-4 min-w-0 flex-1">
-              <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-xl font-bold border shrink-0 ${
-                isNightMode
-                  ? "bg-transparent text-neutral-50 border-neutral-800"
-                  : "bg-transparent text-slate-800 border-slate-200"
-              }`}>
-                {activeMember.avatar}
-              </div>
-
-              <div className="flex flex-col min-w-0 flex-1">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className={`text-2xl md:text-3xl font-bold tracking-tight leading-normal ${isNightMode ? 'text-neutral-50' : 'text-slate-800'}`}>{activeMember.name}</h2>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border shrink-0 ${activeMember.statusColor}`}>
-                    {activeMember.status}
-                  </span>
-                </div>
-                <p className={`text-[12px] font-medium mt-0.5 ${isNightMode ? 'text-neutral-300' : 'text-slate-600'}`}>
-                  {activeMember.role} • <span className="font-mono">{activeMember.email}</span>
-                </p>
-                <p className={`text-[11px] mt-2 max-w-xl leading-relaxed ${isNightMode ? 'text-neutral-400' : 'text-slate-500'}`}>
-                  {activeMember.bio}
-                </p>
-              </div>
-            </div>
-
-            {/* Action Button: Assign Project */}
-            <button
-              onClick={() => {
-                setIsAssignModalOpen(true);
-                playSound('click');
-              }}
-              className={`px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border shrink-0 ${
-                isNightMode
-                  ? "bg-transparent border-neutral-700 text-neutral-200 hover:border-neutral-500"
-                  : "bg-transparent border-slate-300 text-slate-800 hover:border-slate-500"
-              }`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>Asignar Proyecto</span>
-            </button>
+        {/* Right: Search & Add Member */}
+        <div className="flex items-center gap-3">
+          <div className="relative flex items-center">
+            <Search className="w-3.5 h-3.5 text-[#ffffff40] absolute left-3 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nombre o skill..."
+              className="pl-8 pr-3 py-1.5 rounded-full bg-[#181818] border border-white/10 text-xs text-[#ffffffd6] placeholder:text-[#ffffff40] outline-none focus:border-white/20 w-48 sm:w-64 transition-all"
+            />
           </div>
 
-          {/* Skills Tags */}
-          <div className="flex items-center gap-2 mt-5 pt-4 border-t border-neutral-800/40 flex-wrap">
-            <Tag className="w-3.5 h-3.5 opacity-40" />
-            <span className="text-[10px] font-bold uppercase tracking-wider opacity-60">Especialidades:</span>
-            {activeMember.skills.map(skill => (
-              <span 
-                key={skill}
-                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold border ${
-                  isNightMode
-                    ? "bg-transparent text-neutral-300 border-neutral-800"
-                    : "bg-transparent text-slate-700 border-slate-200"
-                }`}
-              >
-                {skill}
-              </span>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
-            isNightMode ? "bg-transparent border-neutral-800 text-neutral-50" : "bg-transparent border-slate-200 text-slate-900"
-          }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Proyectos Activos</span>
-            <span className="text-2xl font-black mt-1">{memberProjects.length}</span>
-            <span className="text-[10px] text-emerald-500 font-bold">Actualmente en desarrollo</span>
-          </div>
-
-          <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
-            isNightMode ? "bg-transparent border-neutral-800 text-neutral-50" : "bg-transparent border-slate-200 text-slate-900"
-          }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Tareas Completadas</span>
-            <span className="text-2xl font-black mt-1">{activeMember.completedTasks}</span>
-            <span className="text-[10px] text-sky-500 font-bold">En entregables activos</span>
-          </div>
-
-          <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
-            isNightMode ? "bg-transparent border-neutral-800 text-neutral-50" : "bg-transparent border-slate-200 text-slate-900"
-          }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Horas Registradas</span>
-            <span className="text-2xl font-black mt-1">{activeMember.totalHoursLogged}h</span>
-            <span className="text-[10px] text-purple-500 font-bold">Tiempo total en plataforma</span>
-          </div>
-
-          <div className={`p-4 rounded-xl border flex flex-col gap-1 ${
-            isNightMode ? "bg-transparent border-neutral-800 text-neutral-50" : "bg-transparent border-slate-200 text-slate-900"
-          }`}>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">Calificación / Rating</span>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-2xl font-black">{activeMember.rating}</span>
-              <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
-            </div>
-            <span className="text-[10px] text-amber-500 font-bold">Basado en 15 entregas</span>
-          </div>
-        </div>
-
-        {/* Projects List Assigned to this Member (Signature Task Card Style) */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h3 className={`text-[12px] font-extrabold uppercase tracking-widest ${isNightMode ? 'text-neutral-50' : 'text-slate-900'}`}>
-              Proyectos Asignados a {activeMember.name.split(' ')[0]} ({memberProjects.length})
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-5 overflow-x-auto pb-4 pt-1 pr-4 hide-scrollbar">
-            {memberProjects.length === 0 ? (
-              <div className={`w-full p-8 rounded-2xl border text-center text-xs ${
-                isNightMode ? "bg-transparent border-neutral-800 text-neutral-400" : "bg-transparent border-slate-200 text-slate-600"
-              }`}>
-                No hay proyectos asignados a este miembro de equipo.
-              </div>
-            ) : (
-              memberProjects.map(project => (
-                <motion.div
-                  key={project.id}
-                  whileHover={{ scale: 1.015, y: -2 }}
-                  whileTap={{ scale: 0.985 }}
-                  className={`rounded-2xl p-5 flex flex-col justify-between shrink-0 select-none cursor-pointer transition-all duration-200 relative w-[340px] h-[320px] group/card border ${
-                    isNightMode
-                      ? "bg-transparent border-neutral-800 text-neutral-50"
-                      : "bg-transparent border-slate-200 text-slate-900"
-                  }`}
-                >
-                  {/* Top Row: Thumbnail + Title + Status Pill */}
-                  <div className="flex items-start justify-between gap-3 relative z-10">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 font-bold text-base border ${
-                        isNightMode
-                          ? "bg-transparent text-neutral-50 border-neutral-800"
-                          : "bg-transparent text-slate-900 border-slate-200"
-                      }`}>
-                        {project.title.substring(0, 2).toUpperCase()}
-                      </div>
-
-                      <div className="flex flex-col min-w-0">
-                        <span className={`font-bold text-[14px] tracking-tight leading-tight truncate ${isNightMode ? 'text-neutral-50' : 'text-slate-900'}`}>
-                          {project.title}
-                        </span>
-                        <span className={`text-[10px] font-mono mt-0.5 truncate ${isNightMode ? 'text-neutral-400' : 'text-slate-600'}`}>
-                          {project.client}
-                        </span>
-                      </div>
-                    </div>
-
-                    <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider border shrink-0 ${project.statusColor}`}>
-                      {project.status}
-                    </span>
-                  </div>
-
-                  {/* Middle Description */}
-                  <p className={`text-[12px] font-normal leading-relaxed line-clamp-2 relative z-10 ${
-                    isNightMode ? 'text-neutral-300' : 'text-slate-600'
-                  }`}>
-                    {project.desc || project.briefCore}
-                  </p>
-
-                  {/* Key Badges Row */}
-                  <div className="flex items-center gap-2 flex-wrap relative z-10">
-                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono font-bold border ${
-                      isNightMode ? 'bg-transparent text-neutral-200 border-neutral-800' : 'bg-transparent text-slate-900 border-slate-200'
-                    }`}>
-                      {project.cost}
-                    </span>
-                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono border ${
-                      isNightMode ? 'bg-transparent text-neutral-300 border-neutral-800' : 'bg-transparent text-slate-700 border-slate-200'
-                    }`}>
-                      {project.burnRate}
-                    </span>
-                    <span className={`px-2.5 py-1 rounded-md text-[10px] font-mono border ${
-                      isNightMode ? 'bg-transparent text-neutral-300 border-neutral-800' : 'bg-transparent text-slate-700 border-slate-200'
-                    }`}>
-                      {project.deadline}
-                    </span>
-                  </div>
-
-                  {/* Bottom Progress Section */}
-                  <div className="flex flex-col gap-1.5 pt-2 border-t border-neutral-800 relative z-10">
-                    <div className="flex justify-between items-center text-[10px] font-bold">
-                      <span className={isNightMode ? 'text-neutral-400' : 'text-slate-500'}>
-                        {project.progress}
-                      </span>
-                      <span className={isNightMode ? 'text-neutral-100 font-bold' : 'text-slate-800 font-bold'}>
-                        {project.percent}
-                      </span>
-                    </div>
-                    <div className={`w-full h-1.5 rounded-full overflow-hidden ${isNightMode ? 'bg-neutral-800' : 'bg-slate-200'}`}>
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${isNightMode ? 'bg-indigo-400' : 'bg-slate-800'}`}
-                        style={{ width: project.percent }}
-                      />
-                    </div>
-                  </div>
-                </motion.div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Assigned Tasks Table */}
-        <div className="flex flex-col gap-3 mt-2 pb-10">
-          <h3 className={`text-[12px] font-black uppercase tracking-widest ${isNightMode ? 'text-neutral-50' : 'text-slate-900'}`}>
-            Tareas Específicas del Miembro ({memberTasks.length})
-          </h3>
-
-          <div className={`rounded-2xl border overflow-hidden ${
-            isNightMode 
-              ? "bg-transparent border-neutral-800 text-neutral-50" 
-              : "bg-transparent border-slate-200 text-slate-900"
-          }`}>
-            {memberTasks.length === 0 ? (
-              <div className="p-8 text-center text-xs opacity-60">No hay tareas asignadas en este momento.</div>
-            ) : (
-              <div className="divide-y divide-white/10">
-                {memberTasks.map(task => (
-                  <div key={task.id} className="p-4 flex items-center justify-between gap-4 hover:bg-white/5 transition-colors">
-                    <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-bold text-[13px] ${isNightMode ? 'text-zinc-100' : ''}`}>{task.title}</span>
-                        <span className={`text-[10px] font-mono ${isNightMode ? 'text-zinc-400' : 'opacity-50'}`}>• {task.projectName}</span>
-                      </div>
-                      <span className={`text-[11px] line-clamp-1 ${isNightMode ? 'text-zinc-400' : 'opacity-60'}`}>{task.desc}</span>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className={`text-[10px] font-mono ${isNightMode ? 'text-zinc-400' : 'opacity-60'}`}>{task.time}</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase border ${task.statusColor}`}>
-                        {task.status}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* MODAL: Assign Project */}
-      {isAssignModalOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
-          <motion.div 
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className={`w-full max-w-md p-6 rounded-3xl border shadow-2xl flex flex-col gap-5 ${
-              isNightMode
-                ? "neu-dark-flat text-zinc-100 border-white/10 shadow-2xl"
-                : isNeumorphic
-                  ? "bg-[#e6eef8] text-slate-800 border-white/80"
-                  : "bg-[#0c0c0e] text-white border-white/20"
-            }`}
+          <button
+            type="button"
+            onClick={() => {
+              setIsAddMemberOpen(true);
+              playSound('click');
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition-all"
           >
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold">Asignar Proyecto a {activeMember.name}</h3>
-              <button 
-                onClick={() => setIsAssignModalOpen(false)}
-                className="text-xs opacity-50 hover:opacity-100 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Añadir Miembro</span>
+          </button>
+        </div>
+      </div>
 
-            <p className="text-xs opacity-60">
-              Selecciona un proyecto existente de la lista para vincular a este miembro de equipo.
-            </p>
+      {/* ── 3. MEMBER CARDS GRID ── */}
+      {filteredMembers.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {filteredMembers.map((member) => {
+            const memberProjects = projects.filter((p) => {
+              const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
+              const matchName = (p as any).asignado?.toLowerCase().includes(member.nombre.toLowerCase());
+              return matchId || matchName;
+            });
 
-            <div className="flex flex-col gap-2 max-h-60 overflow-y-auto hide-scrollbar">
-              {projects.map(p => (
-                <div
-                  key={p.id}
-                  onClick={() => setSelectedProjectIdToAssign(p.id)}
-                  className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between text-xs transition-all ${
-                    selectedProjectIdToAssign === p.id
-                      ? "border-cyan-400 bg-cyan-500/10 font-bold"
-                      : "border-white/10 hover:border-white/30"
-                  }`}
-                >
-                  <span>{p.title} ({p.client})</span>
-                  <span className="opacity-50">{p.status}</span>
-                </div>
-              ))}
-            </div>
+            const activeProjects = memberProjects.filter((p) => !["Completado", "Hecho", "Concluido"].includes((p as any).estadoProyecto || (p as any).estado || (p as any).status || "")).length;
+            const completedProjects = memberProjects.length - activeProjects;
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                onClick={() => setIsAssignModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold opacity-60 hover:opacity-100 cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleAssignProject}
-                disabled={!selectedProjectIdToAssign}
-                className="px-5 py-2 rounded-xl text-xs font-black uppercase bg-cyan-500 text-black shadow-lg disabled:opacity-40 cursor-pointer"
-              >
-                Confirmar Asignación
-              </button>
-            </div>
-          </motion.div>
+            return (
+              <EntityCard
+                key={member.id}
+                id={member.id}
+                type="member"
+                name={member.nombre}
+                subtitle={member.rol}
+                avatar={member.avatar || member.nombre.slice(0, 2).toUpperCase()}
+                status={member.disponibilidad || member.status || "Disponible"}
+                activeProjectsCount={activeProjects}
+                completedProjectsCount={completedProjects}
+                totalProjectsCount={memberProjects.length}
+                driveLinksCount={member.drive_links?.length || 0}
+                financialHighlight={member.tarifa_hora ? `$${member.tarifa_hora}/h tarifa` : undefined}
+                badgeText={member.specialty || undefined}
+                onClick={() => {
+                  setSelectedMemberId(member.id);
+                  playSound('click');
+                }}
+              />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-dashed border-white/10 bg-[#181818]/50">
+          <Users className="w-12 h-12 text-[#ffffff20] mb-3" />
+          <h4 className="text-base font-semibold text-[#ffffffd6]">No se encontraron colaboradores</h4>
+          <p className="text-xs text-[#ffffff6b] mt-1 max-w-sm">
+            {searchQuery
+              ? `No hay miembros que coincidan con "${searchQuery}".`
+              : "Registra a tu equipo creativo para comenzar a asignar proyectos y calcular rentabilidad."}
+          </p>
         </div>
       )}
+
+      {/* Add Member Modal */}
+      <AnimatePresence>
+        {isAddMemberOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md p-6 rounded-[28px] bg-[#181818] border border-white/15 shadow-2xl flex flex-col gap-4 text-[#ffffffd6]"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-white/5">
+                <h3 className="text-base font-bold">Añadir Nuevo Colaborador</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsAddMemberOpen(false)}
+                  className="p-1 rounded-lg text-[#ffffff6b] hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateNewMember} className="flex flex-col gap-3">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] block mb-1">
+                    Nombre Completo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newMemberName}
+                    onChange={(e) => setNewMemberName(e.target.value)}
+                    placeholder="ej. Mateo Ríos"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#222222] border border-white/10 text-xs text-[#ffffffd6] outline-none focus:border-white/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] block mb-1">
+                    Rol / Cargo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newMemberRole}
+                    onChange={(e) => setNewMemberRole(e.target.value)}
+                    placeholder="ej. Motion Director & 3D Artist"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#222222] border border-white/10 text-xs text-[#ffffffd6] outline-none focus:border-white/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] block mb-1">
+                    Área de Especialidad
+                  </label>
+                  <select
+                    value={newMemberSpecialty}
+                    onChange={(e) => setNewMemberSpecialty(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#222222] border border-white/10 text-xs text-[#ffffffd6] outline-none focus:border-white/30"
+                  >
+                    <option value="Diseño">Diseño</option>
+                    <option value="Animación">Animación</option>
+                    <option value="Video">Video</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Desarrollo">Desarrollo</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] block mb-1">
+                    Correo Electrónico
+                  </label>
+                  <input
+                    type="email"
+                    value={newMemberEmail}
+                    onChange={(e) => setNewMemberEmail(e.target.value)}
+                    placeholder="colaborador@taski.io"
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#222222] border border-white/10 text-xs text-[#ffffffd6] outline-none focus:border-white/30"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-white/5">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddMemberOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-white/5 text-xs text-[#ffffff6b] hover:text-white"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm"
+                  >
+                    Guardar Colaborador
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
-};
+}
