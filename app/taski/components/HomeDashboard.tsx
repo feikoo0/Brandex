@@ -10,6 +10,7 @@ import TimelineDiario from "./TimelineDiario";
 import KanbanBoard from "./KanbanBoard";
 import TaskTableView from "./TaskTableView";
 import DeleteConfirmModal from "./DeleteConfirmModal";
+import { MonoActivityHeatmap } from "@/components/ui/mono-activity-heatmap";
 import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
 import { useRecentSessions } from "@/hooks/useSessions";
 import { playSound } from "../utils/audio";
@@ -575,8 +576,8 @@ export function HomeDashboard({
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora
-  const { sessions: recentSessions } = useRecentSessions(100);
+  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora y sincronizar el heatmap
+  const { sessions: recentSessions } = useRecentSessions(300);
 
   // Cálculo del esfuerzo diario sincronizado 1:1 con las tarjetas exactas de la columna "Hoy" en el Kanban
   const todayEffort = React.useMemo<{
@@ -1460,8 +1461,17 @@ export function HomeDashboard({
 
             {/* Bottom Right Row: 2 Rectángulos Redondeados */}
             <div className="grid grid-cols-2 gap-5 -mt-10 relative z-20">
-              <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
-              <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
+              <div className="h-[300px]">
+                <MonoActivityHeatmap
+                  theme={isNightMode ? "dark" : "light"}
+                  accentColor="blue"
+                  title="Registro de Sesiones"
+                  badgeLabel="Sky Blue Grid"
+                  sessions={recentSessions}
+                  tasks={projects.flatMap((p) => p.tasks || [])}
+                />
+              </div>
+              <div className={`h-[300px] rounded-[28px] ${bgStyle} border border-white/10`} />
             </div>
         </div>
 
