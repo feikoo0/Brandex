@@ -1329,7 +1329,7 @@ export function HomeDashboard({
                         {matchingProjects.length === 0 && matchingTasks.length === 0 && (
                           <div className="flex flex-col items-center justify-center py-10 text-center">
                             <AlertTriangle className="w-8 h-8 text-slate-500 mb-2" />
-                            <p className="text-xs text-slate-400">No se encontraron resultados para "{searchQuery}"</p>
+                            <p className="text-xs text-slate-400">No se encontraron resultados para &quot;{searchQuery}&quot;</p>
                           </div>
                         )}
                       </div>

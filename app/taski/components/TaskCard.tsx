@@ -151,6 +151,9 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   const projName = project?.title || projectName;
   const task = project?.tasks?.find(t => `kt-${projectId}-${t.id}` === taskId || String(t.id) === String(taskId));
 
+  // Hook reactivo para el tiempo acumulado en vivo y semáforo de esfuerzo (Uso A)
+  const timeData = useTaskAccumulatedTime(taskId, task?.time);
+
   if (!task) return null;
 
   const projectTasks = project?.tasks || [];
@@ -158,34 +161,6 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   const foundIndex = projectTasks.findIndex(t => `kt-${projectId}-${t.id}` === taskId || String(t.id) === String(task.id));
   const rawIndex = foundIndex !== -1 ? foundIndex + 1 : (taskIndex !== undefined ? (taskIndex < realTotalTasks ? taskIndex + 1 : taskIndex) : ((task as any)?.taskIndex !== undefined ? (task as any).taskIndex + 1 : 1));
   const displayTaskIndex = Math.min(Math.max(1, rawIndex), realTotalTasks);
-
-  // 1. Programada Date
-  const progDate = (task.fecha_programada ? new Date(task.fecha_programada + "T00:00:00") : (() => {
-    let offset = 0;
-    if (task.status === "Completado") offset = 12;
-    else if (task.status === "En Proceso") offset = 0;
-    else {
-      const numericId = parseInt(String(task.id).replace(/\D/g, ""), 10) || 0;
-      if (numericId % 3 === 0) offset = 1;
-      else if (numericId % 3 === 1) offset = 4;
-      else offset = 15;
-    }
-    const d = new Date();
-    d.setDate(d.getDate() + offset);
-    return d;
-  })());
-
-  const formattedProgDate = progDate.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-  const diffProgDays = getCalendarDaysDiff(progDate);
-  let relativeProgLabel = "";
-  if (diffProgDays === 0) relativeProgLabel = "Hoy";
-  else if (diffProgDays === 1) relativeProgLabel = "Mañana";
-  else if (diffProgDays === -1) relativeProgLabel = "Ayer";
-  else if (diffProgDays < -1) relativeProgLabel = `Hace ${Math.abs(diffProgDays)} días`;
-  else relativeProgLabel = `En ${diffProgDays} días`;
-
-  // Hook reactivo para el tiempo acumulado en vivo y semáforo de esfuerzo (Uso A)
-  const timeData = useTaskAccumulatedTime(taskId, task?.time);
 
   // 2. Entrega (Deadline) Date
   const limitDate = (task.fecha_limite ? new Date(task.fecha_limite + "T00:00:00") : (task.deadline ? new Date(task.deadline + "T00:00:00") : (() => {

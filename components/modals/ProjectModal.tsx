@@ -259,11 +259,9 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
   const isDelayed = endDate ? endDate < today && !DONE_STATES.has(project.estadoProyecto) : false;
   const daysLeft = endDate ? differenceInDays(endDate, today) : null;
 
-  const workers = useMemo(() => {
-    const wIds = new Set<string>();
-    tasks.forEach(t => t.asignado_ids?.forEach(id => wIds.add(id)));
-    return Array.from(wIds).map(id => data?.trabajadores.find(w => w.id === id)).filter(Boolean);
-  }, [tasks, data]);
+  const wIds = new Set<string>();
+  tasks.forEach(t => t.asignado_ids?.forEach(id => wIds.add(id)));
+  const workers = Array.from(wIds).map(id => data?.trabajadores.find(w => w.id === id)).filter(Boolean);
 
   return (
     <div className="w-full h-full flex flex-col dark:bg-[#0a0a0c] bg-white overflow-hidden relative">

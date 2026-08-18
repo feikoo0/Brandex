@@ -309,7 +309,7 @@ function ProjectCreator({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col gap-4 animate-in slide-in-from-right-4 fade-in">
              <h3 className="text-sm font-black text-white mb-2">Paso 4: Tiempo Estimado</h3>
              <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest bg-purple-400/10 p-2 rounded-lg mb-2">
-               "No medimos horas de silla, medimos progreso."
+               &ldquo;No medimos horas de silla, medimos progreso.&rdquo;
              </p>
              <Field label="Estimación Total (Horas)">
                <input type="number" value={tiempoEst} onChange={e => setTiempoEst(e.target.value)} placeholder="Ej: 40" className="w-full bg-white/5 border border-white/10 text-lg font-black text-white px-3 py-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-purple-500/50 transition-all text-center" />
