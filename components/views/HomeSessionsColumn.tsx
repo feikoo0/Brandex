@@ -317,7 +317,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
         </div>
 
         {/* Lista de píldoras de tareas programadas de hoy */}
-        <div className="max-h-[208px] overflow-y-auto space-y-2 custom-scrollbar pr-1 pt-1">
+        <div className="max-h-[275px] overflow-y-auto space-y-2 custom-scrollbar pr-1 pt-1">
           {activeTodayTasks.length === 0 ? (
             <div className={`py-3 text-center text-[11px] font-medium ${isNightMode ? 'text-white/30' : 'text-slate-600'}`}>
               No hay tareas pendientes para hoy.
@@ -369,23 +369,8 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
               const excessRatio = Math.min(1, excessMins / totalMins);
               const ringCircumference = 50.2655; // 2 * Math.PI * 8
 
-              const leftMins = isCompleted ? 0 : Math.max(0, totalMins - executedMins);
-              const remH = Math.floor(leftMins / 60);
-              const remM = leftMins % 60;
-
-              let taskRemainingText = "Restan 0min";
-              if (isCompleted) {
-                taskRemainingText = "Completada";
-              } else if (remH > 0 && remM > 0) {
-                taskRemainingText = `Restan ${remH}h ${remM}min`;
-              } else if (remH > 0 && remM === 0) {
-                taskRemainingText = `Restan ${remH}h`;
-              } else if (remH === 0 && remM > 0) {
-                taskRemainingText = `Restan ${remM}min`;
-              }
-
               const lastSessionText = getLastSessionText(taskSessions);
-              const lastSessionDisplay = lastSessionText || "Sin sesión";
+              const lastSessionDisplay = isCompleted ? "Completada" : (lastSessionText || "Sin sesión");
 
               return (
                 <motion.div
@@ -521,7 +506,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                               ? (isNightMode ? 'text-rose-400' : 'text-rose-700')
                               : (isNightMode ? 'text-white/60' : 'text-amber-900/70')
                         }`}>
-                          {lastSessionDisplay} • {taskRemainingText}
+                          {lastSessionDisplay}
                         </div>
                       </motion.div>
                   </div>

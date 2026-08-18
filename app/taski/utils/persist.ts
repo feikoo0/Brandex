@@ -1,4 +1,4 @@
-import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Project } from "../components/ProjectDashboard";
 
@@ -66,6 +66,9 @@ export const persistProjectUpdate = async (
       cleanData.cost = typeof cleanData.costo === "number" ? `$${cleanData.costo}` : String(cleanData.costo);
     }
 
+    cleanData.updatedAt = serverTimestamp();
+    cleanData.updated_at = serverTimestamp();
+
     const docRef = doc(db, "v3_projects", String(projectId));
     await setDoc(docRef, cleanData, { merge: true });
 
@@ -91,7 +94,9 @@ export const persistProjectUpdate = async (
               duracion: t.time || "Sin tiempo",
               status: t.status || "Planificado",
               estado: t.status || "Planificado",
-              done: t.done || false
+              done: t.done || false,
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
             }, { merge: true });
           }
         }

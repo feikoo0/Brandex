@@ -9,6 +9,8 @@ import TaskCardPopovers, { TaskCardMenuPopover } from "./TaskCardPopovers";
 import { playSound } from "../utils/audio";
 import { getCardColorTheme, CARD_COLOR_KEYS, getSingleSourceProjectColor } from "@/lib/utils";
 import FormatoShape from "./FormatoShape";
+import { EffortGaugeRing, DELIVERY_THRESHOLDS, GaugeSeverity } from "./v2/EffortGaugeRing";
+import { useTaskAccumulatedTime } from "./v2/useTaskAccumulatedTime";
 
 function getProjectBgColor(project: Project): string {
   return getSingleSourceProjectColor(project).hslCss;
@@ -182,6 +184,9 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   else if (diffProgDays < -1) relativeProgLabel = `Hace ${Math.abs(diffProgDays)} días`;
   else relativeProgLabel = `En ${diffProgDays} días`;
 
+  // Hook reactivo para el tiempo acumulado en vivo y semáforo de esfuerzo (Uso A)
+  const timeData = useTaskAccumulatedTime(taskId, task?.time);
+
   // 2. Entrega (Deadline) Date
   const limitDate = (task.fecha_limite ? new Date(task.fecha_limite + "T00:00:00") : (task.deadline ? new Date(task.deadline + "T00:00:00") : (() => {
     let offset = 0;
@@ -200,12 +205,27 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
 
   const formattedLimitDate = limitDate.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
   const diffLimitDays = getCalendarDaysDiff(limitDate);
-  let relativeLimitLabel = "";
-  if (diffLimitDays === 0) relativeLimitLabel = "Hoy";
-  else if (diffLimitDays === 1) relativeLimitLabel = "Mañana";
-  else if (diffLimitDays === -1) relativeLimitLabel = "Ayer";
-  else if (diffLimitDays < -1) relativeLimitLabel = `Hace ${Math.abs(diffLimitDays)} días`;
-  else relativeLimitLabel = `En ${diffLimitDays} días`;
+
+  let deliveryLabel = "";
+  let deliverySeverity: GaugeSeverity = "low";
+
+  if (diffLimitDays < 0) {
+    const overdue = Math.abs(diffLimitDays);
+    deliveryLabel = `Atrasada ${overdue} ${overdue === 1 ? "día" : "días"}`;
+    deliverySeverity = "high";
+  } else if (diffLimitDays === 0) {
+    deliveryLabel = "Entrega hoy";
+    deliverySeverity = "high";
+  } else if (diffLimitDays === 1) {
+    deliveryLabel = "Entrega mañana";
+    deliverySeverity = "mid";
+  } else if (diffLimitDays <= DELIVERY_THRESHOLDS.low) {
+    deliveryLabel = `Entrega en ${diffLimitDays} días`;
+    deliverySeverity = "mid";
+  } else {
+    deliveryLabel = `Entrega en ${diffLimitDays} días`;
+    deliverySeverity = "low";
+  }
 
   // Creation date
   const creationDateObj = (task as any).fecha_creacion ? new Date((task as any).fecha_creacion + "T00:00:00") : new Date();
@@ -224,112 +244,31 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
 
   return (
     <div 
-      onClick={(e) => {
-        let el = e.target as HTMLElement | null;
-        while (el && el !== e.currentTarget) {
-          if (
-            el.tagName === "BUTTON" ||
-            el.tagName === "INPUT" ||
-            el.tagName === "TEXTAREA" ||
-            el.dataset?.noDnd === "true" ||
-            el.dataset?.dropdownContainer !== undefined ||
-            (isExpanded && (el.classList?.contains("task-card-title") || el.classList?.contains("task-card-desc")))
-          ) {
-            return;
-          }
-          el = el.parentElement;
-        }
-        
-        // Prevent layout-induced scroll events from instantly closing the card
-        const container = e.currentTarget.closest('.task-list-scroll');
-        if (container) {
-          (container as any)._ignoreScrollCollapse = true;
-          setTimeout(() => {
-            if (container) (container as any)._ignoreScrollCollapse = false;
-          }, 400);
-        }
-
-        playSound("pop");
-        setExpandedCardId?.((prev) => (prev === taskId ? null : taskId));
-      }}
       onMouseEnter={() => playSound('click')}
-      style={taskBgColor ? { backgroundColor: taskBgColor } : {}}
-      className={`group/card border-none rounded-xl transition-all duration-300 pointer-events-auto relative font-sans flex flex-col h-full w-full ${taskBgColor ? '' : currentTheme.bg} px-3.5 pt-2.5 pb-2.5`}
+      className={`group/card ${
+        isNightMode ? "bg-[#121212]" : "bg-white"
+      } rounded-2xl pointer-events-auto relative font-sans flex flex-col justify-between h-full w-full p-1.5 overflow-hidden select-none`}
     >
-      {/* Delete button in edit mode */}
-      {isHomeEditMode && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setDeleteModalConfig({
-              isOpen: true,
-              projectId: Number(projectId),
-              projectTitle: projName,
-              taskId: task.id,
-              taskTitle: task.title,
-              targetType: undefined,
-            });
-            playSound('click');
-          }}
-          className="absolute top-2.5 right-2.5 z-50 flex items-center justify-center w-5.5 h-5.5 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-md active:scale-90 transition-all cursor-pointer pointer-events-auto"
-          title="Eliminar tarea"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      )}
+      {/* Rectángulo claro que se expande del centro hacia afuera en hover por detrás */}
+      <div 
+        className={`absolute inset-0 rounded-2xl pointer-events-none z-0 transition-all duration-300 ease-out origin-center transform scale-75 opacity-0 group-hover/card:scale-100 group-hover/card:opacity-100 ${
+          isNightMode ? "bg-[#222226]" : "bg-slate-100"
+        }`} 
+      />
 
-      {/* Top Group: Project Title & Icon & Task Title */}
-      <div className={`flex flex-col relative ${activeColorSelectorCardId === taskId || activeCardMenuId === taskId ? "z-[9999]" : (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-auto" : "z-10"}`}>
-        <div className="flex items-center justify-between w-full">
-          <span className={`text-[12px] font-normal select-none truncate ${currentTheme.muted}`}>
-            <span className="text-white font-medium">{clientName}</span> • Entrega {relativeLimitLabel.toLowerCase()}
-          </span>
-          {!isHomeEditMode && (
-            <div className="relative shrink-0" data-dropdown-container>
-              <button
-                ref={threeDotsRef}
-                type="button"
-                data-no-dnd="true"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  playSound('click');
-                  setActiveCardMenuId?.((prev) => (prev === taskId ? null : taskId));
-                }}
-                className={`p-0.5 -mr-1 rounded-md hover:bg-white/15 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white ${
-                  activeCardMenuId === taskId ? "bg-white/20 text-white" : ""
-                }`}
-                title="Opciones de la tarjeta"
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Task Card Menu Popover (Figma-Style) */}
-        {activeCardMenuId === taskId && (
-          <TaskCardMenuPopover
-            isOpen={activeCardMenuId === taskId}
-            onClose={() => setActiveCardMenuId?.(null)}
-            triggerRef={threeDotsRef}
-            onOpenProject={() => {
-              onSelectProject?.(projectId);
-              setActiveCardMenuId?.(null);
-            }}
-            onChangeProjectColor={() => {
-              onChangeProjectColor?.(projectId);
-              setActiveCardMenuId?.(null);
-            }}
-            onAddTaskToProject={() => {
-              onAddTaskToProject?.(projectId);
-              setActiveCardMenuId?.(null);
-            }}
-            onCustomizeCardColor={() => {
-              setActiveColorSelectorCardId?.(taskId);
-              setActiveCardMenuId?.(null);
-            }}
-            onDeleteTask={() => {
-              setDeleteModalConfig?.({
+      {/* ── 1. PORTADA / CONTENEDOR RECTANGULAR SÓLIDO CON COLOR DE PROYECTO ── */}
+      <div
+        style={taskBgColor ? { backgroundColor: taskBgColor } : {}}
+        className={`w-full flex-1 min-h-0 rounded-xl relative z-10 flex flex-col justify-between overflow-hidden border border-white/10 px-3.5 pt-2 pb-2 transition-all duration-300 ${
+          taskBgColor ? "" : currentTheme.bg
+        }`}
+      >
+        {/* Delete button in edit mode */}
+        {isHomeEditMode && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteModalConfig({
                 isOpen: true,
                 projectId: Number(projectId),
                 projectTitle: projName,
@@ -337,16 +276,59 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
                 taskTitle: task.title,
                 targetType: undefined,
               });
-              setActiveCardMenuId?.(null);
+              playSound('click');
             }}
-          />
+            className="absolute top-2.5 right-2.5 z-50 flex items-center justify-center w-5.5 h-5.5 rounded-full bg-rose-500 hover:bg-rose-600 text-white shadow-md active:scale-90 transition-all cursor-pointer pointer-events-auto"
+            title="Eliminar tarea"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
         )}
-        
-        {/* Slide-Up Task Title + Format Icon */}
-        {isHomeEditMode ? (
-          <div className="flex flex-col gap-1 mt-1.5 w-full">
-            <div className="flex items-center gap-2 w-full">
-              <FormatoShape formatoKey={task.formato || task.format} size="sm" className="shrink-0" />
+
+        {/* Top Group: Format Icon + (Client Name & 3-dots + Task Title + Project Name) */}
+        <div className="flex flex-col relative z-10">
+          {/* Task Card Menu Popover (Figma-Style) */}
+          {activeCardMenuId === taskId && (
+            <TaskCardMenuPopover
+              isOpen={activeCardMenuId === taskId}
+              onClose={() => setActiveCardMenuId?.(null)}
+              triggerRef={threeDotsRef}
+              onOpenProject={() => {
+                onSelectProject?.(projectId);
+                setActiveCardMenuId?.(null);
+              }}
+              onChangeProjectColor={() => {
+                onChangeProjectColor?.(projectId);
+                setActiveCardMenuId?.(null);
+              }}
+              onAddTaskToProject={() => {
+                onAddTaskToProject?.(projectId);
+                setActiveCardMenuId?.(null);
+              }}
+              onCustomizeCardColor={() => {
+                setActiveColorSelectorCardId?.(taskId);
+                setActiveCardMenuId?.(null);
+              }}
+              onDeleteTask={() => {
+                setDeleteModalConfig?.({
+                  isOpen: true,
+                  projectId: Number(projectId),
+                  projectTitle: projName,
+                  taskId: task.id,
+                  taskTitle: task.title,
+                  targetType: undefined,
+                });
+                setActiveCardMenuId?.(null);
+              }}
+            />
+          )}
+
+          {/* Task Title & Meta Header */}
+          {isHomeEditMode ? (
+            <div className="flex flex-col min-w-0 w-full gap-1">
+              <span className="text-[12px] font-medium select-none truncate text-white/90">
+                {projName}
+              </span>
               <input
                 type="text"
                 defaultValue={taskTitle || ""}
@@ -370,309 +352,198 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
                 }}
                 className={`task-card-title text-[16px] font-bold bg-white/5 border border-white/10 rounded-xl px-2.5 py-1 focus:border-amber-500 focus:outline-none w-full pointer-events-auto z-40 text-left ${currentTheme.title}`}
               />
-            </div>
-            {projName && (
-              <span className="text-[12px] font-medium leading-snug text-white truncate select-none pl-7">
-                {projName}
-              </span>
-            )}
-          </div>
-        ) : (
-          <div className="flex items-start gap-2 mt-1.5 relative w-full">
-            <FormatoShape formatoKey={task.formato || task.format} size="sm" className="shrink-0 mt-0.5" />
-            <div className="flex flex-col min-w-0 flex-1">
-              {isExpanded && editingTaskField?.taskId === taskId && editingTaskField?.field === "title" ? (
-                <input
-                  type="text"
-                  autoFocus
-                  data-no-dnd="true"
-                  value={editingValue}
-                  onChange={(e) => setEditingValue(e.target.value)}
-                  onBlur={() => {
-                    saveEditing(projectId, task.id);
-                    setDragDisabledProp?.(false);
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      saveEditing(projectId, task.id);
-                      setDragDisabledProp?.(false);
-                    } else if (e.key === "Escape") {
-                      setEditingTaskField(null);
-                      setDragDisabledProp?.(false);
-                    }
-                  }}
-                  className={`task-card-title text-[14px] font-bold bg-transparent border-none p-0 focus:outline-none focus:ring-0 w-full pointer-events-auto z-45 text-left ${currentTheme.title}`}
-                />
-              ) : (
-                <h4 
-                  {...(isExpanded ? { "data-no-dnd": "true" } : {})}
-                  onClick={isExpanded ? (e) => {
-                    e.stopPropagation();
-                    playSound('click');
-                    setEditingTaskField({ taskId, field: "title" });
-                    setEditingValue(taskTitle || "");
-                    setDragDisabledProp?.(true);
-                  } : undefined}
-                  onMouseEnter={isExpanded ? () => setDragDisabledProp?.(true) : undefined}
-                  onMouseLeave={isExpanded ? () => {
-                    if (editingTaskField?.taskId !== taskId) {
-                      setDragDisabledProp?.(false);
-                    }
-                  } : undefined}
-                  className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 transition-all pointer-events-auto ${
-                    isExpanded ? "cursor-text hover:opacity-80" : ""
-                  } ${currentTheme.title}`}
-                  title={isExpanded ? "Haz clic para editar título" : undefined}
-                >
-                  {taskTitle}
-                </h4>
-              )}
-              {projName && (
-                <span className="text-[12px] font-medium leading-snug text-white truncate select-none mt-0.5">
-                  {projName}
+              {clientName && (
+                <span className="text-[12px] font-medium leading-snug text-white truncate select-none">
+                  {clientName}
                 </span>
               )}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="flex flex-col min-w-0 w-full">
+              {/* Top Meta Line: Project Name & 3 dots */}
+              <div className="flex items-center justify-between w-full leading-none">
+                <span className="text-[12px] font-medium select-none truncate text-white/80 leading-none">
+                  {projName}
+                </span>
+                {!isHomeEditMode && (
+                  <div className="relative shrink-0" data-dropdown-container>
+                    <button
+                      ref={threeDotsRef}
+                      type="button"
+                      data-no-dnd="true"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        playSound('click');
+                        setActiveCardMenuId?.((prev) => (prev === taskId ? null : taskId));
+                      }}
+                      className={`p-0.5 -mr-1 -mt-1 rounded-md hover:bg-white/15 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white ${
+                        activeCardMenuId === taskId ? "bg-white/20 text-white" : ""
+                      }`}
+                      title="Opciones de la tarjeta"
+                    >
+                      <MoreHorizontal className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
 
-        {/* Client & Project details & Description visible on hover / expanded */}
-        <div className={`task-card-details flex flex-col gap-3 mt-3 select-none pointer-events-auto relative ${
-          (activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-[9999] !overflow-visible" : "z-20"
-        }`}>
-          {/* Properties: Status and Format/Type via TaskCardPopovers */}
-          <TaskCardPopovers
-            type="status-format"
-            isInteractive={isExpanded}
-            taskId={taskId}
-            projectId={projectId}
-            project={parentProject || project}
-            task={task}
-            availableFormats={availableFormats}
-            activeStatusDropdownCardId={activeStatusDropdownCardId}
-            setActiveStatusDropdownCardId={setActiveStatusDropdownCardId}
-            activeFormatDropdownCardId={activeFormatDropdownCardId}
-            setActiveFormatDropdownCardId={setActiveFormatDropdownCardId}
-            activeTimeDropdownCardId={activeTimeDropdownCardId}
-            setActiveTimeDropdownCardId={setActiveTimeDropdownCardId}
-            hoveredStatusOptionCard={hoveredStatusOptionCard}
-            setHoveredStatusOptionCard={setHoveredStatusOptionCard}
-            hoveredFormatOptionCard={hoveredFormatOptionCard}
-            setHoveredFormatOptionCard={setHoveredFormatOptionCard}
-            getStatusPillConfig={getStatusPillConfig}
-            getFormatPillConfig={getFormatPillConfig}
-            updateTaskProperty={updateTaskProperty}
-            isNightMode={isNightMode}
-            panelBgClass={currentTheme.panelBg}
-          />
+              {/* Task Title */}
+              <h4 
+                className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 transition-all select-none mt-0.5 ${currentTheme.title}`}
+              >
+                {taskTitle}
+              </h4>
 
-          {/* Description line */}
-          {isExpanded && editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
-            <textarea
-              autoFocus
-              data-no-dnd="true"
-              value={editingValue}
-              onChange={(e) => setEditingValue(e.target.value)}
-              onBlur={() => {
-                saveEditing(projectId, task.id);
-                setDragDisabledProp?.(false);
-              }}
-              onClick={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
+              {/* Client Name */}
+              {clientName && (
+                <span className="text-[12px] font-medium leading-tight text-white/90 truncate select-none mt-0.5">
+                  {clientName}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Description visible on hover */}
+          <div className="task-card-details flex flex-col mt-2 select-none pointer-events-auto relative z-20">
+            {/* Description line */}
+            {editingTaskField?.taskId === taskId && editingTaskField?.field === "desc" ? (
+              <textarea
+                autoFocus
+                data-no-dnd="true"
+                value={editingValue}
+                onChange={(e) => setEditingValue(e.target.value)}
+                onBlur={() => {
                   saveEditing(projectId, task.id);
                   setDragDisabledProp?.(false);
-                } else if (e.key === "Escape") {
-                  setEditingTaskField(null);
-                  setDragDisabledProp?.(false);
-                }
-              }}
-              placeholder="Escribe una descripción..."
-              className={`task-card-desc text-[12px] bg-white/5 border border-white/10 rounded-xl p-2 focus:outline-none focus:border-amber-500 w-full pointer-events-auto z-45 resize-none ${currentTheme.desc}`}
-              rows={3}
-            />
-          ) : (
-            task.desc || desc ? (
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    saveEditing(projectId, task.id);
+                    setDragDisabledProp?.(false);
+                  } else if (e.key === "Escape") {
+                    setEditingTaskField(null);
+                    setDragDisabledProp?.(false);
+                  }
+                }}
+                placeholder="Escribe una descripción..."
+                className={`task-card-desc text-[12px] bg-white/5 border border-white/10 rounded-xl p-2 focus:outline-none focus:border-amber-500 w-full pointer-events-auto z-45 resize-none ${currentTheme.desc}`}
+                rows={2}
+              />
+            ) : task.desc || desc ? (
               <p 
-                {...(isExpanded ? { "data-no-dnd": "true" } : {})}
-                onClick={isExpanded ? (e) => {
+                data-no-dnd="true"
+                onClick={(e) => {
                   e.stopPropagation();
                   playSound('click');
                   setEditingTaskField({ taskId, field: "desc" });
                   setEditingValue(task.desc || desc || "");
                   setDragDisabledProp?.(true);
-                } : undefined}
-                onMouseEnter={isExpanded ? () => setDragDisabledProp?.(true) : undefined}
-                onMouseLeave={isExpanded ? () => {
+                }}
+                onMouseEnter={() => setDragDisabledProp?.(true)}
+                onMouseLeave={() => {
                   if (editingTaskField?.taskId !== taskId) {
                     setDragDisabledProp?.(false);
                   }
-                } : undefined}
-                className={`task-card-desc text-[12px] leading-snug transition-all pointer-events-auto ${
-                  isExpanded ? 'max-h-[72px] overflow-y-auto hide-scrollbar pr-1 cursor-text hover:opacity-80' : 'line-clamp-2'
-                } ${currentTheme.desc}`}
-                title={isExpanded ? "Haz clic para editar descripción" : undefined}
+                }}
+                className={`task-card-desc text-[12px] leading-snug transition-all pointer-events-auto line-clamp-3 cursor-text hover:opacity-80 ${currentTheme.desc}`}
+                title="Haz clic para editar descripción"
               >
                 {task.desc || desc}
               </p>
             ) : (
-              isExpanded ? (
-                <p 
-                  data-no-dnd="true"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    playSound('click');
-                    setEditingTaskField({ taskId, field: "desc" });
-                    setEditingValue("");
-                    setDragDisabledProp?.(true);
-                  }}
-                  onMouseEnter={() => setDragDisabledProp?.(true)}
-                  onMouseLeave={() => {
-                    if (editingTaskField?.taskId !== taskId) {
-                      setDragDisabledProp?.(false);
-                    }
-                  }}
-                  className={`task-card-desc text-[14px] italic cursor-text hover:opacity-80 transition-all pointer-events-auto ${currentTheme.muted}`}
-                  title="Haz clic para agregar descripción"
-                >
-                  Descripción de la tarea...
-                </p>
-              ) : null
-            )
-          )}
+              <p 
+                data-no-dnd="true"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  playSound('click');
+                  setEditingTaskField({ taskId, field: "desc" });
+                  setEditingValue("");
+                  setDragDisabledProp?.(true);
+                }}
+                onMouseEnter={() => setDragDisabledProp?.(true)}
+                onMouseLeave={() => {
+                  if (editingTaskField?.taskId !== taskId) {
+                    setDragDisabledProp?.(false);
+                  }
+                }}
+                className={`task-card-desc text-[12px] italic cursor-text hover:opacity-80 transition-all pointer-events-auto opacity-60 ${currentTheme.desc}`}
+                title="Haz clic para agregar descripción"
+              >
+                Agregar descripción...
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Footer inside the project color box: Task Index & Progress Bar */}
+        <div className="mt-auto flex flex-col gap-1 pt-1 border-t border-white/[0.04] shrink-0 w-full">
+          <div className="flex items-center justify-between leading-none">
+            <span className={`text-[12px] font-medium select-none ${currentTheme.title}`}>
+              Tarea {displayTaskIndex} de {realTotalTasks}
+            </span>
+          </div>
+
+          {/* Segmented Progress Bar */}
+          <div className="w-full flex items-center gap-1 h-1 my-0.5">
+            {Array.from({ length: Math.max(1, realTotalTasks) }).map((_, idx) => {
+              const isCompleted = idx < completedTasks;
+              const isInProcess = !isCompleted && task.status === "En Proceso" && idx === completedTasks;
+              
+              return (
+                <div
+                  key={idx}
+                  className={`h-full flex-1 rounded-full transition-all duration-300 ${
+                    isCompleted
+                      ? "bg-white"
+                      : isInProcess
+                      ? "bg-white/60"
+                      : "bg-white/20"
+                  }`}
+                />
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Dynamic task metadata properties block — always rendered, CSS-animated via .task-card-expanded-meta */}
-      <div className={`task-card-expanded-meta mt-0 border-t border-white/[0.04] flex flex-col gap-1 text-[12px] pointer-events-auto relative ${(activeStatusDropdownCardId === taskId || activeFormatDropdownCardId === taskId) ? "z-auto" : "z-30"}`}>
-        {/* Row 0: Tiempo */}
-        <div className="flex justify-between items-center relative pt-2.5">
-          <span className={`font-normal select-none ${currentTheme.muted}`}>Tiempo</span>
-          <TaskCardPopovers
-            type="tiempo"
-            isInteractive={isExpanded}
-            taskId={taskId}
-            projectId={projectId}
-            project={parentProject || project}
-            task={task}
-            availableFormats={availableFormats}
-            activeStatusDropdownCardId={activeStatusDropdownCardId}
-            setActiveStatusDropdownCardId={setActiveStatusDropdownCardId}
-            activeFormatDropdownCardId={activeFormatDropdownCardId}
-            setActiveFormatDropdownCardId={setActiveFormatDropdownCardId}
-            activeTimeDropdownCardId={activeTimeDropdownCardId}
-            setActiveTimeDropdownCardId={setActiveTimeDropdownCardId}
-            hoveredStatusOptionCard={hoveredStatusOptionCard}
-            setHoveredStatusOptionCard={setHoveredStatusOptionCard}
-            hoveredFormatOptionCard={hoveredFormatOptionCard}
-            setHoveredFormatOptionCard={setHoveredFormatOptionCard}
-            getStatusPillConfig={getStatusPillConfig}
-            getFormatPillConfig={getFormatPillConfig}
-            updateTaskProperty={updateTaskProperty}
-            isNightMode={isNightMode}
-            panelBgClass={currentTheme.panelBg}
+      {/* ── 2. CUERPO INFERIOR (Propiedades en el contenedor de fondo: Entrega y Tiempo con Sesiones) ── */}
+      <div className="h-[24px] px-1.5 pt-[8px] flex items-center justify-between gap-2 bg-transparent min-w-0 pointer-events-auto shrink-0 select-none relative z-10">
+        {/* Izquierda: Entrega (Uso B) */}
+        <div className="flex items-center gap-1.5 text-[#ffffff6b] font-normal min-w-0">
+          <EffortGaugeRing
+            severity={deliverySeverity}
+            size={13}
+            strokeWidth={1.75}
+            showCenterDot={true}
+            className="shrink-0"
           />
-        </div>
-        {/* Row 1: Programada */}
-        <div className="flex justify-between items-center relative">
-          <span className={`font-normal select-none ${currentTheme.muted}`}>Programada</span>
-          <div className="relative">
-            <input
-              type="date"
-              id={`date-picker-prog-${taskId}`}
-              className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0"
-              value={task.fecha_programada || formatLocalDate(progDate)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                updateTaskProperty(projectId, task.id, "fecha_programada", e.target.value);
-              }}
-            />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const picker = document.getElementById(`date-picker-prog-${taskId}`) as HTMLInputElement;
-                if (picker) {
-                  if (typeof picker.showPicker === "function") picker.showPicker();
-                  else picker.click();
-                }
-              }}
-              className={`font-bold hover:underline cursor-pointer select-none transition-colors ${currentTheme.title}`}
-              title="Cambiar fecha programada"
-            >
-              {relativeProgLabel} · {formattedProgDate}
-            </button>
-          </div>
-        </div>
-
-        {/* Row 2: Entrega */}
-        <div className="flex justify-between items-center relative">
-          <span className={`font-normal select-none ${currentTheme.muted}`}>Entrega</span>
-          <div className="relative">
-            <input
-              type="date"
-              id={`date-picker-limit-${taskId}`}
-              className="absolute inset-0 opacity-0 pointer-events-none w-0 h-0"
-              value={task.fecha_limite || formatLocalDate(limitDate)}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => {
-                updateTaskProperty(projectId, task.id, "fecha_limite", e.target.value);
-              }}
-            />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                const picker = document.getElementById(`date-picker-limit-${taskId}`) as HTMLInputElement;
-                if (picker) {
-                  if (typeof picker.showPicker === "function") picker.showPicker();
-                  else picker.click();
-                }
-              }}
-              className={`font-bold hover:underline cursor-pointer select-none transition-colors ${currentTheme.title}`}
-              title="Cambiar fecha de entrega"
-            >
-              {relativeLimitLabel} · {formattedLimitDate}
-            </button>
-          </div>
-        </div>
-
-        {/* Creation Info Line */}
-        <div className="flex justify-end items-center relative pt-0.5">
-          <span className={`text-[11px] font-semibold select-none opacity-80 ${currentTheme.title}`}>
-            Creado {relativeCreationLabel.toLowerCase()} · {formattedCreationDateShort}
-          </span>
-        </div>
-      </div>
-
-      {/* Footer Metadata: Task Index, Client Tag & Progress Bar */}
-      <div className="mt-auto flex flex-col gap-1 pt-1.5 border-t border-white/[0.04] shrink-0 w-full">
-        <div className="flex items-center justify-between leading-none">
-          <span className={`text-[13px] font-medium select-none ${currentTheme.title}`}>
-            Tarea {displayTaskIndex} de {realTotalTasks}
+          <span
+            className={`text-[13px] font-normal leading-none whitespace-nowrap ${
+              deliverySeverity === "high"
+                ? "text-rose-400 font-medium"
+                : deliverySeverity === "mid"
+                ? "text-amber-400"
+                : "text-[#ffffff6b]"
+            }`}
+          >
+            {deliveryLabel}
           </span>
         </div>
 
-        {/* Segmented Progress Bar */}
-        <div className="w-full flex items-center gap-1 h-1 my-0.5">
-          {Array.from({ length: Math.max(1, realTotalTasks) }).map((_, idx) => {
-            const isCompleted = idx < completedTasks;
-            const isInProcess = !isCompleted && task.status === "En Proceso" && idx === completedTasks;
-            
-            return (
-              <div
-                key={idx}
-                className={`h-full flex-1 rounded-full transition-all duration-300 ${
-                  isCompleted
-                    ? "bg-white"
-                    : isInProcess
-                    ? "bg-white/60"
-                    : "bg-white/20"
-                }`}
-              />
-            );
-          })}
+        {/* Derecha: Tiempo acumulado vs estimado sincronizado con sesiones (Uso A) */}
+        <div className="flex items-center gap-1.5 text-[#ffffff6b] shrink-0" title={`Consumo: ${Math.round(timeData.consumptionPercent * 100)}% (${timeData.formattedComparison})`}>
+          <EffortGaugeRing
+            progress={timeData.consumptionPercent}
+            severity={timeData.effortSeverity}
+            size={13}
+            strokeWidth={1.75}
+            className="shrink-0"
+          />
+          <span className="text-[13px] font-medium leading-none text-[#ffffffd6] whitespace-nowrap">
+            {timeData.formattedComparison}
+          </span>
         </div>
       </div>
     </div>
@@ -785,7 +656,7 @@ export const SortableTaskCard: React.FC<SortableTaskCardProps> = (props) => {
       data-task-id={taskIdComposite}
     >
       {/* inner-card-clip: always overflow-hidden + rounded — never disturbed by dropdown z-index changes on the wrapper */}
-      <div className="inner-card-clip w-full h-full overflow-hidden rounded-xl">
+      <div className="inner-card-clip w-full h-full overflow-hidden rounded-2xl">
         <TaskCardContent
           {...props}
           taskId={taskIdComposite}

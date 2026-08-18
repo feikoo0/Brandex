@@ -1,59 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  notion,
-  queryDb,
-  toUuid,
-  parseClient,
-  parseProject,
-  parseTask,
-  parseWorker,
-  buildTaskProps,
-  buildProjProps,
-  buildWorkerProps,
-  buildTaskUpdateProps,
-  syncAllData,
-  getFocusConfig,
-  setFocusConfig,
-  updateCachedItem,
-  addCachedItem,
-  createLocalClient,
-  updateLocalClient,
-  createLocalProject,
-  updateLocalProject,
-  createLocalTask,
-  updateLocalTask,
-  createLocalWorker,
-  updateLocalWorker
-} from "@/lib/notionServer";
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  serverTimestamp 
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
-const CLIENTES_DB = process.env.CLIENTES_DB || "";
-const PROYECTOS_DB = process.env.PROYECTOS_DB || "";
-const TAREAS_DB = process.env.TAREAS_DB || "";
-const EQUIPO_DB = process.env.EQUIPO_DB || "";
 const ADMIN_USER = process.env.ADMIN_USER || "Feiko";
 const ADMIN_PASS = process.env.ADMIN_PASS || "08e6003802A";
 
 // ── GET ROUTER ───────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest, { params }: { params: { path: string[] } }) {
   const p = `/api/${params.path.join("/")}`;
-  console.log(`[route.ts] GET ${p}`);
 
   if (p === "/api/sync") {
-    const force = req.nextUrl.searchParams.get("force") === "true";
     try {
-      const data = await syncAllData(force);
-      return NextResponse.json(data);
+      const clientsSnap = await getDocs(collection(db, "clients"));
+      const projectsSnap = await getDocs(collection(db, "projects"));
+      const tasksSnap = await getDocs(collection(db, "tasks"));
+      const membersSnap = await getDocs(collection(db, "members"));
+
+      const clientes = clientsSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const proyectos = projectsSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const tareas = tasksSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const trabajadores = membersSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+
+      return NextResponse.json({
+        ok: true,
+        clientes,
+        proyectos,
+        tareas,
+        trabajadores,
+        recursos: [],
+      });
     } catch (err: any) {
       return NextResponse.json({ error: err.message || String(err) }, { status: 500 });
-    }
-  }
-
-  if (p === "/api/focus") {
-    try {
-      const data = await getFocusConfig();
-      return NextResponse.json(data);
-    } catch (err: any) {
-      return NextResponse.json([], { status: 500 });
     }
   }
 
@@ -65,35 +49,17 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
     return NextResponse.json({ ok: true, status: "ok", token_ok: true });
   }
 
-  if (p === "/api/debug/tasks") {
-    return NextResponse.json({ status: "ok" });
-  }
-
-  if (p === "/api/debug/project") {
-    return NextResponse.json({ status: "ok" });
-  }
-
   return NextResponse.json({ error: "Endpoint not found" }, { status: 404 });
 }
 
 // ── POST ROUTER ──────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest, { params }: { params: { path: string[] } }) {
   const p = `/api/${params.path.join("/")}`;
-  console.log(`[route.ts] POST ${p}`);
 
   let data: any = {};
   try {
     data = await req.json();
   } catch {}
-
-  if (p === "/api/focus") {
-    try {
-      const ok = await setFocusConfig(data);
-      return NextResponse.json({ ok });
-    } catch (err: any) {
-      return NextResponse.json({ error: err.message }, { status: 500 });
-    }
-  }
 
   if (p === "/api/auth/admin") {
     const u = (data.user || "").trim();
@@ -110,71 +76,46 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
       return NextResponse.json({ ok: false, error: "Token vacío" }, { status: 400 });
     }
 
-    let found: any = null;
-
-    // Buscar en clientes
     try {
-      const clientesRaw = await queryDb(CLIENTES_DB);
-      for (const pg of clientesRaw) {
-        const c = parseClient(pg);
+      // Buscar en clientes
+      const clientsSnap = await getDocs(collection(db, "clients"));
+      for (const d of clientsSnap.docs) {
+        const c = d.data();
         if (c.token && c.token.trim() === tokenInput) {
-          found = { ok: true, role: "cliente", id: c.id, nombre: c.nombre, token: tokenInput };
-          break;
+          return NextResponse.json({ ok: true, role: "cliente", id: d.id, nombre: c.nombre || c.name, token: tokenInput });
         }
       }
-    } catch (e) {
-      console.error("Error looking up token in clients:", e);
-    }
 
-    // Buscar en trabajadores si no encontrado
-    if (!found && EQUIPO_DB) {
-      try {
-        const trabajadoresRaw = await queryDb(EQUIPO_DB);
-        for (const pg of trabajadoresRaw) {
-          const w = parseWorker(pg);
-          if (w.token && w.token.trim() === tokenInput) {
-            const workerRol = (w.rol || "").toLowerCase();
-            const finalRole = workerRol.includes("admin") ? "admin" : "diseno";
-            found = { ok: true, role: finalRole, id: w.id, nombre: w.nombre, token: tokenInput };
-            break;
-          }
+      // Buscar en miembros
+      const membersSnap = await getDocs(collection(db, "members"));
+      for (const d of membersSnap.docs) {
+        const m = d.data();
+        if (m.token && m.token.trim() === tokenInput) {
+          const role = (m.rol || m.role || "").toLowerCase().includes("admin") ? "admin" : "diseno";
+          return NextResponse.json({ ok: true, role, id: d.id, nombre: m.nombre || m.name, token: tokenInput });
         }
-      } catch (e) {
-        console.error("Error looking up token in workers:", e);
       }
+    } catch (e: any) {
+      console.error("Error looking up token in Firestore:", e);
     }
 
-    if (found) {
-      return NextResponse.json(found);
-    }
     return NextResponse.json({ ok: false, error: "Token no válido" }, { status: 401 });
-  }
-
-  if (p === "/api/token/set") {
-    const recordType = data.type; // "client" | "worker"
-    const pageId = data.id;
-    const newToken = (data.token || "").trim();
-
-    if (!pageId || !newToken) {
-      return NextResponse.json({ ok: false, error: "Faltan parámetros" }, { status: 400 });
-    }
-
-    try {
-      if (recordType === "worker") {
-        await updateLocalWorker(pageId, { token: newToken });
-      } else {
-        await updateLocalClient(pageId, { token: newToken });
-      }
-      return NextResponse.json({ ok: true });
-    } catch (err: any) {
-      return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
-    }
   }
 
   if (p === "/api/task/create") {
     try {
-      const task = await createLocalTask(data);
-      return NextResponse.json({ ok: true, id: task.id });
+      const newId = "task-" + Date.now();
+      const taskDoc = {
+        ...data,
+        id: newId,
+        titulo: (data.titulo || data.title || "Nueva Tarea").trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "tasks", newId), taskDoc);
+      return NextResponse.json({ ok: true, id: newId });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
@@ -182,8 +123,18 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
 
   if (p === "/api/project/create") {
     try {
-      const proj = await createLocalProject(data);
-      return NextResponse.json({ ok: true, id: proj.id });
+      const newId = "proj-" + Date.now();
+      const projDoc = {
+        ...data,
+        id: newId,
+        nombre: (data.nombre || data.name || "Nuevo Proyecto").trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "projects", newId), projDoc);
+      return NextResponse.json({ ok: true, id: newId });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
@@ -191,8 +142,18 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
 
   if (p === "/api/client/create") {
     try {
-      const client = await createLocalClient(data);
-      return NextResponse.json({ ok: true, id: client.id });
+      const newId = "cli-" + Date.now();
+      const clientDoc = {
+        ...data,
+        id: newId,
+        nombre: (data.nombre || data.name || "Nuevo Cliente").trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "clients", newId), clientDoc);
+      return NextResponse.json({ ok: true, id: newId });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
@@ -200,8 +161,18 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
 
   if (p === "/api/worker/create") {
     try {
-      const worker = await createLocalWorker(data);
-      return NextResponse.json({ ok: true, id: worker.id });
+      const newId = "mem-" + Date.now();
+      const memberDoc = {
+        ...data,
+        id: newId,
+        nombre: (data.nombre || data.name || "Nuevo Miembro").trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "members", newId), memberDoc);
+      return NextResponse.json({ ok: true, id: newId });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
     }
@@ -216,27 +187,7 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
     const messages = data.messages || [];
     const systemPrompt = {
       role: "system",
-      content: `Eres el Agente Inteligente de Taski. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes de forma local y segura.
-ESTRUCTURA DE DATOS:
-- Proyectos: nombre, cliente_id, estadoProyecto, prioridad, area, formato, fechaInicio, fechaFin, descripcion.
-- Tareas: titulo, proyecto_id, estado, prioridad, area, formato, esfuerzo, asignado, contenido.
-- Clientes: nombre.
-VALORES VÁLIDOS (Status/Select):
-- Estados Tarea: Sin empezar, En curso, En revisión, Hecho.
-- Prioridad: Alta, Media, Baja.
-- Esfuerzo: 1h, 2h, 4h, 8h, 16h, 32h.
-REGLAS:
-1. Siempre responde en JSON con este formato:
-{
-  "reply": "Texto para el usuario explicando qué vas a hacer o preguntando dudas",
-  "plan": [
-    { "action": "create_project", "data": { "nombre": "...", "prioridad": "Alta", ... } },
-    { "action": "create_task", "data": { "titulo": "...", "esfuerzo": "2h", ... } }
-  ]
-}
-2. Si no tienes suficiente información para una acción, NO la incluyas en el plan y pregunta en 'reply'.
-3. El plan debe ser una lista de acciones atómicas.
-4. Identifica IDs de proyectos o clientes si el usuario los menciona por nombre.`
+      content: `Eres el Agente Inteligente de Taski. Tu objetivo es ayudar al usuario a gestionar sus proyectos, tareas y clientes de forma local y segura.`
     };
 
     try {
@@ -271,21 +222,24 @@ REGLAS:
 // ── PATCH ROUTER ─────────────────────────────────────────────────────────────
 export async function PATCH(req: NextRequest, { params }: { params: { path: string[] } }) {
   const p = `/api/${params.path.join("/")}`;
-  console.log(`[route.ts] PATCH ${p}`);
 
   let data: any = {};
   try {
     data = await req.json();
   } catch {}
 
-  const pageId = data.id;
+  const pageId = String(data.id || "");
   if (!pageId) {
     return NextResponse.json({ ok: false, error: "No ID provided" }, { status: 400 });
   }
 
   if (p === "/api/client/update") {
     try {
-      await updateLocalClient(pageId, data);
+      await updateDoc(doc(db, "clients", pageId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
       return NextResponse.json({ ok: true });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
@@ -294,7 +248,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { path: stri
 
   if (p === "/api/task/update") {
     try {
-      await updateLocalTask(pageId, data);
+      await updateDoc(doc(db, "tasks", pageId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
       return NextResponse.json({ ok: true });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
@@ -303,7 +261,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { path: stri
 
   if (p === "/api/project/update") {
     try {
-      await updateLocalProject(pageId, data);
+      await updateDoc(doc(db, "projects", pageId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
       return NextResponse.json({ ok: true });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });
@@ -312,7 +274,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { path: stri
 
   if (p === "/api/worker/update") {
     try {
-      await updateLocalWorker(pageId, data);
+      await updateDoc(doc(db, "members", pageId), {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
       return NextResponse.json({ ok: true });
     } catch (err: any) {
       return NextResponse.json({ ok: false, error: err.message || String(err) }, { status: 500 });

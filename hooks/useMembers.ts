@@ -25,6 +25,8 @@ export const INITIAL_MEMBERS: Member[] = [
     email: "carlos.mendoza@taski.io",
     avatar: "CM",
     specialty: "Diseño",
+    color: "hsl(217, 91%, 60%)",
+    colorName: "Azul Eléctrico",
     skills: ["Figma", "Spatial UI", "Glassmorphism", "Design Systems"],
     proyectos_asignados: ["1", "2"],
     drive_links: [
@@ -52,6 +54,8 @@ export const INITIAL_MEMBERS: Member[] = [
     email: "sofia.valenzuela@taski.io",
     avatar: "SV",
     specialty: "Animación",
+    color: "hsl(271, 91%, 65%)",
+    colorName: "Púrpura",
     skills: ["After Effects", "Blender", "Three.js", "WebGL", "Framer"],
     proyectos_asignados: ["1", "3"],
     drive_links: [
@@ -78,6 +82,8 @@ export const INITIAL_MEMBERS: Member[] = [
     email: "mateo.rios@taski.io",
     avatar: "MR",
     specialty: "Video",
+    color: "hsl(142, 70%, 45%)",
+    colorName: "Esmeralda",
     skills: ["Premiere Pro", "DaVinci Resolve", "Color Grading", "Sound Design"],
     proyectos_asignados: ["2"],
     drive_links: [
@@ -104,6 +110,8 @@ export const INITIAL_MEMBERS: Member[] = [
     email: "elena.rostova@taski.io",
     avatar: "ER",
     specialty: "Marketing",
+    color: "hsl(25, 95%, 50%)",
+    colorName: "Naranja Vibrante",
     skills: ["Brand Strategy", "SEO/SEM", "Conversion Funnels", "Analytics"],
     proyectos_asignados: ["3"],
     drive_links: [
@@ -130,6 +138,8 @@ export const INITIAL_MEMBERS: Member[] = [
     email: "lucas.silva@taski.io",
     avatar: "LS",
     specialty: "Desarrollo",
+    color: "hsl(180, 90%, 50%)",
+    colorName: "Cyan Brillante",
     skills: ["React", "TypeScript", "Next.js", "Tailwind CSS", "Three.js"],
     proyectos_asignados: ["1", "2", "3"],
     drive_links: [
@@ -153,27 +163,43 @@ export function useMembers() {
   const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Real-time listener for v3_members
+  // Real-time listener for Firestore collection "members" (with fallback migration from "v3_members")
   useEffect(() => {
-    const colRef = collection(db, "v3_members");
+    const colRef = collection(db, "members");
 
     const unsubscribe = onSnapshot(
       colRef,
       async (snapshot) => {
         if (snapshot.empty) {
-          // Non-destructive initial seed
           try {
-            const seedPromises = INITIAL_MEMBERS.map((m) =>
-              setDoc(doc(db, "v3_members", String(m.id)), {
-                ...m,
-                created_at: serverTimestamp(),
-                updated_at: serverTimestamp(),
-              })
-            );
-            await Promise.all(seedPromises);
+            // Check if legacy "v3_members" has documents to migrate
+            const legacySnap = await getDocs(collection(db, "v3_members"));
+            if (!legacySnap.empty) {
+              const migrationPromises = legacySnap.docs.map((d) =>
+                setDoc(doc(db, "members", d.id), {
+                  ...d.data(),
+                  createdAt: d.data().createdAt || d.data().created_at || serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                  created_at: d.data().created_at || d.data().createdAt || serverTimestamp(),
+                  updated_at: serverTimestamp(),
+                })
+              );
+              await Promise.all(migrationPromises);
+            } else {
+              const seedPromises = INITIAL_MEMBERS.map((m) =>
+                setDoc(doc(db, "members", String(m.id)), {
+                  ...m,
+                  createdAt: serverTimestamp(),
+                  updatedAt: serverTimestamp(),
+                  created_at: serverTimestamp(),
+                  updated_at: serverTimestamp(),
+                })
+              );
+              await Promise.all(seedPromises);
+            }
             setMembers(INITIAL_MEMBERS);
           } catch (seedErr) {
-            console.error("Error seeding initial v3_members:", seedErr);
+            console.error("Error seeding initial members:", seedErr);
             setMembers(INITIAL_MEMBERS);
           }
         } else {
@@ -189,7 +215,15 @@ export function useMembers() {
               proyectos_asignados: data.proyectos_asignados || [],
               drive_links: data.drive_links || [],
               disponibilidad: data.disponibilidad || data.status || "Disponible",
+              status: data.status || data.disponibilidad || "Disponible",
+              color: data.color || "",
+              colorName: data.colorName || "",
+              customColor: data.customColor,
               notas_internas: data.notas_internas || "",
+              createdAt: data.createdAt || data.created_at || null,
+              updatedAt: data.updatedAt || data.updated_at || null,
+              created_at: data.created_at || data.createdAt || null,
+              updated_at: data.updated_at || data.updatedAt || null,
             });
           });
           setMembers(list);
@@ -197,7 +231,7 @@ export function useMembers() {
         setIsLoading(false);
       },
       (err) => {
-        console.error("Error subscribing to v3_members in Firestore:", err);
+        console.error("Error subscribing to members in Firestore:", err);
         setMembers(INITIAL_MEMBERS);
         setIsLoading(false);
       }
@@ -217,6 +251,9 @@ export function useMembers() {
       email: data.email || "",
       avatar: data.avatar || data.nombre?.slice(0, 2).toUpperCase() || "NM",
       specialty: data.specialty || "Diseño",
+      color: data.color || "",
+      colorName: data.colorName || "",
+      customColor: data.customColor,
       skills: data.skills || [],
       proyectos_asignados: data.proyectos_asignados || [],
       drive_links: data.drive_links || [],
@@ -229,24 +266,27 @@ export function useMembers() {
       completedTasks: 0,
       totalHoursLogged: 0,
       workloadPercent: 0,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),
     };
 
-    await setDoc(doc(db, "v3_members", newId), newMember);
+    await setDoc(doc(db, "members", newId), newMember);
     return newId;
   }, []);
 
   const updateMember = useCallback(async (id: string, data: Partial<Member>): Promise<void> => {
-    const docRef = doc(db, "v3_members", String(id));
+    const docRef = doc(db, "members", String(id));
     await updateDoc(docRef, {
       ...data,
+      updatedAt: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
   }, []);
 
   const deleteMember = useCallback(async (id: string): Promise<void> => {
-    const docRef = doc(db, "v3_members", String(id));
+    const docRef = doc(db, "members", String(id));
     await deleteDoc(docRef);
   }, []);
 

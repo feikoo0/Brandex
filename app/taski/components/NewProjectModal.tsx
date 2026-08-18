@@ -570,16 +570,16 @@ export default function NewProjectModal({
     const loadData = async () => {
       try {
         if (db) {
-          // 1. Clients (v3_clients primario + clients fallback)
-          const v3ClientSnap = await getDocs(collection(db, "v3_clients"));
-          if (!v3ClientSnap.empty) {
-            const firestoreNames = v3ClientSnap.docs.map((d) => d.data().name || d.data().nombre).filter(Boolean);
+          // 1. Clients (collection clients)
+          const clientSnap = await getDocs(collection(db, "clients"));
+          if (!clientSnap.empty) {
+            const firestoreNames = clientSnap.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
             const combinedClients = Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]));
             setClientList(combinedClients);
           } else {
-            const fallbackSnap = await getDocs(collection(db, "clients"));
-            if (!fallbackSnap.empty) {
-              const firestoreNames = fallbackSnap.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
+            const v3Fallback = await getDocs(collection(db, "v3_clients"));
+            if (!v3Fallback.empty) {
+              const firestoreNames = v3Fallback.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
               const combinedClients = Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]));
               setClientList(combinedClients);
             }

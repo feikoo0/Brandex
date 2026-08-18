@@ -19,7 +19,7 @@ import {
   Plus,
   Send
 } from "lucide-react";
-import { useClientsV3 } from "@/hooks/useClientsV3";
+import { useClients } from "@/hooks/useClients";
 import { useEntitySessionStats } from "@/hooks/useSessions";
 import type { Client } from "@/lib/types";
 import { playSound } from "../utils/audio";
@@ -33,7 +33,7 @@ export function FinanzasGlobalesDashboard({
   onSelectClient,
   className = "",
 }: FinanzasGlobalesDashboardProps) {
-  const { clients, isLoading } = useClientsV3();
+  const { clients, isLoading } = useClients();
   const [selectedTimeframe, setSelectedTimeframe] = useState<"mes" | "año" | "todo">("mes");
   const [notifiedClientId, setNotifiedClientId] = useState<string | null>(null);
 

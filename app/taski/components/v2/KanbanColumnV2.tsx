@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import SortableTaskCard from "./TaskCard";
+import SortableTaskCardV2 from "./TaskCardV2";
 
 export interface SynthesizedTask {
   id: string;
@@ -40,10 +40,9 @@ export interface ColumnContainerProps {
   isAnyDropdownOpen?: boolean;
 }
 
-export function ColumnContainer({
+export function ColumnContainerV2({
   col,
   children,
-  headerBgStyle,
   draggingTaskId,
   isHovered,
   isAnyDropdownOpen,
@@ -72,7 +71,7 @@ export function ColumnContainer({
   );
 }
 
-export interface KanbanColumnProps {
+export interface KanbanColumnV2Props {
   col: {
     id: string;
     name: string;
@@ -98,7 +97,7 @@ export interface KanbanColumnProps {
   taskCardSharedProps: any;
 }
 
-export const KanbanColumn: React.FC<KanbanColumnProps> = ({
+export const KanbanColumnV2: React.FC<KanbanColumnV2Props> = ({
   col,
   headerBgStyle,
   draggingTaskId,
@@ -120,7 +119,6 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const prevDraggingRef = useRef<string | null>(null);
 
-  // After drag ends, re-assign card-pos-* classes and remove hover-disabled
   useEffect(() => {
     const wasDragging = prevDraggingRef.current !== null;
     const isNowIdle = draggingTaskId === null;
@@ -128,9 +126,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
     if (wasDragging && isNowIdle && scrollContainerRef.current) {
       const container = scrollContainerRef.current;
-      // Remove stale drag state classes
       container.classList.remove("hover-disabled", "is-scrolling");
-      // Re-assign card-pos-* classes after DOM settles
       requestAnimationFrame(() => {
         updateVisibleCards(container);
       });
@@ -138,7 +134,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   }, [draggingTaskId, updateVisibleCards]);
 
   return (
-    <ColumnContainer
+    <ColumnContainerV2
       key={col.id}
       col={col}
       headerBgStyle={headerBgStyle}
@@ -151,7 +147,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         taskCardSharedProps?.activeCardMenuId !== null
       }
     >
-      {/* Header of Column */}
+      {/* Header de la Columna */}
       <div className="flex items-center gap-2.5 px-0 pt-1 pb-1 shrink-0">
         <span
           className={`text-[13px] font-bold ${
@@ -224,11 +220,42 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
           }}
         >
           {colTasks.map((t) => {
+            const colTopIndex = columnScrollIndices[col.id] || 0;
+            const isColumnExpanded = colTasks.some(
+              (tk) => tk.id === expandedCardId
+            );
+
+            const tasksIdx = colTasks.findIndex((tk) => tk.id === t.id);
+            const relativeIndex = tasksIdx - colTopIndex;
+
+            let extraClass = "";
+            if (isColumnExpanded) {
+              const expandedIdx = colTasks.findIndex(
+                (tk) => tk.id === expandedCardId
+              );
+              const expandedRelativeIndex = expandedIdx - colTopIndex;
+
+              if (t.id === expandedCardId) {
+                extraClass = "is-expanded-double";
+              } else if (relativeIndex < 0) {
+                extraClass = "";
+              } else {
+                extraClass = "is-hidden-sibling";
+                if (expandedRelativeIndex === 0 && relativeIndex === 1) {
+                  extraClass = "is-shrunk-sibling";
+                } else if (expandedRelativeIndex === 1 && relativeIndex === 2) {
+                  extraClass = "is-shrunk-sibling";
+                } else if (expandedRelativeIndex === 2 && relativeIndex === 1) {
+                  extraClass = "is-shrunk-sibling";
+                }
+              }
+            }
+
             return (
-              <SortableTaskCard
+              <SortableTaskCardV2
                 key={t.id}
                 t={t}
-                extraClass=""
+                extraClass={extraClass}
                 colId={col.id}
                 draggingTaskId={draggingTaskId}
                 isDropdownOpen={
@@ -250,8 +277,8 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
           })}
         </div>
       </SortableContext>
-    </ColumnContainer>
+    </ColumnContainerV2>
   );
 };
 
-export default KanbanColumn;
+export default KanbanColumnV2;

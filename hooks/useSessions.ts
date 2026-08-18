@@ -308,7 +308,10 @@ export function useSessions() {
       durationMins: 0,
       summary,
       created: nowTs,
+      createdAt: nowTs,
       updatedAt: nowTs,
+      created_at: nowTs,
+      updated_at: nowTs,
     };
 
     const docRef = doc(db, "sessions", newId);
@@ -338,6 +341,7 @@ export function useSessions() {
       lastHeartbeat: nowTs,
       durationMins,
       updatedAt: nowTs,
+      updated_at: nowTs,
     };
     if (summaryNote !== undefined) {
       updateData.summary = summaryNote;
@@ -385,7 +389,10 @@ export function useSessions() {
       durationMins,
       summary,
       created: nowTs,
+      createdAt: nowTs,
       updatedAt: nowTs,
+      created_at: nowTs,
+      updated_at: nowTs,
     };
 
     const docRef = doc(db, "sessions", newId);

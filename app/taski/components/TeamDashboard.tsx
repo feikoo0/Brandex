@@ -13,14 +13,17 @@ import {
   Star,
   Loader2,
   X,
-  Check
+  Check,
+  LayoutGrid,
+  Table
 } from 'lucide-react';
 import { Project } from './ProjectDashboard';
-import { EntityCard } from '@/components/common/EntityCard';
+import { MemberCardItem, MemberListItem } from '@/components/views/MemberCard';
 import { EntityDetailView } from '@/components/views/EntityDetailView';
 import { useMembers } from '@/hooks/useMembers';
 import type { Member } from '@/lib/types';
 import { playSound } from '../utils/audio';
+import { PROJECT_COLOR_PALETTE, cn } from '@/lib/utils';
 
 export interface TeamDashboardProps {
   projects: Project[];
@@ -37,32 +40,39 @@ export function TeamDashboard({
   isNeumorphic = false,
   isNightMode = true,
 }: TeamDashboardProps) {
-  const { members, isLoading, createMember, updateMember } = useMembers();
+  const { members, isLoading, createMember, updateMember, deleteMember } = useMembers();
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("Todos");
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
+
+  // Switcher states (Identical to Projects & Clients)
+  const [cardVariant, setCardVariant] = useState<"cover" | "full">("cover");
+  const [displayMode, setDisplayMode] = useState<"grid" | "list">("grid");
 
   // New member form state
   const [newMemberName, setNewMemberName] = useState("");
   const [newMemberRole, setNewMemberRole] = useState("Lead Designer");
   const [newMemberEmail, setNewMemberEmail] = useState("");
   const [newMemberSpecialty, setNewMemberSpecialty] = useState<string>("Diseño");
+  const [newMemberColorIdx, setNewMemberColorIdx] = useState(0);
 
   const specialties = ["Todos", "Diseño", "Animación", "Video", "Marketing", "Desarrollo"];
 
   // Filtered members list
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
+      const name = (m.nombre || m.name || "").toLowerCase();
+      const role = (m.rol || m.role || "").toLowerCase();
       const matchSearch =
-        m.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.rol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        m.skills.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+        name.includes(searchQuery.toLowerCase()) ||
+        role.includes(searchQuery.toLowerCase()) ||
+        (m.skills || []).some((s) => (s || "").toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchSpecialty =
         specialtyFilter === "Todos" ||
-        m.specialty?.toLowerCase() === specialtyFilter.toLowerCase() ||
-        m.rol.toLowerCase().includes(specialtyFilter.toLowerCase());
+        (m.specialty && m.specialty.toLowerCase() === specialtyFilter.toLowerCase()) ||
+        role.includes(specialtyFilter.toLowerCase());
 
       return matchSearch && matchSpecialty;
     });
@@ -113,6 +123,8 @@ export function TeamDashboard({
     e.preventDefault();
     if (!newMemberName.trim()) return;
 
+    const chosenColor = PROJECT_COLOR_PALETTE[newMemberColorIdx] || PROJECT_COLOR_PALETTE[0];
+
     await createMember({
       nombre: newMemberName.trim(),
       name: newMemberName.trim(),
@@ -120,6 +132,8 @@ export function TeamDashboard({
       role: newMemberRole.trim(),
       email: newMemberEmail.trim(),
       specialty: newMemberSpecialty,
+      color: chosenColor.hslStr,
+      colorName: chosenColor.name,
       avatar: newMemberName.slice(0, 2).toUpperCase(),
       skills: [newMemberSpecialty],
       disponibilidad: "Disponible",
@@ -129,67 +143,145 @@ export function TeamDashboard({
     setNewMemberName("");
     setNewMemberRole("Lead Designer");
     setNewMemberEmail("");
+    setNewMemberColorIdx(0);
     setIsAddMemberOpen(false);
     playSound('pop');
   };
 
   return (
     <div className="flex flex-col h-full p-6 overflow-y-auto custom-scrollbar bg-transparent text-[#ffffffd6]">
-      {/* ── 1. KPI SUMMARY BAR ── */}
+      {/* ── 1. KPI SUMMARY BAR (Superficies Sólidas #181818 & Trazos Finos) ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Equipo Interno</span>
-          <div className="text-2xl font-bold text-[#ffffffd6] mt-1.5">{totalMembers} especialistas</div>
+        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Equipo Interno</span>
+            <Users className="w-4 h-4 text-[#ffffff6b]" />
+          </div>
+          <div className="text-3xl font-bold text-[#ffffffd6] mt-2">{totalMembers} especialistas</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/80">Disponibles</span>
-          <div className="text-2xl font-bold text-emerald-400 mt-1.5">{availableMembers} listos para asignar</div>
+        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/80">Disponibles</span>
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-3xl font-bold text-emerald-400 mt-2">{availableMembers} listos para asignar</div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400/80">Proyectos Asignados</span>
-          <div className="text-2xl font-bold text-blue-400 mt-1.5">{activeProjsAssigned} en curso</div>
+        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400/80">Proyectos Asignados</span>
+            <CheckCircle2 className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="text-3xl font-bold text-blue-400 mt-2">{activeProjsAssigned} en curso</div>
         </div>
       </div>
 
-      {/* ── 2. CONTROLS BAR: Specialty Filter & Search ── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        {/* Left: Specialty Filter Pills */}
-        <div className="flex items-center gap-1.5 p-1 rounded-full bg-[#181818] border border-white/10">
-          {specialties.map((spec) => {
-            const isActive = specialtyFilter === spec;
-            return (
-              <button
-                key={spec}
-                type="button"
-                onClick={() => {
-                  setSpecialtyFilter(spec);
-                  playSound('click');
-                }}
-                className={`px-3 py-1 rounded-full text-xs font-semibold transition-all ${
-                  isActive
-                    ? "bg-white/10 text-[#ffffffd6] shadow-sm"
-                    : "text-[#ffffff6b] hover:text-[#ffffffd6]"
-                }`}
-              >
-                {spec}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Right: Search & Add Member */}
-        <div className="flex items-center gap-3">
-          <div className="relative flex items-center">
-            <Search className="w-3.5 h-3.5 text-[#ffffff40] absolute left-3 pointer-events-none" />
+      {/* ── 2. CONTROLS BAR: Search, Filter Tabs & Switchers ── */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+        {/* Left: Filter Tabs & Search */}
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+          {/* Buscador Integrado */}
+          <div className="relative w-full sm:w-72">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#ffffff6b]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por nombre o skill..."
-              className="pl-8 pr-3 py-1.5 rounded-full bg-[#181818] border border-white/10 text-xs text-[#ffffffd6] placeholder:text-[#ffffff40] outline-none focus:border-white/20 w-48 sm:w-64 transition-all"
+              className="w-full bg-[#181818] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-[#ffffffd6] placeholder:text-[#ffffff40] outline-none focus:border-white/30 shadow-sm"
             />
+          </div>
+
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#181818] border border-white/10 overflow-x-auto custom-scrollbar">
+            {specialties.map((spec) => {
+              const isActive = specialtyFilter === spec;
+              return (
+                <button
+                  key={spec}
+                  type="button"
+                  onClick={() => {
+                    setSpecialtyFilter(spec);
+                    playSound('click');
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
+                    isActive
+                      ? "bg-white/15 text-white shadow-sm"
+                      : "text-[#ffffff6b] hover:text-white"
+                  }`}
+                >
+                  {spec}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Right: Switcher Portada/Color + Grid/List + Botón Añadir Miembro */}
+        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+          {/* Switcher Portada / Color */}
+          <div className="flex items-center rounded-xl p-1 bg-[#181818] border border-white/10 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => {
+                setCardVariant("cover");
+                playSound("click");
+              }}
+              className={cn(
+                "px-2.5 py-1 rounded-lg transition-colors text-[11px]",
+                cardVariant === "cover" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
+              )}
+              title="Estilo Portada (Tarjetas con cubierta superior)"
+            >
+              Portada
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setCardVariant("full");
+                playSound("click");
+              }}
+              className={cn(
+                "px-2.5 py-1 rounded-lg transition-colors text-[11px]",
+                cardVariant === "full" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
+              )}
+              title="Estilo Color Completo"
+            >
+              Color
+            </button>
+          </div>
+
+          {/* Switcher Grid / Lista */}
+          <div className="flex items-center rounded-xl p-1 bg-[#181818] border border-white/10">
+            <button
+              type="button"
+              onClick={() => {
+                setDisplayMode("grid");
+                playSound("click");
+              }}
+              className={cn(
+                "p-1.5 rounded-lg text-xs transition-colors",
+                displayMode === "grid" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
+              )}
+              title="Vista de Cuadrícula Bento"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setDisplayMode("list");
+                playSound("click");
+              }}
+              className={cn(
+                "p-1.5 rounded-lg text-xs transition-colors",
+                displayMode === "list" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
+              )}
+              title="Vista Compacta de Lista"
+            >
+              <Table className="w-4 h-4" />
+            </button>
           </div>
 
           <button
@@ -198,54 +290,75 @@ export function TeamDashboard({
               setIsAddMemberOpen(true);
               playSound('click');
             }}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm transition-all"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-white/90 text-black text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Añadir Miembro</span>
+            <Plus className="w-4 h-4" />
+            <span>Registrar Colaborador</span>
           </button>
         </div>
       </div>
 
-      {/* ── 3. MEMBER CARDS GRID ── */}
+      {/* ── 3. MEMBER CARDS VIEW (IDÉNTICO A CLIENTES Y PROYECTOS) ── */}
       {filteredMembers.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredMembers.map((member) => {
-            const memberProjects = projects.filter((p) => {
-              const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
-              const matchName = (p as any).asignado?.toLowerCase().includes(member.nombre.toLowerCase());
-              return matchId || matchName;
-            });
+        displayMode === "grid" ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-0">
+            {filteredMembers.map((member) => {
+              const memberNameLower = (member.nombre || member.name || "").toLowerCase();
+              const memberProjects = projects.filter((p) => {
+                const pIdStr = String(p.id);
+                const matchProjList = (member.proyectos_asignados || []).map(String).includes(pIdStr);
+                const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
+                const matchName = memberNameLower && (p as any).asignado ? (p as any).asignado.toLowerCase().includes(memberNameLower) : false;
+                return matchProjList || matchId || matchName;
+              });
 
-            const activeProjects = memberProjects.filter((p) => !["Completado", "Hecho", "Concluido"].includes((p as any).estadoProyecto || (p as any).estado || (p as any).status || "")).length;
-            const completedProjects = memberProjects.length - activeProjects;
+              return (
+                <MemberCardItem
+                  key={member.id}
+                  member={member}
+                  cardStyle={cardVariant}
+                  memberProjects={memberProjects}
+                  onOpenDetail={(m) => {
+                    setSelectedMemberId(m.id);
+                    playSound('click');
+                  }}
+                  onDeleteMember={async (m) => {
+                    await deleteMember(m.id);
+                  }}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {filteredMembers.map((member) => {
+              const memberNameLower = (member.nombre || member.name || "").toLowerCase();
+              const memberProjects = projects.filter((p) => {
+                const pIdStr = String(p.id);
+                const matchProjList = (member.proyectos_asignados || []).map(String).includes(pIdStr);
+                const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
+                const matchName = memberNameLower && (p as any).asignado ? (p as any).asignado.toLowerCase().includes(memberNameLower) : false;
+                return matchProjList || matchId || matchName;
+              });
 
-            return (
-              <EntityCard
-                key={member.id}
-                id={member.id}
-                type="member"
-                name={member.nombre}
-                subtitle={member.rol}
-                avatar={member.avatar || member.nombre.slice(0, 2).toUpperCase()}
-                status={member.disponibilidad || member.status || "Disponible"}
-                activeProjectsCount={activeProjects}
-                completedProjectsCount={completedProjects}
-                totalProjectsCount={memberProjects.length}
-                driveLinksCount={member.drive_links?.length || 0}
-                financialHighlight={member.tarifa_hora ? `$${member.tarifa_hora}/h tarifa` : undefined}
-                badgeText={member.specialty || undefined}
-                onClick={() => {
-                  setSelectedMemberId(member.id);
-                  playSound('click');
-                }}
-              />
-            );
-          })}
-        </div>
+              return (
+                <MemberListItem
+                  key={member.id}
+                  member={member}
+                  memberProjects={memberProjects}
+                  onOpenDetail={(m) => {
+                    setSelectedMemberId(m.id);
+                    playSound('click');
+                  }}
+                />
+              );
+            })}
+          </div>
+        )
       ) : (
-        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center rounded-3xl border border-dashed border-white/10 bg-[#181818]/50">
-          <Users className="w-12 h-12 text-[#ffffff20] mb-3" />
-          <h4 className="text-base font-semibold text-[#ffffffd6]">No se encontraron colaboradores</h4>
+        <div className="py-24 flex flex-col items-center justify-center text-center opacity-40">
+          <Users className="w-14 h-14 mb-4 text-[#ffffff6b]" />
+          <h4 className="text-xl font-bold text-[#ffffffd6]">No se encontraron colaboradores</h4>
           <p className="text-xs text-[#ffffff6b] mt-1 max-w-sm">
             {searchQuery
               ? `No hay miembros que coincidan con "${searchQuery}".`
@@ -319,6 +432,41 @@ export function TeamDashboard({
                     <option value="Marketing">Marketing</option>
                     <option value="Desarrollo">Desarrollo</option>
                   </select>
+                </div>
+
+                {/* Color Selector */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] block">
+                      Color del Colaborador
+                    </label>
+                    <span className="text-[10px] font-medium text-emerald-400">
+                      {PROJECT_COLOR_PALETTE[newMemberColorIdx]?.name}
+                    </span>
+                  </div>
+                  <div className="flex items-center flex-wrap gap-2 p-2.5 rounded-xl bg-white/5 border border-white/10">
+                    {PROJECT_COLOR_PALETTE.map((preset, idx) => {
+                      const isSelected = newMemberColorIdx === idx;
+                      return (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          title={preset.name}
+                          onClick={() => {
+                            setNewMemberColorIdx(idx);
+                            playSound("click");
+                          }}
+                          className={cn(
+                            "w-5 h-5 rounded-full bg-gradient-to-br transition-all cursor-pointer border",
+                            preset.gradient,
+                            isSelected
+                              ? "border-white scale-125 shadow-md ring-2 ring-white/40"
+                              : "border-transparent opacity-60 hover:opacity-100 hover:scale-110"
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div>

@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
 import { 
   ArrowLeft, Calendar, DollarSign, Loader2, Plus, Trash2, User, Flag, Tag, X, Maximize2, MoreHorizontal, Paperclip
 } from "lucide-react";
 import { useData, useUpdateProject, useUpdateTask, useCreateTask } from "@/hooks/useData";
+import { useClients } from "@/hooks/useClients";
 import { useProjectSummary } from "@/hooks/useProjectSummary";
-import { cn, getSingleSourceProjectColor, PROJECT_COLOR_PALETTE } from "@/lib/utils";
+import { cn, getSingleSourceProjectColor, getSingleSourceClientColor, PROJECT_COLOR_PALETTE } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import FormatoShape from "@/app/taski/components/FormatoShape";
 import { FORMATOS_ESTANDAR, getFormato } from "@/app/taski/utils/formatos";
@@ -17,6 +18,7 @@ import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
 import { playSound } from "@/app/taski/utils/audio";
 import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import type { Client } from "@/lib/types";
 
 export default function ProjectFullScreenView({ 
   projectId, 
@@ -27,12 +29,27 @@ export default function ProjectFullScreenView({
 }) {
   const summary = useProjectSummary(projectId);
   const { data } = useData();
+  const { clients: firestoreClients } = useClients();
   const updateProject = useUpdateProject();
   const updateTask = useUpdateTask();
   const createTask = useCreateTask();
   const openModal = useUIStore((s) => s.openModal);
 
   const project = summary.project;
+
+  // Catálogo completo y unificado de clientes
+  const availableClients = useMemo(() => {
+    const map = new Map<string, Client>();
+    (firestoreClients || []).forEach((c) => {
+      if (c.id) map.set(String(c.id), c);
+    });
+    (data?.clientes || []).forEach((c) => {
+      if (c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), c);
+      }
+    });
+    return Array.from(map.values());
+  }, [firestoreClients, data?.clientes]);
 
   const [activePopover, setActivePopover] = useState<"header_client" | "status" | "priority" | "type" | "assignee" | "date" | null>(null);
   const [activeTaskPopover, setActiveTaskPopover] = useState<{ taskId: string | number; type: "format" | "time" } | null>(null);
@@ -334,22 +351,24 @@ export default function ProjectFullScreenView({
             <LinearDropdownPopover
               isOpen={activePopover === "header_client"}
               onClose={() => setActivePopover(null)}
-              placeholder="Cambiar cliente…"
+              placeholder="Buscar o cambiar marca cliente…"
               shortcutKey="C"
               selectedValue={formData.cliente_id}
               onSelect={(val) => {
-                const selectedClient = data?.clientes.find((c) => c.id === val);
+                const selectedClient = availableClients.find((c: Client) => String(c.id) === String(val));
                 setFormData((prev) => ({
                   ...prev,
                   cliente_id: val || "",
-                  clientName: selectedClient?.nombre || "Brandex",
+                  clientName: selectedClient?.nombre || (selectedClient as any)?.name || "Brandex",
                 }));
                 setActivePopover(null);
               }}
-              options={(data?.clientes || []).map((c, i) => ({
-                id: c.id,
-                label: c.nombre,
-                shortcut: String(i + 1),
+              options={availableClients.map((c: Client, i: number) => ({
+                id: String(c.id),
+                label: c.nombre || (c as any).name || "Cliente",
+                shortcut: i < 9 ? String(i + 1) : undefined,
+                color: getSingleSourceClientColor(c).hslCss,
+                badge: c.industria || (c as any).industry || c.status || undefined,
               }))}
             />
           </div>

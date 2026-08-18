@@ -1,16 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { useData, useCreateProject } from "@/hooks/useData";
+import { useClients } from "@/hooks/useClients";
 import { PROJ_PRIO_OPTS, PROJ_STATUS_OPTS } from "@/lib/constants";
 import { useUIStore } from "@/lib/store";
+import type { Client } from "@/lib/types";
 
 export function NewProjectCanvas() {
   const { data } = useData();
+  const { clients: firestoreClients } = useClients();
   const createProject = useCreateProject();
   const popView = useUIStore(s => s.popView);
   const pushView = useUIStore(s => s.pushView);
+
+  // Lista consolidada de clientes
+  const clients = useMemo(() => {
+    const map = new Map<string, Client>();
+    (firestoreClients || []).forEach((c) => {
+      if (c.id) map.set(String(c.id), c);
+    });
+    (data?.clientes || []).forEach((c) => {
+      if (c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), c);
+      }
+    });
+    return Array.from(map.values());
+  }, [firestoreClients, data?.clientes]);
   
   const [saving, setSaving] = useState(false);
   const [nombre, setNombre] = useState("");
@@ -53,7 +70,6 @@ export function NewProjectCanvas() {
     }
   }
 
-  const clients = data?.clientes ?? [];
   const workers = data?.trabajadores ?? [];
 
   return (

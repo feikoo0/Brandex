@@ -7,13 +7,14 @@
 //  taskId === "xxx"  → modo edición de tarea existente
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { X, Calendar, Loader2, ExternalLink, Play } from "lucide-react";
 import { useData, useCreateTask, useUpdateTask } from "@/hooks/useData";
+import { useClients } from "@/hooks/useClients";
 import { useUIStore } from "@/lib/store";
 import { fmtDate, statusColor } from "@/lib/utils";
 import { TASK_ESTADO_OPTS, TASK_PRIO_OPTS, ESFUERZOS, FORMATOS, AREAS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/constants";
-import type { ModalEntry } from "@/lib/types";
+import type { ModalEntry, Client } from "@/lib/types";
 
 interface Props {
   taskId:   string;           // "new" = create mode, else = edit
@@ -25,10 +26,25 @@ interface Props {
 
 export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: Props) {
   const { data }    = useData();
+  const { clients: firestoreClients } = useClients();
   const createTask  = useCreateTask();
   const updateTask  = useUpdateTask();
   const isCreate    = taskId === "new";
   const task        = isCreate ? null : (data?.tareas.find((t) => t.id === taskId) ?? null);
+
+  // Lista consolidada de clientes
+  const clients = useMemo(() => {
+    const map = new Map<string, Client>();
+    (firestoreClients || []).forEach((c) => {
+      if (c.id) map.set(String(c.id), c);
+    });
+    (data?.clientes || []).forEach((c) => {
+      if (c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), c);
+      }
+    });
+    return Array.from(map.values());
+  }, [firestoreClients, data?.clientes]);
 
   const startTimer  = useUIStore(s => s.startTimer);
   const activeTimer = useUIStore(s => s.activeTimer);
@@ -67,10 +83,9 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
 
   const workers  = data?.trabajadores.map((w) => w.nombre)  ?? [];
   const projects = data?.proyectos  ?? [];
-  const clients  = data?.clientes   ?? [];
 
   const selectedProj = projects.find((p) => p.id === proyectoId);
-  const selectedCli  = clients.find((c)  => c.id === clienteId);
+  const selectedCli  = clients.find((c)  => String(c.id) === String(clienteId));
   const statusCol    = statusColor(estado);
 
   useEffect(() => {

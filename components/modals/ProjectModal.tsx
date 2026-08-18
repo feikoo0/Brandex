@@ -5,6 +5,7 @@ import { X, Calendar, Loader2, ExternalLink, Clock, Users, FileText, AlertTriang
 import { differenceInDays, format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useData, useCreateProject, useUpdateProject } from "@/hooks/useData";
+import { useClients } from "@/hooks/useClients";
 import { cn, parseEsfuerzoMins, avatarOf } from "@/lib/utils";
 import { DONE_STATES, PROJ_PRIO_OPTS, PROJ_STATUS_OPTS } from "@/lib/constants";
 import type { ModalEntry } from "@/lib/types";
@@ -18,8 +19,23 @@ interface Props {
 
 export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props) {
   const { data } = useData();
+  const { clients: firestoreClients } = useClients();
   const createProject = useCreateProject();
   const updateProject = useUpdateProject();
+  
+  // Lista consolidada de clientes
+  const clients = useMemo(() => {
+    const map = new Map<string, any>();
+    (firestoreClients || []).forEach((c) => {
+      if (c.id) map.set(String(c.id), c);
+    });
+    (data?.clientes || []).forEach((c) => {
+      if (c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), c);
+      }
+    });
+    return Array.from(map.values());
+  }, [firestoreClients, data?.clientes]);
   
   const project = data?.proyectos.find((p) => p.id === projectId);
   const [activeTab, setActiveTab] = useState<"tasks" | "timeline">("tasks");
@@ -70,8 +86,6 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
   }
 
   if (projectId === "new") {
-    const clients = data?.clientes ?? [];
-
     return (
       <div className="w-full h-full flex flex-col dark:bg-[#0a0a0c] bg-white overflow-hidden relative">
         <div className="flex-shrink-0 border-b dark:border-white/10 border-black/10 p-6 flex items-start justify-between">
@@ -219,7 +233,11 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
   if (!project && projectId !== "new") return <div className="p-8 text-center text-white/50">Cargando proyecto...</div>;
   if (!project) return <div className="p-8 text-center text-white/50">Cargando proyecto...</div>;
 
-  const client = data?.clientes.find(c => project.cliente_ids?.includes(c.id));
+  const client = clients.find(c => 
+    project.cliente_ids?.map(String).includes(String(c.id)) || 
+    String((project as any).cliente_id || "") === String(c.id) ||
+    (c.nombre || c.name || "").toLowerCase().trim() === String((project as any).cliente || (project as any).client || "").toLowerCase().trim()
+  );
   const tasks = data?.tareas.filter(t => t.proyecto_ids?.includes(projectId)) || [];
   
   // Calculate metrics

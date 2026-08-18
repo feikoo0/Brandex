@@ -1,23 +1,24 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Braindex OS — Data Hooks (TanStack Query)
+//  Taski — Data Hooks (Pure Firebase Firestore + TanStack Query)
 //
-//  useData()  → full sync, cached 3 min, background refetch
-//  useSync()  → manual trigger (Sync button)
+//  useData()  → queries Firestore collections: clients, projects, tasks, members
+//  useSync()  → invalidates cache and triggers background re-read
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import {
-  syncAll,
-  createTask,
-  updateTask,
-  createProject,
-  updateProject,
-  createClient,
-  updateClient,
-  updateWorker,
-} from "@/lib/api";
+import { 
+  collection, 
+  doc, 
+  getDocs, 
+  setDoc, 
+  updateDoc, 
+  serverTimestamp 
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { INITIAL_CLIENTS } from "./useClients";
+import { INITIAL_MEMBERS } from "./useMembers";
 import { persistProjectUpdate } from "@/app/taski/utils/persist";
 import type {
   BraindexData,
@@ -27,26 +28,142 @@ import type {
   Worker,
 } from "@/lib/types";
 
-const QUERY_KEY = ["braindex-data"];
+const QUERY_KEY = ["taski-firestore-data"];
 
-// ── Full data (auto-refreshed every 3 minutes) ─────────────────────────────────
+// ── Full data directly from pure Firestore collections ─────────────────────────
 export function useData() {
   return useQuery<BraindexData>({
     queryKey: QUERY_KEY,
     queryFn: async () => {
-      const res = await syncAll();
-      if ("error" in res && res.error) throw new Error(res.error);
+      // 1. Clientes (colección 'clients' con fallback de 'v3_clients')
+      let clientsList: Client[] = [];
+      try {
+        const clientsSnap = await getDocs(collection(db, "clients"));
+        if (!clientsSnap.empty) {
+          clientsList = clientsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Client));
+        } else {
+          const v3Snap = await getDocs(collection(db, "v3_clients"));
+          if (!v3Snap.empty) {
+            clientsList = v3Snap.docs.map((d) => ({ ...d.data(), id: d.id } as Client));
+          } else {
+            clientsList = INITIAL_CLIENTS;
+          }
+        }
+      } catch (e) {
+        console.error("Error reading clients from Firestore:", e);
+        clientsList = INITIAL_CLIENTS;
+      }
+
+      // 2. Miembros / Trabajadores (colección 'members' con fallback de 'v3_members')
+      let workersList: any[] = [];
+      try {
+        const membersSnap = await getDocs(collection(db, "members"));
+        if (!membersSnap.empty) {
+          workersList = membersSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+        } else {
+          const v3MemSnap = await getDocs(collection(db, "v3_members"));
+          if (!v3MemSnap.empty) {
+            workersList = v3MemSnap.docs.map((d) => ({ ...d.data(), id: d.id }));
+          } else {
+            workersList = INITIAL_MEMBERS;
+          }
+        }
+      } catch (e) {
+        console.error("Error reading members from Firestore:", e);
+        workersList = INITIAL_MEMBERS;
+      }
+
+      // 3. Proyectos (colección 'projects')
+      let projectsList: Project[] = [];
+      try {
+        const projSnap = await getDocs(collection(db, "projects"));
+        if (!projSnap.empty) {
+          projectsList = projSnap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              nombre: data.nombre || data.name || data.title || "Proyecto",
+              cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : []),
+              asignado_ids: data.asignado_ids || [],
+              asignado: data.asignado || "",
+              estadoProyecto: data.estadoProyecto || data.estado || "Planificación",
+              estado: data.estado || data.estadoProyecto || "Planificación",
+              area: data.area || "",
+              formato: data.formato || "",
+              prioridad: data.prioridad || "Media",
+              ciclo: data.ciclo || "",
+              esfuerzo: data.esfuerzo || "Medio",
+              plataformas: data.plataformas || [],
+              fechaInicio: data.fechaInicio || "",
+              fechaFin: data.fechaFin || "",
+              recursosDrive: data.recursosDrive || "",
+              costo: data.costo !== undefined ? Number(data.costo) : 0,
+              tarea_ids: data.tarea_ids || [],
+              descripcion: data.descripcion || "",
+              url: data.url || "",
+              createdAt: data.createdAt || data.created_at || null,
+              updatedAt: data.updatedAt || data.updated_at || null,
+              created_at: data.created_at || data.createdAt || null,
+              updated_at: data.updated_at || data.updatedAt || null,
+              ...data,
+            } as Project;
+          });
+        }
+      } catch (e) {
+        console.error("Error reading projects from Firestore:", e);
+      }
+
+      // 4. Tareas (colección 'tasks')
+      let tasksList: Task[] = [];
+      try {
+        const tasksSnap = await getDocs(collection(db, "tasks"));
+        if (!tasksSnap.empty) {
+          tasksList = tasksSnap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              titulo: data.titulo || data.title || "Tarea",
+              estado: data.estado || data.status || "Pendiente",
+              area: data.area || "",
+              asignado: data.asignado || "",
+              formato: data.formato || data.format || "",
+              esfuerzo: data.esfuerzo || "1h",
+              prioridad: data.prioridad || "Media",
+              plataformas: data.plataformas || [],
+              contenido: data.contenido || "",
+              copy: data.copy || "",
+              adminNotes: data.adminNotes || "",
+              notasCliente: data.notasCliente || "",
+              fechaProg: data.fechaProg || "",
+              fechaEntrega: data.fechaEntrega || "",
+              asignado_ids: data.asignado_ids || [],
+              proyecto_ids: data.proyecto_ids || (data.proyecto_id ? [String(data.proyecto_id)] : []),
+              cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : []),
+              created: data.created || new Date().toISOString(),
+              url: data.url || "",
+              createdAt: data.createdAt || data.created_at || null,
+              updatedAt: data.updatedAt || data.updated_at || null,
+              created_at: data.created_at || data.createdAt || null,
+              updated_at: data.updated_at || data.updatedAt || null,
+              ...data,
+            } as Task;
+          });
+        }
+      } catch (e) {
+        console.error("Error reading tasks from Firestore:", e);
+      }
+
       return {
-        clientes:     res.clientes     ?? [],
-        proyectos:    res.proyectos    ?? [],
-        tareas:       res.tareas       ?? [],
-        trabajadores: res.trabajadores ?? [],
-        recursos:     res.recursos     ?? [],
+        clientes:     clientsList,
+        proyectos:    projectsList,
+        tareas:       tasksList,
+        trabajadores: workersList,
+        recursos:     [],
       };
     },
-    staleTime:    3 * 60 * 1000,   // 3 min before refetch
-    gcTime:       10 * 60 * 1000,  // 10 min cache
-    refetchOnWindowFocus: false,
+    staleTime:    10 * 1000,       // 10s freshness
+    gcTime:       5 * 60 * 1000,   // 5 min cache
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -54,15 +171,12 @@ export function useData() {
 export function useSync() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => syncAll(true),
-    onSuccess: (res) => {
-      qc.setQueryData(QUERY_KEY, {
-        clientes:     res.clientes     ?? [],
-        proyectos:    res.proyectos    ?? [],
-        tareas:       res.tareas       ?? [],
-        trabajadores: res.trabajadores ?? [],
-        recursos:     res.recursos     ?? [],
-      });
+    mutationFn: async () => {
+      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+      return true;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: QUERY_KEY });
     },
   });
 }
@@ -71,60 +185,24 @@ export function useSync() {
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Task> & { titulo: string }) => createTask(data),
-    onMutate: async (newTaskParams) => {
-      // Cancel any outgoing refetches to avoid overwriting optimistic update
-      await qc.cancelQueries({ queryKey: QUERY_KEY });
-      const previousData = qc.getQueryData<BraindexData>(QUERY_KEY);
-
-      // Create a temporary task to inject into the cache
-      const tempId = "temp-" + Date.now();
-      const proyectoIds = newTaskParams.proyecto_ids || ((newTaskParams as any).proyecto_id ? [(newTaskParams as any).proyecto_id] : []);
-      const clienteIds = newTaskParams.cliente_ids || ((newTaskParams as any).cliente_id ? [(newTaskParams as any).cliente_id] : []);
-      if (previousData) {
-        qc.setQueryData<BraindexData>(QUERY_KEY, {
-          ...previousData,
-          tareas: [
-            ...previousData.tareas,
-            {
-              id: tempId,
-              titulo: newTaskParams.titulo,
-              asignado_ids: newTaskParams.asignado_ids || [],
-              estado: newTaskParams.estado || "Pendiente",
-              prioridad: newTaskParams.prioridad || "Media",
-              formato: newTaskParams.formato || "",
-              esfuerzo: newTaskParams.esfuerzo || "",
-              proyecto_ids: proyectoIds,
-              cliente_ids: clienteIds,
-              fechaProg: newTaskParams.fechaProg || "",
-              fechaEntrega: newTaskParams.fechaEntrega || "",
-              _type: "task",
-              // fill with minimal mock data
-              plataformas: [],
-              area: "",
-              asignado: "",
-              contenido: newTaskParams.contenido || "",
-              copy: "",
-              adminNotes: "",
-              proyecto: "", 
-              cliente: "",  
-              created: new Date().toISOString(),
-              url: "",
-              notasCliente: "",
-            } as Task
-          ]
-        });
-      }
-      return { previousData };
-    },
-    onError: (err, newTaskParams, context) => {
-      if (context?.previousData) {
-        qc.setQueryData(QUERY_KEY, context.previousData);
-      }
+    mutationFn: async (data: Partial<Task> & { titulo: string }) => {
+      const newId = "task-" + Date.now();
+      const taskDoc = {
+        ...data,
+        id: newId,
+        titulo: data.titulo.trim(),
+        estado: data.estado || "Pendiente",
+        prioridad: data.prioridad || "Media",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "tasks", newId), taskDoc);
+      return taskDoc;
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: QUERY_KEY });
-      // Notify ProgressPanel so the new task auto-appears in the panel
       if (result?.id) {
         window.dispatchEvent(new CustomEvent("item-created", { detail: { type: "task", id: result.id } }));
       }
@@ -135,25 +213,14 @@ export function useCreateTask() {
 export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Task> & { id: string }) => updateTask(data),
-    onMutate: async (updatedTaskParams) => {
-      await qc.cancelQueries({ queryKey: QUERY_KEY });
-      const previousData = qc.getQueryData<BraindexData>(QUERY_KEY);
-
-      if (previousData) {
-        qc.setQueryData<BraindexData>(QUERY_KEY, {
-          ...previousData,
-          tareas: previousData.tareas.map((t) =>
-            t.id === updatedTaskParams.id ? { ...t, ...updatedTaskParams } : t
-          ),
-        });
-      }
-      return { previousData };
-    },
-    onError: (err, newTaskParams, context) => {
-      if (context?.previousData) {
-        qc.setQueryData(QUERY_KEY, context.previousData);
-      }
+    mutationFn: async (data: Partial<Task> & { id: string }) => {
+      const taskRef = doc(db, "tasks", String(data.id));
+      await updateDoc(taskRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+      return { ok: true, id: data.id };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
   });
@@ -163,50 +230,24 @@ export function useUpdateTask() {
 export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Project> & { nombre: string }) => createProject(data),
-    onMutate: async (newProjectParams) => {
-      await qc.cancelQueries({ queryKey: QUERY_KEY });
-      const previousData = qc.getQueryData<BraindexData>(QUERY_KEY);
-
-      const tempId = "temp-project-" + Date.now();
-      if (previousData) {
-        qc.setQueryData<BraindexData>(QUERY_KEY, {
-          ...previousData,
-          proyectos: [
-            ...previousData.proyectos,
-            {
-              id: tempId,
-              nombre: newProjectParams.nombre,
-              cliente_ids: newProjectParams.cliente_ids || [],
-              estadoProyecto: newProjectParams.estadoProyecto || "🧠 Planificacion",
-              estado: newProjectParams.estado || "",
-              area: newProjectParams.area || "",
-              formato: newProjectParams.formato || "",
-              prioridad: newProjectParams.prioridad || "MODERADO",
-              ciclo: newProjectParams.ciclo || "",
-              esfuerzo: newProjectParams.esfuerzo || "",
-              plataformas: newProjectParams.plataformas || [],
-              fechaInicio: newProjectParams.fechaInicio || "",
-              fechaFin: newProjectParams.fechaFin || "",
-              recursosDrive: newProjectParams.recursosDrive || "",
-              costo: newProjectParams.costo || 0,
-              tarea_ids: [],
-              descripcion: newProjectParams.descripcion || "",
-              url: "",
-            } as Project,
-          ],
-        });
-      }
-      return { previousData };
-    },
-    onError: (err, newProjectParams, context) => {
-      if (context?.previousData) {
-        qc.setQueryData(QUERY_KEY, context.previousData);
-      }
+    mutationFn: async (data: Partial<Project> & { nombre: string }) => {
+      const newId = "proj-" + Date.now();
+      const projectDoc = {
+        ...data,
+        id: newId,
+        nombre: data.nombre.trim(),
+        estadoProyecto: data.estadoProyecto || "Planificación",
+        prioridad: data.prioridad || "Media",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "projects", newId), projectDoc);
+      return projectDoc;
     },
     onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: QUERY_KEY });
-      // Notify ProgressPanel so the new project auto-appears in the panel
       if (result?.id) {
         window.dispatchEvent(new CustomEvent("item-created", { detail: { type: "project", id: result.id } }));
       }
@@ -218,28 +259,8 @@ export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Project> & { id: string }) => {
-      const res = await updateProject(data);
       await persistProjectUpdate(data.id, data as any);
-      return res;
-    },
-    onMutate: async (updatedProjectParams) => {
-      await qc.cancelQueries({ queryKey: QUERY_KEY });
-      const previousData = qc.getQueryData<BraindexData>(QUERY_KEY);
-
-      if (previousData) {
-        qc.setQueryData<BraindexData>(QUERY_KEY, {
-          ...previousData,
-          proyectos: previousData.proyectos.map((p) =>
-            p.id === updatedProjectParams.id ? { ...p, ...updatedProjectParams } : p
-          ),
-        });
-      }
-      return { previousData };
-    },
-    onError: (err, newParams, context) => {
-      if (context?.previousData) {
-        qc.setQueryData(QUERY_KEY, context.previousData);
-      }
+      return { ok: true, id: data.id };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
   });
@@ -249,16 +270,37 @@ export function useUpdateProject() {
 export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Client> & { nombre: string }) => createClient(data),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    mutationFn: async (data: Partial<Client> & { nombre: string }) => {
+      const newId = "cli-" + Date.now();
+      const clientDoc = {
+        ...data,
+        id: newId,
+        nombre: data.nombre.trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      };
+      await setDoc(doc(db, "clients", newId), clientDoc);
+      return clientDoc;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 }
 
 export function useUpdateClient() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Client> & { id: string }) => updateClient(data),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    mutationFn: async (data: Partial<Client> & { id: string }) => {
+      const clientRef = doc(db, "clients", String(data.id));
+      await updateDoc(clientRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+      return { ok: true, id: data.id };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 }
 
@@ -266,8 +308,16 @@ export function useUpdateClient() {
 export function useUpdateWorker() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: Partial<Worker> & { id: string }) => updateWorker(data),
-    onSuccess:  () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    mutationFn: async (data: Partial<Worker> & { id: string }) => {
+      const memberRef = doc(db, "members", String(data.id));
+      await updateDoc(memberRef, {
+        ...data,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      });
+      return { ok: true, id: data.id };
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
   });
 }
 

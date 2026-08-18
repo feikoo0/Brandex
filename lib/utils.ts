@@ -215,16 +215,126 @@ export const PROJECT_COLOR_PALETTE: ColorPresetItem[] = [
   { name: "Gris Acero", key: "Gris", h: 215, s: 14, l: 40, hslStr: "hsl(215, 14%, 40%)", solidColor: "#475569", gradient: "bg-slate-700", glow: "bg-slate-500" },
 ];
 
-export function getSingleSourceProjectColor(project: any): { h: number; s: number; l: number; hslCss: string } {
-  if (!project) return { h: 217, s: 91, l: 60, hslCss: "hsl(217, 91%, 60%)" };
+export function parseAnyDate(s?: any): Date | null {
+  if (!s) return null;
+  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
+  if (typeof s === "object" && s.toDate && typeof s.toDate === "function") {
+    try { return s.toDate(); } catch {}
+  }
+  const str = String(s).trim();
+  if (!str || str.toLowerCase() === "sin fecha" || str.toLowerCase() === "hoy") return null;
 
-  if (project.customColor && typeof project.customColor.h === "number") {
-    const { h, s, l } = project.customColor;
+  const currentYear = new Date().getFullYear();
+
+  // 1. Formato YYYY-MM-DD o ISO
+  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    const y = parseInt(isoMatch[1], 10);
+    const m = parseInt(isoMatch[2], 10) - 1;
+    const d = parseInt(isoMatch[3], 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d);
+    }
+  }
+
+  // 2. Formato DD/MM/YYYY
+  const latamMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (latamMatch) {
+    const d = parseInt(latamMatch[1], 10);
+    const m = parseInt(latamMatch[2], 10) - 1;
+    const y = parseInt(latamMatch[3], 10);
+    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+      return new Date(y, m, d);
+    }
+  }
+
+  // 3. Formato amigable en español (ej: "17 Ago", "3 Ene", "25 Dic")
+  const spanishMonths: Record<string, number> = {
+    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
+  };
+
+  const friendlyMatch = str.match(/^(\d{1,2})\s+([a-zA-Z]{3,4})/i);
+  if (friendlyMatch) {
+    const day = parseInt(friendlyMatch[1], 10);
+    const monthKey = friendlyMatch[2].toLowerCase().substring(0, 3);
+    if (!isNaN(day) && spanishMonths[monthKey] !== undefined) {
+      return new Date(currentYear, spanishMonths[monthKey], day);
+    }
+  }
+
+  const fallback = new Date(str);
+  if (!isNaN(fallback.getTime())) {
+    if (fallback.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
+      fallback.setFullYear(currentYear);
+    }
+    return fallback;
+  }
+
+  return null;
+}
+
+export function getClientLastProjectText(clientProjects: any[]): string {
+  if (!clientProjects || clientProjects.length === 0) {
+    return "Sin proyectos";
+  }
+
+  let latestTimestamp = 0;
+  for (const p of clientProjects) {
+    const raw = 
+      p.fechaFin || 
+      p.fechaInicio || 
+      p.updated_at || 
+      p.updatedAt || 
+      p.created || 
+      p.createdAt || 
+      p.fechaEntrega || 
+      p.fecha_entrega || 
+      p.deadline || 
+      p.fecha;
+
+    const d = parseAnyDate(raw);
+    if (d && d.getTime() > latestTimestamp) {
+      latestTimestamp = d.getTime();
+    }
+  }
+
+  if (latestTimestamp === 0) {
+    return `${clientProjects.length} ${clientProjects.length === 1 ? "proyecto registrado" : "proyectos registrados"}`;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((now.getTime() - latestTimestamp) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return "Último proyecto hoy";
+  } else if (diffDays === 1) {
+    return "Último proyecto hace 1 día";
+  } else if (diffDays < 7) {
+    return `Último proyecto hace ${diffDays} días`;
+  } else if (diffDays < 30) {
+    const weeks = Math.max(1, Math.floor(diffDays / 7));
+    return `Último proyecto hace ${weeks} ${weeks === 1 ? "semana" : "semanas"}`;
+  } else if (diffDays < 365) {
+    const months = Math.max(1, Math.floor(diffDays / 30));
+    return `Último proyecto hace ${months} ${months === 1 ? "mes" : "meses"}`;
+  } else {
+    const years = Math.max(1, Math.floor(diffDays / 365));
+    return `Último proyecto hace ${years} ${years === 1 ? "año" : "años"}`;
+  }
+}
+
+export function getSingleSourceColor(entity: any): { h: number; s: number; l: number; hslCss: string } {
+  if (!entity) return { h: 217, s: 91, l: 60, hslCss: "hsl(217, 91%, 60%)" };
+
+  if (entity.customColor && typeof entity.customColor.h === "number") {
+    const { h, s, l } = entity.customColor;
     const lVal = typeof l === "number" ? l : 55;
     return { h, s, l: lVal, hslCss: `hsl(${h}, ${s}%, ${lVal}%)` };
   }
 
-  const raw = project.customGradientStyle || project.gradient || "";
+  const raw = entity.color || entity.customGradientStyle || entity.gradient || "";
   if (raw.includes("hsl(")) {
     const match = raw.match(/hsl\((\d+),\s*(\d+)%?,\s*(\d+)%?\)/i);
     if (match) {
@@ -233,6 +343,17 @@ export function getSingleSourceProjectColor(project: any): { h: number; s: numbe
       const l = parseInt(match[3], 10);
       return { h, s, l, hslCss: `hsl(${h}, ${s}%, ${l}%)` };
     }
+  }
+
+  // Preset match by colorName or colorKey or solidColor
+  const foundPreset = PROJECT_COLOR_PALETTE.find(
+    (p) =>
+      p.name.toLowerCase() === (entity.colorName || raw).toLowerCase() ||
+      p.key.toLowerCase() === (entity.colorKey || raw).toLowerCase() ||
+      p.solidColor.toLowerCase() === raw.toLowerCase()
+  );
+  if (foundPreset) {
+    return { h: foundPreset.h, s: foundPreset.s, l: foundPreset.l, hslCss: foundPreset.hslStr };
   }
 
   const lower = raw.toLowerCase();
@@ -247,7 +368,82 @@ export function getSingleSourceProjectColor(project: any): { h: number; s: numbe
   if (lower.includes("pink") || lower.includes("rosa")) return { h: 328, s: 95, l: 55, hslCss: "hsl(328, 95%, 55%)" };
   if (lower.includes("cyan") || lower.includes("teal")) return { h: 180, s: 90, l: 50, hslCss: "hsl(180, 90%, 50%)" };
 
+  // If no explicit color is set, hash deterministically by name or ID
+  const seed = String(entity.nombre || entity.name || entity.id || "");
+  if (seed) {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    const idx = Math.abs(hash) % PROJECT_COLOR_PALETTE.length;
+    const preset = PROJECT_COLOR_PALETTE[idx];
+    return { h: preset.h, s: preset.s, l: preset.l, hslCss: preset.hslStr };
+  }
+
   return { h: 217, s: 91, l: 60, hslCss: "hsl(217, 91%, 60%)" };
+}
+
+export function getSingleSourceProjectColor(project: any): { h: number; s: number; l: number; hslCss: string } {
+  return getSingleSourceColor(project);
+}
+
+export function getSingleSourceClientColor(client: any): { h: number; s: number; l: number; hslCss: string } {
+  return getSingleSourceColor(client);
+}
+
+export function getSingleSourceMemberColor(member: any): { h: number; s: number; l: number; hslCss: string } {
+  return getSingleSourceColor(member);
+}
+
+export function getMemberLastActivityText(memberProjects: any[] = [], memberTasks: any[] = []): string {
+  if ((!memberProjects || memberProjects.length === 0) && (!memberTasks || memberTasks.length === 0)) {
+    return "Sin asignaciones";
+  }
+
+  let latestTimestamp = 0;
+
+  for (const t of memberTasks) {
+    const raw = t.fechaEntrega || t.fechaProg || t.updated_at || t.updatedAt || t.created || t.createdAt || t.fecha;
+    const d = parseAnyDate(raw);
+    if (d && d.getTime() > latestTimestamp) {
+      latestTimestamp = d.getTime();
+    }
+  }
+
+  for (const p of memberProjects) {
+    const raw = p.fechaFin || p.fechaInicio || p.updated_at || p.updatedAt || p.created || p.createdAt || p.fechaEntrega || p.deadline || p.fecha;
+    const d = parseAnyDate(raw);
+    if (d && d.getTime() > latestTimestamp) {
+      latestTimestamp = d.getTime();
+    }
+  }
+
+  if (latestTimestamp === 0) {
+    const totalCount = (memberTasks.length || 0) + (memberProjects.length || 0);
+    return `${totalCount} ${totalCount === 1 ? "entrega asignada" : "entregas asignadas"}`;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((now.getTime() - latestTimestamp) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return "Activo hoy";
+  } else if (diffDays === 1) {
+    return "Última actividad hace 1 día";
+  } else if (diffDays < 7) {
+    return `Última actividad hace ${diffDays} días`;
+  } else if (diffDays < 30) {
+    const weeks = Math.max(1, Math.floor(diffDays / 7));
+    return `Última actividad hace ${weeks} ${weeks === 1 ? "semana" : "semanas"}`;
+  } else if (diffDays < 365) {
+    const months = Math.max(1, Math.floor(diffDays / 30));
+    return `Última actividad hace ${months} ${months === 1 ? "mes" : "meses"}`;
+  } else {
+    const years = Math.max(1, Math.floor(diffDays / 365));
+    return `Última actividad hace ${years} ${years === 1 ? "año" : "años"}`;
+  }
 }
 
 export function getDarkProjectPillVars(projectOrColor: any) {

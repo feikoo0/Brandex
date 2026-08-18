@@ -75,3 +75,30 @@ To maintain complete visual harmony across all views, components, and future imp
 1. **Authentication**: Conectado mediante `FIGMA_PERSONAL_ACCESS_TOKEN` almacenado en `.env.local` para el usuario Feiko (`contacto.milenial@gmail.com`).
 2. **Lectura de Diseños**: Al recibir la URL de un archivo de Figma (`https://www.figma.com/design/:file_key/...`), Antigravity extraerá las capas, coordenadas, espaciados y vectores a través de la API REST de Figma (`https://api.figma.com/v1/files/:file_key`).
 3. **Conversión a Código**: Traducir directamente los marcos y formas de Figma a componentes React + Tailwind CSS preservando dimensiones, curvaturas y paletas exactas.
+
+
+## Taski Pure Firestore Data Model & Real-Time Sync Protocol
+
+Taski opera de forma 100% nativa sobre Google Cloud Firestore como Fuente Única de Verdad (Single Source of Truth). Queda **estrictamente prohibido** reintroducir sincronizadores de Notion o servidores intermediarios externos.
+
+### 1. Colecciones Oficiales de Firestore
+* **`clients`**: Documentos con datos de marcas (`nombre`, `color`, `customColor`, `finanzas`, `status`, `industria`, `drive_links`, `notas_internas`).
+* **`members`**: Documentos con datos de colaboradores (`nombre`, `rol`, `color`, `skills`, `proyectos_asignados`, `disponibilidad`, `drive_links`).
+* **`projects`**: Documentos de campañas y proyectos (`nombre`, `color`, `cliente_ids`, `asignado_ids`, `estadoProyecto`, `costo`, `fechaInicio`, `fechaFin`).
+* **`tasks`**: Documentos de entregables atómicos (`titulo`, `formato`, `esfuerzo`, `estado`, `proyecto_ids`, `cliente_ids`, `asignado_ids`).
+* **`sessions`**: Registro de sesiones de tiempo reales (`startTime`, `endTime`, `durationSeconds`, `taskId`, `projectId`, `workerId`).
+
+### 2. Hooks Oficiales
+* `useClients()` (`@/hooks/useClients`): Gestión y escucha en tiempo real de `clients`.
+* `useMembers()` (`@/hooks/useMembers`): Gestión y escucha en tiempo real de `members`.
+* `useData()` (`@/hooks/useData`): Caché reactiva unificada (TanStack Query) alimentada exclusivamente por Firestore.
+* `useProjectSummary(id)` (`@/hooks/useProjectSummary`): Resolución automática de cliente (`clientName`, `client`), tareas asociadas, progreso porcentual y formatos.
+* `useSessions()` (`@/hooks/useSessions`): Cronómetro en vivo y persistencia de sesiones.
+
+### 3. Reglas de Propagación y Sincronización
+1. **Colores de Marca y Proyectos**: Cualquier componente que renderice una portada, borde o punto de color DEBE usar `getSingleSourceClientColor(client)` o `getSingleSourceProjectColor(project)`.
+2. **Formatos Vectoriales en Portada**: Las formas de portada (`ProjectCoverFormats`) deben leer dinámicamente las tareas asociadas (`tasks.map(t => t.formato)`) o el catálogo de la especialidad del miembro.
+3. **Selectores de Clientes y Miembros**: Todo popover o dropdown de selección (e.g. en `ProjectFullScreenView`, `ProjectModal`, `TaskModal`) debe consumir directamente `useClients()` y `useMembers()`.
+4. **Barras de Progreso**: El progreso de un proyecto (`Tarea X de Y`) se calcula reactivamente como `tareas.filter(t => t.estado === 'Completado').length / tareas.length`.
+5. **Timestamps Obligatorios en todas las Colecciones**: Toda creación (`createdAt: serverTimestamp()`, `created_at: serverTimestamp()`) y toda actualización (`updatedAt: serverTimestamp()`, `updated_at: serverTimestamp()`) DEBE persistir timestamps oficiales de Firestore en `clients`, `members`, `projects`, `tasks` y `sessions` para permitir ordenamiento por recientes, alertas y trazabilidad de sincronización.
+

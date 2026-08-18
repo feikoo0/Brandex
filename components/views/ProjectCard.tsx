@@ -151,7 +151,7 @@ export function ProjectCardItem({
   if (assignedWorkers.length === 0 && p.asignado) {
     const names = p.asignado.split(",").map((s) => s.trim().toLowerCase());
     assignedWorkers = (data?.trabajadores || []).filter((w) => 
-      names.some((n) => n && w.nombre.toLowerCase().includes(n))
+      names.some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
     );
   }
 
@@ -359,7 +359,7 @@ export function ProjectListItem({
   if (assignedWorkers.length === 0 && p.asignado) {
     const names = p.asignado.split(",").map((s) => s.trim().toLowerCase());
     assignedWorkers = (data?.trabajadores || []).filter((w) => 
-      names.some((n) => n && w.nombre.toLowerCase().includes(n))
+      names.some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
     );
   }
 

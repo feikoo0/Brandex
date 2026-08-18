@@ -31,6 +31,10 @@ export interface Task {
   created: string;
   url: string;
   color?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  created_at?: any;
+  updated_at?: any;
 }
 
 export interface Project {
@@ -54,6 +58,14 @@ export interface Project {
   tarea_ids: string[];
   descripcion: string;
   url: string;
+  color?: string;
+  colorName?: string;
+  customColor?: { h: number; s: number; l: number };
+  gradient?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  created_at?: any;
+  updated_at?: any;
 }
 
 // ── Drive & Finance Sub-types ────────────────────────────────────────────────
@@ -121,10 +133,19 @@ export interface Client {
   pendingBalance?: string;
   website?: string;
   potencial?: string;
+  color?: string;
+  colorName?: string;
+  customColor?: { h: number; s: number; l: number };
+  customGradientStyle?: string;
+  gradient?: string;
   obs?: string;
   token?: string;
   drive?: string;
   url?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  created_at?: any;
+  updated_at?: any;
 }
 
 export interface Member {
@@ -150,6 +171,13 @@ export interface Member {
   completedTasks?: number;
   totalHoursLogged?: number;
   workloadPercent?: number;
+  color?: string;
+  colorName?: string;
+  customColor?: { h: number; s: number; l: number };
+  customGradientStyle?: string;
+  gradient?: string;
+  createdAt?: any;
+  updatedAt?: any;
   created_at?: any;
   updated_at?: any;
 }
@@ -169,6 +197,10 @@ export interface Worker {
   token: string;
   url: string;
   created: string;
+  createdAt?: any;
+  updatedAt?: any;
+  created_at?: any;
+  updated_at?: any;
 }
 
 // ── Session Types ─────────────────────────────────────────────────────────────
@@ -189,7 +221,10 @@ export interface SessionDoc {
   durationMins: number;
   summary?: string;
   created: any;
+  createdAt?: any;
   updatedAt: any;
+  created_at?: any;
+  updated_at?: any;
 }
 
 // ── Data Store Shape ───────────────────────────────────────────────────────────

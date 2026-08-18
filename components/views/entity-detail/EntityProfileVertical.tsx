@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { DriveButton } from "@/components/common/DriveButton";
 import type { Client, Member, DriveLink } from "@/lib/types";
 import { playSound } from "@/app/taski/utils/audio";
+import { PROJECT_COLOR_PALETTE, getSingleSourceColor, getSingleSourceClientColor, cn } from "@/lib/utils";
 
 interface EntityProfileVerticalProps {
   entity: Client | Member;
@@ -44,6 +45,8 @@ export function EntityProfileVertical({
   const [whatsapp, setWhatsapp] = useState((entity as Client).contacto?.whatsapp || "");
   const [status, setStatus] = useState(entity.status || (type === "client" ? "Activo" : "Disponible"));
   const [isChangingStatus, setIsChangingStatus] = useState(false);
+
+  const entityColor = getSingleSourceColor(entity).hslCss;
 
   const clientStatuses = ["VIP", "Activo", "Pausa", "Prospecto", "Cerrado"];
   const memberStatuses = ["Disponible", "En Proyecto", "Carga Máxima", "Vacaciones"];
@@ -158,15 +161,18 @@ export function EntityProfileVertical({
 
         {/* Avatar & Header */}
         <div className="flex flex-col items-center text-center mb-6">
-          <div className="w-20 h-20 rounded-3xl bg-[#282828] border border-white/15 shadow-xl flex items-center justify-center mb-3 overflow-hidden text-2xl font-black text-blue-400">
+          <div
+            className="w-20 h-20 rounded-3xl border border-white/15 shadow-xl flex items-center justify-center mb-3 overflow-hidden text-2xl font-black text-white"
+            style={{ backgroundColor: entityColor || "#282828" }}
+          >
             {(entity as Member).avatar && (entity as Member).avatar!.length <= 3 ? (
               <span>{(entity as Member).avatar}</span>
             ) : (entity as Client).logo && (entity as Client).logo!.length <= 3 ? (
               <span>{(entity as Client).logo}</span>
             ) : type === "client" ? (
-              <Building2 className="w-9 h-9 text-blue-400" />
+              <span>{(entity.nombre || "C").slice(0, 1).toUpperCase()}</span>
             ) : (
-              <User className="w-9 h-9 text-violet-400" />
+              <span>{(entity.nombre || "M").slice(0, 2).toUpperCase()}</span>
             )}
           </div>
 
@@ -185,6 +191,55 @@ export function EntityProfileVertical({
               Plan {(entity as Client).plan_contratado}
             </span>
           )}
+
+          {type === "member" && (entity as Member).specialty && (
+            <span className="mt-2.5 px-3 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/10 text-white/80 border border-white/10">
+              {(entity as Member).specialty}
+            </span>
+          )}
+        </div>
+
+        {/* Color de Marca / Color de Perfil Selector */}
+        <div className="p-4 rounded-2xl bg-[#181818] border border-white/10 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b]">
+              {type === "client" ? "Color de Marca" : "Color del Colaborador"}
+            </span>
+            <span className="text-[11px] font-medium text-white/60">
+              {entity.colorName || "Predeterminado"}
+            </span>
+          </div>
+          <div className="flex items-center flex-wrap gap-2">
+            {PROJECT_COLOR_PALETTE.map((preset) => {
+              const currentHsl = getSingleSourceColor(entity).hslCss;
+              const isSelected =
+                entity.color === preset.hslStr ||
+                entity.colorName === preset.name ||
+                currentHsl === preset.hslStr;
+
+              return (
+                <button
+                  key={preset.name}
+                  type="button"
+                  title={preset.name}
+                  onClick={async () => {
+                    playSound("click");
+                    await onUpdateEntity({
+                      color: preset.hslStr,
+                      colorName: preset.name,
+                    } as any);
+                  }}
+                  className={cn(
+                    "w-5 h-5 rounded-full bg-gradient-to-br transition-all cursor-pointer border",
+                    preset.gradient,
+                    isSelected
+                      ? "border-white scale-125 shadow-md ring-2 ring-white/30"
+                      : "border-transparent opacity-60 hover:opacity-100 hover:scale-110"
+                  )}
+                />
+              );
+            })}
+          </div>
         </div>
 
         {/* Contact Info Section */}

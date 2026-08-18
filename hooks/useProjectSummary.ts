@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useData } from "./useData";
+import { useClients } from "./useClients";
 import { getFormato } from "@/app/taski/utils/formatos";
 import type { Project, Task, Client } from "@/lib/types";
 
@@ -41,25 +42,50 @@ export interface ProjectSummary {
  */
 export function useProjectSummary(projectId: string | number | null | undefined): ProjectSummary {
   const { data, isLoading } = useData();
+  const { clients: firestoreClients } = useClients();
+
+  // Consolidar clientes de Firestore con los de cache
+  const allClients = useMemo(() => {
+    const map = new Map<string, Client>();
+    (firestoreClients || []).forEach((c) => {
+      if (c && c.id) {
+        map.set(String(c.id), {
+          ...c,
+          nombre: c.nombre || c.name || "Cliente sin nombre",
+          name: c.nombre || c.name || "Cliente sin nombre",
+        });
+      }
+    });
+    (data?.clientes || []).forEach((c) => {
+      if (c && c.id && !map.has(String(c.id))) {
+        map.set(String(c.id), {
+          ...c,
+          nombre: c.nombre || c.name || "Cliente sin nombre",
+          name: c.nombre || c.name || "Cliente sin nombre",
+        });
+      }
+    });
+    return Array.from(map.values());
+  }, [firestoreClients, data?.clientes]);
 
   return useMemo(() => {
     if (!projectId || !data) {
       return {
         project: null,
         client: null,
-        clientName: "Sin cliente",
+        clientName: "Sin proyecto",
         tasks: [],
         totalTasks: 0,
         completedTasks: 0,
         progressPercent: 0,
         formatos: [],
         totalRealMins: 0,
-        burnRateText: "0h / 40h",
+        burnRateText: "0h",
         status: "Planificación",
-        area: "",
+        area: "General",
         prioridad: "Media",
         esfuerzo: "Medio",
-        tiempoEstimado: "1h",
+        tiempoEstimado: "0h",
         fechaInicio: "",
         fechaFin: "",
         costo: 0,
@@ -74,19 +100,19 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       return {
         project: null,
         client: null,
-        clientName: "Sin cliente",
+        clientName: "Proyecto no encontrado",
         tasks: [],
         totalTasks: 0,
         completedTasks: 0,
         progressPercent: 0,
         formatos: [],
         totalRealMins: 0,
-        burnRateText: "0h / 40h",
+        burnRateText: "0h",
         status: "Planificación",
-        area: "",
+        area: "General",
         prioridad: "Media",
         esfuerzo: "Medio",
-        tiempoEstimado: "1h",
+        tiempoEstimado: "0h",
         fechaInicio: "",
         fechaFin: "",
         costo: 0,
@@ -101,21 +127,22 @@ export function useProjectSummary(projectId: string | number | null | undefined)
     const possibleClientIds = new Set<string>();
 
     if (rawProject.cliente_id) possibleClientIds.add(String(rawProject.cliente_id));
+    if (rawProject.clienteId) possibleClientIds.add(String(rawProject.clienteId));
     if (Array.isArray(rawProject.cliente_ids)) {
       rawProject.cliente_ids.forEach((id: any) => id && possibleClientIds.add(String(id)));
     }
 
-    // 1. Buscar por ID en la lista de clientes
+    // 1. Buscar por ID en la lista unificada de clientes
     if (possibleClientIds.size > 0) {
-      client = data.clientes.find((c) => possibleClientIds.has(String(c.id))) || null;
+      client = allClients.find((c) => possibleClientIds.has(String(c.id))) || null;
     }
 
     // 2. Buscar por coincidencia de nombre si no se encontró por ID
     const directClientName = rawProject.cliente || rawProject.client || rawProject.clientName || rawProject.clienteNombre;
 
     if (!client && directClientName) {
-      client = data.clientes.find(
-        (c) => c.nombre.toLowerCase().trim() === String(directClientName).toLowerCase().trim()
+      client = allClients.find(
+        (c) => (c?.nombre || c?.name || "").toLowerCase().trim() === String(directClientName).toLowerCase().trim()
       ) || null;
     }
 
@@ -130,8 +157,8 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       for (const t of tasks) {
         const tClientId = (t as any).cliente_id || (t.cliente_ids && t.cliente_ids[0]);
         if (tClientId) {
-          client = data.clientes.find(
-            (c) => String(c.id) === String(tClientId) || c.nombre.toLowerCase().trim() === String(tClientId).toLowerCase().trim()
+          client = allClients.find(
+            (c) => String(c.id) === String(tClientId) || (c?.nombre || c?.name || "").toLowerCase().trim() === String(tClientId).toLowerCase().trim()
           ) || null;
           if (client) break;
         }
@@ -139,7 +166,7 @@ export function useProjectSummary(projectId: string | number | null | undefined)
     }
 
     // Nombre final resuelto del cliente
-    const clientName = client?.nombre || directClientName || (tasks[0] as any)?.cliente || "Sin cliente";
+    const clientName = client?.nombre || client?.name || directClientName || (tasks[0] as any)?.cliente || "Sin cliente";
 
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter((t) => {

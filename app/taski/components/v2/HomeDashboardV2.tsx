@@ -1,26 +1,23 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, MoreHorizontal, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, ChevronUp, Plus, Check, Clock, X, AlertTriangle, Settings } from "lucide-react";
-import { Project, Task } from "./ProjectDashboard";
-import TimeHeatmap from "./TimeHeatmap";
-import DailyEffortBar from "./DailyEffortBar";
-import TimelineDiario from "./TimelineDiario";
-import KanbanBoard from "./KanbanBoard";
-import TaskTableView from "./TaskTableView";
-import DeleteConfirmModal from "./DeleteConfirmModal";
+import React, { useState, useEffect } from "react";
+import { LayoutGrid, Table, Check, AlertTriangle, ExternalLink } from "lucide-react";
+import { Project, Task } from "../ProjectDashboard";
+import DailyEffortBar from "../DailyEffortBar";
+import KanbanBoardV2 from "./KanbanBoardV2";
+import TaskTableView from "../TaskTableView";
+import DeleteConfirmModal from "../DeleteConfirmModal";
 import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
 import { useRecentSessions } from "@/hooks/useSessions";
-import { playSound } from "../utils/audio";
+import { playSound } from "../../utils/audio";
 import { parseTimeToHours, getCardColorTheme, CARD_COLOR_KEYS } from "@/lib/utils";
-import { autoEvaluateProjectStatus } from "../utils/data";
-import { persistProjectUpdate } from "../utils/persist";
+import { autoEvaluateProjectStatus } from "../../utils/data";
+import { persistProjectUpdate } from "../../utils/persist";
 import { doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useTaskCardInteractions } from "../hooks/useTaskCardInteractions";
+import { useTaskCardInteractions } from "../../hooks/useTaskCardInteractions";
 
-interface SynthesizedTask {
+export interface SynthesizedTask {
   id: string;
   projectName: string;
   projectId: number;
@@ -39,13 +36,9 @@ interface SynthesizedTask {
   kanbanOrders?: Record<string, number>;
 }
 
+export type ViewMode = "buscar" | "kanban" | "tabla" | "timeline";
 
-
-
-
-type ViewMode = "buscar" | "kanban" | "tabla" | "timeline";
-
-interface HomeDashboardProps {
+export interface HomeDashboardV2Props {
   projects: Project[];
   onSelectTab: (tab: string) => void;
   onSelectProject?: (projectId: string | number) => void;
@@ -62,11 +55,9 @@ interface HomeDashboardProps {
   onSearchQueryChange?: (query: string) => void;
 }
 
-
 const updateVisibleCards = (container: HTMLDivElement) => {
   const children = container.children;
   const scrollTop = container.scrollTop;
-  // Card height is 162px, gap is 10px. Total 172px.
   const topVisibleIndex = Math.round(scrollTop / 172);
   
   for (let i = 0; i < children.length; i++) {
@@ -82,7 +73,7 @@ const updateVisibleCards = (container: HTMLDivElement) => {
   }
 };
 
-export function HomeDashboard({
+export function HomeDashboardV2({
   projects,
   onSelectTab,
   onSelectProject,
@@ -97,7 +88,7 @@ export function HomeDashboard({
   onDeleteProject,
   searchQuery = "",
   onSearchQueryChange,
-}: HomeDashboardProps) {
+}: HomeDashboardV2Props) {
   const colorConfig = CARD_COLOR_KEYS.reduce((acc: Record<string, any>, key: string) => {
     acc[key] = getCardColorTheme(key, isNightMode);
     return acc;
@@ -160,39 +151,22 @@ export function HomeDashboard({
   const [sortBy, setSortBy] = useState<"alfabetico" | "creacion" | "visto">("visto");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
-  const registerNativeEdit = React.useCallback((taskId: string, field: "title" | "desc", currentValue: string) => {
-    return (node: HTMLElement | null) => {
-      if (!node) return;
-      node.onmousedown = (e) => e.stopPropagation();
-      node.ontouchstart = (e) => e.stopPropagation();
-      node.onclick = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        playSound('click');
-        setEditingTaskField({ taskId, field });
-        setEditingValue(currentValue || "");
-      };
-    };
-  }, [setEditingTaskField, setEditingValue]);
-
-  const registerNativeInput = React.useCallback((node: HTMLElement | null) => {
-    if (!node) return;
-    node.onmousedown = (e) => e.stopPropagation();
-    node.ontouchstart = (e) => e.stopPropagation();
-  }, []);
-
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
-  const [hoveredColumnId, setHoveredColumnId] = useState<string | null>(null);
-  const boardRef = React.useRef<HTMLDivElement>(null);
-
 
   const formatLocalDate = (d: Date): string => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   };
 
   const handleDropTask = (taskId: string, projectId: string | number, oldColId: string | undefined, newColId: string, orderMap: Record<string, number>) => {
-    const parts = taskId.split("-");
-    const taskIdStr = parts[2];
+    let taskIdStr = "";
+    let targetProjectId = String(projectId);
+    if (taskId.startsWith("kt-")) {
+      const parts = taskId.split("-");
+      targetProjectId = parts[1] || targetProjectId;
+      taskIdStr = parts.slice(2).join("-");
+    } else {
+      taskIdStr = taskId;
+    }
     if (!taskIdStr) return;
 
     if (groupingMode === "estado") {
@@ -209,7 +183,7 @@ export function HomeDashboard({
             };
           }
 
-          if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
+          if (String(p.id) === String(targetProjectId) && String(t.id) === String(taskIdStr)) {
             updatedTask = {
               ...updatedTask,
               status: status as any,
@@ -220,12 +194,11 @@ export function HomeDashboard({
                   : status === "En Revisión" || status === "Revisión"
                     ? "bg-purple-500/20 border-purple-500/30 text-purple-400"
                     : "bg-slate-500/20 border-slate-500/30 text-slate-300",
-              fecha_hora_completado: status === "Completado"
-                ? new Date().toISOString()
+              fecha_hora_completado: status === "Completado" 
+                ? new Date().toISOString() 
                 : undefined
             };
 
-            // Persistencia en la colección nativa /tasks
             updateDoc(doc(db, "tasks", String(taskIdStr)), {
               estado: status,
               updatedAt: new Date().toISOString()
@@ -237,12 +210,11 @@ export function HomeDashboard({
 
         const evalProj = autoEvaluateProjectStatus({
           ...p,
-          status: (String(p.id) === String(projectId) && status === "Revisión") ? "En Revisión Interna" : p.status,
-          statusColor: (String(p.id) === String(projectId) && status === "Revisión") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" : p.statusColor,
+          status: (String(p.id) === String(targetProjectId) && status === "Revisión") ? "En Revisión Interna" : p.status,
+          statusColor: (String(p.id) === String(targetProjectId) && status === "Revisión") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" : p.statusColor,
           tasks: updatedTasks
         });
 
-        // Atomic update for project
         persistProjectUpdate(p.id, {
           tasks: evalProj.tasks,
           status: evalProj.status,
@@ -268,7 +240,7 @@ export function HomeDashboard({
           return updatedTask;
         }) || [];
         
-        const targetPriority = String(p.id) === String(projectId) ? priority : p.priority;
+        const targetPriority = String(p.id) === String(targetProjectId) ? priority : p.priority;
         const evalProj = autoEvaluateProjectStatus({ ...p, priority: targetPriority, tasks: updatedTasks });
 
         persistProjectUpdate(p.id, {
@@ -301,10 +273,9 @@ export function HomeDashboard({
             };
           }
 
-          if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
+          if (String(p.id) === String(targetProjectId) && String(t.id) === String(taskIdStr)) {
             updatedTask = { ...updatedTask, fecha_programada: dateStr };
 
-            // Persistencia en la colección nativa /tasks
             updateDoc(doc(db, "tasks", String(taskIdStr)), {
               fechaProg: dateStr,
               updatedAt: new Date().toISOString()
@@ -343,7 +314,7 @@ export function HomeDashboard({
             return updatedTask;
           }) || [];
 
-          const clientName = p.id === projectId ? targetClient : p.client;
+          const clientName = String(p.id) === String(targetProjectId) ? targetClient : p.client;
           const evalProj = autoEvaluateProjectStatus({ ...p, client: clientName, tasks: updatedTasks });
 
           persistProjectUpdate(p.id, {
@@ -419,6 +390,7 @@ export function HomeDashboard({
     setEditingTaskField(null);
     setEditingValue("");
   }, [editingTaskField, editingValue, updateTaskProperty]);
+
   useEffect(() => {
     if (expandedCardId === null) {
       setActiveStatusDropdownCardId(null);
@@ -433,35 +405,12 @@ export function HomeDashboard({
     }
   }, [expandedCardId]);
 
-
-
-
-  // LED counter stats calculations
-  const totalProjects = projects.length;
-  const totalTasks = projects.reduce((acc, p) => acc + (p.tasks?.length || 0), 0);
-  const totalHours = projects.reduce((acc, p) => {
-    // Sum up only non-completed tasks' hours for this project
-    const pendingTasksSum = p.tasks?.reduce((sum, t) => {
-      if (t.status === "Completado") return sum;
-      const sessionsSum = t.sessions?.reduce((sAcc, s) => sAcc + s.hours, 0) || 0;
-      const parsedTime = parseTimeToHours(t.time);
-      return sum + Math.max(sessionsSum, parsedTime);
-    }, 0) || 0;
-
-    return acc + pendingTasksSum;
-  }, 0);
-
-  // Estado persistido en localStorage
   const [limiteHorasDia, setLimiteHorasDia] = useState(() => {
     if (typeof window !== 'undefined') {
       return Number(localStorage.getItem('taski_limite_horas_dia')) || 8;
     }
     return 8;
   });
-
-
-
-
 
   const kanbanTasks = React.useMemo(() => {
     const list: any[] = [];
@@ -470,20 +419,17 @@ export function HomeDashboard({
     projects.forEach(p => {
       if (p.tasks) {
         p.tasks.forEach((t, index) => {
-          // Calculate completed tasks in the parent project
           const completedCount = p.tasks?.filter(tk => tk.status === "Completado").length || 0;
           const totalCount = p.tasks?.length || 0;
 
-          // Dynamically distribute due dates based on task ID if not set:
           const progDateStr = t.fecha_programada || (() => {
             let offset = 0;
             if (t.status === "Completado") {
-              offset = 12; // Completado -> Este mes
+              offset = 12;
             } else {
-              // Stable distribution based strictly on task ID:
-              if (t.id % 3 === 0) offset = 1; // Tomorrow
-              else if (t.id % 3 === 1) offset = 4; // This Week
-              else offset = 15; // This Month
+              if (t.id % 3 === 0) offset = 1;
+              else if (t.id % 3 === 1) offset = 4;
+              else offset = 15;
             }
             const d = new Date();
             d.setDate(d.getDate() + offset);
@@ -523,7 +469,6 @@ export function HomeDashboard({
       }
     });
 
-    // Ordenar globalmente por la vista actual (groupingMode) y criterios de ordenación (sortBy, sortOrder)
     list.sort((a, b) => {
       let cmp = 0;
       if (sortBy === "alfabetico") {
@@ -550,7 +495,6 @@ export function HomeDashboard({
   const filteredKanbanTasks = React.useMemo(() => {
     let result = kanbanTasks;
 
-    // Filter out completed tasks ONLY when grouping by delivery date ("fecha")
     if (groupingMode === "fecha") {
       result = result.filter(t => t.status !== "Completado" && t.status !== "Completada");
     }
@@ -575,10 +519,8 @@ export function HomeDashboard({
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
 
-  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora
   const { sessions: recentSessions } = useRecentSessions(100);
 
-  // Cálculo del esfuerzo diario sincronizado 1:1 con las tarjetas exactas de la columna "Hoy" en el Kanban
   const todayEffort = React.useMemo<{
     verde: number;
     naranja: number;
@@ -593,7 +535,6 @@ export function HomeDashboard({
     tasksNaranja: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
     allTodayTasks: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
   }>(() => {
-    // Leemos estrictamente las tareas que corresponden a la columna "Hoy" del Kanban
     const todayKanbanList = (filteredKanbanTasks || []).filter(t => {
       return getCalendarDaysDiff(t.dueDate) <= 0;
     });
@@ -611,7 +552,6 @@ export function HomeDashboard({
       const rawId = String(t.id);
       const cleanId = rawId.includes("kt-") ? rawId.split("-")[2] : rawId;
 
-      // Calcular todos los minutos acumulados en sesiones para esta tarea (mantiene el avance marcado)
       const taskSessions = (recentSessions || []).filter(s => {
         const sTaskId = String(s.task_id || "");
         return sTaskId === cleanId || sTaskId === rawId;
@@ -678,9 +618,7 @@ export function HomeDashboard({
       });
       return evalProj;
     }));
-  }, [onUpdateProjects, autoEvaluateProjectStatus, persistProjectUpdate]);
-
-
+  }, [onUpdateProjects]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -719,7 +657,6 @@ export function HomeDashboard({
           deadline: defaultDeadline,
         };
 
-        // Guardar la nueva tarea en la colección /tasks de Firestore
         setDoc(doc(db, "tasks", String(newId)), {
           id: newId,
           titulo: newTask.title,
@@ -746,7 +683,7 @@ export function HomeDashboard({
         return evalProj;
       })
     );
-  }, [onUpdateProjects, formatLocalDate]);
+  }, [onUpdateProjects]);
 
   const handleChangeProjectColor = React.useCallback((projId: string | number) => {
     playSound("click");
@@ -847,8 +784,6 @@ export function HomeDashboard({
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
   const bgStyle = isNightMode ? "bg-[#1f1f1f]" : "bg-black/[0.03]";
-  const r1BgStyle = isNightMode ? "bg-[#111113]" : "bg-[#fffce2]";
-  const r1BorderStyle = isNightMode ? "border border-white/10" : "border border-slate-200";
   const cardBgStyle = isNightMode ? "bg-white/[0.04]" : "bg-black/[0.04]";
 
   return (
@@ -872,239 +807,47 @@ export function HomeDashboard({
           scroll-snap-type: y mandatory;
           scroll-behavior: smooth;
         }
-        /* Disable scroll-snap while hovering so the browser does not re-snap
-           during accordion height animations (prevents flickering) */
-        .task-list-scroll:has(.task-card-wrapper:hover),
-        .task-list-scroll.hover-disabled,
-        .task-list-scroll.is-scrolling {
-          scroll-snap-type: none !important;
-        }
 
-
-
-        /* During scrolling or cooldown, force all wrappers to 162px and disable hover scale/pointer events */
         .task-list-scroll.is-scrolling .task-card-wrapper,
         .task-list-scroll.hover-disabled .task-card-wrapper {
           height: 162px !important;
           pointer-events: none !important;
         }
-        /* Reset card internals to defaults during scroll/cooldown */
-        .task-list-scroll.is-scrolling .task-card-title,
-        .task-list-scroll.hover-disabled .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .task-list-scroll.is-scrolling .project-title,
-        .task-list-scroll.hover-disabled .project-title {
-          transform: translateY(0) !important;
-          opacity: 1 !important;
-        }
-        .task-list-scroll.is-scrolling .task-card-details,
-        .task-list-scroll.hover-disabled .task-card-details {
-          opacity: 0 !important;
-          transform: translateY(22px) !important;
-        }
 
-        /* Wrapper clips inner card content directionally */
         .task-card-wrapper {
           height: 162px;
+          flex-shrink: 0 !important;
           overflow: hidden;
           opacity: 1;
-          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
           will-change: height, opacity;
           scroll-snap-align: start;
+          scroll-snap-stop: normal;
           touch-action: none;
         }
         .task-card-wrapper.is-dragging-card {
           transition: none !important;
         }
 
-        /* Delay card hover changes to prevent accidental triggers when passing cursor by */
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-wrapper {
-          transition-delay: 450ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card {
-          transition-delay: 450ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .project-title {
-          transition-delay: 450ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-title {
-          transition-delay: 450ms !important;
-        }
-
-
-        /* Hovered card expands to 215px (+53px from 162px baseline) ONLY when NO card is expanded double */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-0:hover,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-1:hover,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-2:hover {
-          height: 215px !important;
-        }
-
-        /* Target specific hover states to set precise transform-origins and direction-aware layout alignment */
-        
-        /* 1. When hovering Card 1 (card-pos-0) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-0 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-start !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card {
-          transform: none !important;
-        }
-
-        /* 2. When hovering Card 2 (card-pos-1 - middle card) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-1 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: center !important;
-        }
-        /* Top card contracts bottom-to-top (pulled upwards) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card {
-          transform: none !important;
-        }
-        /* Bottom card contracts top-to-bottom (pushed downwards) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card {
-          transform: none !important;
-        }
-
-        /* 3. When hovering Card 3 (card-pos-2) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-2 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-end !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card {
-          transform: none !important;
-        }
-
-        /* Hide details on all unhovered shrunk cards */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card-details {
-          display: none !important;
-        }
-
-        /* Inner card transitions */
-        .task-card {
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out, background-color 0.3s ease-out, padding 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-          will-change: transform, opacity, padding;
-        }
-
-        /* Keep full opacity on all task cards */
-        .task-card-wrapper .task-card {
-          opacity: 1 !important;
-        }
-
-        /* Task title for all unhovered shrunk neighbor cards is translated to 0px, ONLY when NO card is expanded double */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card-title {
-          transform: translateY(0px) !important;
-        }
-
-        /* Project title (base rules) */
-        .project-title {
-          opacity: 1 !important;
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-in-out !important;
-          transform: translateY(0) !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
-          opacity: 0 !important;
-          transition: opacity 0.12s ease-out !important;
-          transition-delay: 450ms !important;
-        }
-
-        /* Task title (base rules) */
-        .task-card-title {
-          transform: translateY(0px) !important;
-          transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease-out !important;
-          will-change: transform;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
-          transform: translateY(0px) !important;
-          transition-delay: 450ms !important;
-        }
-        /* Keep neighbor card titles at normal multi-line display when another card is hovered */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
-          display: -webkit-box !important;
-          -webkit-line-clamp: 2 !important;
-          -webkit-box-orient: vertical !important;
-          overflow: hidden !important;
-        }
-
-        /* Details group (base rules) — only reveals once hover accordion expansion has completed */
-        .task-card-details {
-          max-height: 0 !important;
-          opacity: 0 !important;
-          overflow: hidden;
-          transform: translateY(14px) !important;
-          transition: max-height 0.2s ease-in, transform 0.2s ease-in, opacity 0.15s ease-in !important;
-          transition-delay: 0ms !important;
-          will-change: max-height, transform, opacity;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-details {
-          max-height: 75px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-          transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-out !important;
-          transition-delay: 950ms !important;
-        }
-
-        /* =====================================================
-           DOUBLE EXPANSION CLICK STATE STYLES
-           ===================================================== */
-        /* Disable scroll-snap during double expansion to prevent browser fight */
         .task-list-scroll:has(.is-expanded-double) {
           scroll-snap-type: none !important;
           gap: 0 !important;
         }
 
-        /* Heights and visibility states for click expansion */
         .task-card-wrapper.is-expanded-double {
-          height: 361px !important;
+          height: 380px !important;
           display: flex !important;
           flex-direction: column !important;
           justify-content: flex-start !important;
         }
         .task-card-wrapper.is-shrunk-sibling {
-          height: 135px !important;
+          height: 120px !important;
         }
         .task-card-wrapper.is-expanded-double:has(+ .is-shrunk-sibling),
         .task-card-wrapper.is-shrunk-sibling:has(+ .is-expanded-double) {
           margin-bottom: 10px !important;
         }
         
-        /* Hidden siblings must not consume gap space or visual offset inside the fixed-height viewport. */
         .task-card-wrapper.is-hidden-sibling {
           height: 0px !important;
           opacity: 0 !important;
@@ -1112,109 +855,21 @@ export function HomeDashboard({
           margin-top: 0 !important;
           margin-bottom: 0 !important;
           transform: none !important;
-          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          transition: height 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-out !important;
         }
 
-        /* Inner card transitions under click expansion */
-        .is-expanded-double .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .is-expanded-double .task-card-details {
-          max-height: 260px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-        }
-
-        /* Expanded metadata section (Tiempo, Programada, Entrega) — CSS-animated instead of conditional render */
-        .task-card-expanded-meta {
-          max-height: 0 !important;
-          opacity: 0 !important;
-          overflow: hidden;
-          pointer-events: none;
-          margin-top: 0 !important;
-          padding-top: 0 !important;
-          border-color: transparent !important;
-          transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease-out, margin-top 0.5s cubic-bezier(0.16, 1, 0.3, 1), padding-top 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out !important;
-          will-change: max-height, opacity;
-        }
-        .is-expanded-double .task-card-expanded-meta {
-          max-height: 120px !important;
-          opacity: 1 !important;
-          pointer-events: auto;
-          margin-top: 10px !important;
-          padding-top: 10px !important;
-          border-color: rgba(255,255,255,0.04) !important;
-          transition-delay: 150ms !important;
-        }
-
-        .is-shrunk-sibling .task-card {
-          padding: 12px 14px !important;
-        }
-        .is-shrunk-sibling .task-card-title {
-          transform: translateY(0px) !important;
-          display: -webkit-box !important;
-          -webkit-line-clamp: 1 !important;
-          -webkit-box-orient: vertical !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          white-space: nowrap !important;
-        }
-        .is-shrunk-sibling .task-card-details {
-          display: none !important;
-        }
-
-        /* Override scale transitions when active selection exists */
-        .task-list-scroll:has(.is-expanded-double) .task-card {
-          transform: none !important;
-        }
-        .task-list-scroll:has(.is-expanded-double) .is-expanded-double .task-card {
-          cursor: pointer !important;
-        }
-
-        /* =====================================================
-           TASK CARD EDITING STATE STYLES
-           ===================================================== */
-        /* Disable scroll-snap during editing to prevent browser snapping fight */
         .task-list-scroll:has(.is-editing-card) {
           scroll-snap-type: none !important;
         }
 
-        /* Heights and visibility states for task editing card (mirroring hover state) */
         .task-card-wrapper.is-editing-card:not(.is-expanded-double) {
-          height: 220px !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .project-title {
-          opacity: 0 !important;
-          transition: opacity 0.12s ease-out !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-details {
-          max-height: 105px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-        }
-
-        /* Keep other cards shrunk in the same list when a card is in edit mode */
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) {
-          height: 115px !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card {
-          transform: scale(0.97) !important;
-          padding: 12px 14px !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-details {
-          display: none !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-title {
-          transform: translateY(0px) !important;
+          height: 240px !important;
         }
       `}</style>
       {/* 5 Expanded Clean Simple Rectangles Grid */}
       <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
         
-        {/* Left Section (3 Columns): Barra de Esfuerzo Diario + Módulo de Sesiones (Encasillado en rectángulo) */}
+        {/* Left Section (3 Columns): Barra de Esfuerzo Diario + Módulo de Sesiones */}
         <div className={`col-span-3 flex flex-col gap-5 p-5 h-[900px] rounded-[28px] ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"}`}>
           <DailyEffortBar 
             todayEffort={todayEffort} 
@@ -1234,7 +889,7 @@ export function HomeDashboard({
           </div>
         </div>
 
-        {/* Right Section (9 Columns): Kanban / Table / Timeline / Search + Bottom 2 Rectangles */}
+        {/* Right Section (9 Columns) */}
         <div className="col-span-9 flex flex-col gap-5">
           {/* Active View Content (Borderless) */}
           <div className={`w-full h-[620px] relative ${draggingTaskId ? "overflow-visible" : "overflow-hidden"}`}>
@@ -1357,9 +1012,10 @@ export function HomeDashboard({
                   </div>
                 );
               })()}
+
               {/* 1. KANBAN VIEW */}
               {activeView === "kanban" && (
-                <KanbanBoard
+                <KanbanBoardV2
                   projects={projects}
                   filteredKanbanTasks={filteredKanbanTasks}
                   groupingMode={groupingMode}
@@ -1399,7 +1055,6 @@ export function HomeDashboard({
               {/* 3. TIMELINE VIEW */}
               {activeView === "timeline" && (
                 <div className="w-full h-full flex flex-col gap-3 pt-1 animate-fadeIn overflow-hidden">
-                  {/* Timeline Header (Weeks indicator) */}
                   <div className={`w-full h-8 rounded-xl ${headerBgStyle} px-4 flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider`}>
                     <div className="w-1/4">Proyecto</div>
                     <div className="w-3/4 grid grid-cols-4 text-center border-l border-white/5 h-full items-center">
@@ -1410,9 +1065,7 @@ export function HomeDashboard({
                     </div>
                   </div>
 
-                  {/* Timeline Project Rows */}
                   <div className="flex flex-col gap-2.5">
-                    {/* Row 1: Diseño Taski (Semana 1 - Semana 2) */}
                     <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
                       <div className="w-1/4 flex items-center gap-2 pr-2">
                         <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
@@ -1426,7 +1079,6 @@ export function HomeDashboard({
                       </div>
                     </div>
 
-                    {/* Row 2: Web Corporativa (Semana 2 - Semana 4) */}
                     <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
                       <div className="w-1/4 flex items-center gap-2 pr-2">
                         <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
@@ -1440,7 +1092,6 @@ export function HomeDashboard({
                       </div>
                     </div>
 
-                    {/* Row 3: Campaña Ads (Semana 3 - Semana 4) */}
                     <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
                       <div className="w-1/4 flex items-center gap-2 pr-2">
                         <div className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
@@ -1458,7 +1109,7 @@ export function HomeDashboard({
               )}
             </div>
 
-            {/* Bottom Right Row: 2 Rectángulos Redondeados */}
+            {/* Bottom Right Row */}
             <div className="grid grid-cols-2 gap-5 -mt-10 relative z-20">
               <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
               <div className={`h-[300px] rounded-[28px] ${bgStyle}`} />
@@ -1479,13 +1130,11 @@ export function HomeDashboard({
         onConfirmTaskDelete={async (projId: number, tskId: number) => {
           const taskIdStr = String(tskId);
           try {
-            // 1. Eliminar de la colección nativa /tasks en Firestore
             await deleteDoc(doc(db, "tasks", taskIdStr));
           } catch (err) {
             console.error("Error al eliminar la tarea de la colección nativa /tasks:", err);
           }
 
-          // 2. Actualizar el estado local y persistir actualización en proyectos
           onUpdateProjects(prev => {
             return prev.map(p => {
               if (String(p.id) === String(projId)) {
