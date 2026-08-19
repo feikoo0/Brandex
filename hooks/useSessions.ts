@@ -8,6 +8,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -18,6 +19,7 @@ import {
   onSnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { recordUndoAction } from "@/lib/undoManager";
 import type { SessionDoc, SessionOrigin } from "@/lib/types";
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
@@ -317,6 +319,26 @@ export function useSessions() {
     const docRef = doc(db, "sessions", newId);
     await setDoc(docRef, sessionData);
     setActiveSession(sessionData);
+
+    recordUndoAction({
+      entityType: "session",
+      entityId: newId,
+      actionType: "session_start",
+      description: "Iniciar nueva sesión de cronómetro",
+      undoDescription: "Sesión cancelada y cronómetro detenido",
+      redoDescription: "Sesión reactivada",
+      executeUndo: async () => {
+        const ref = doc(db, "sessions", newId);
+        await deleteDoc(ref);
+        setActiveSession(null);
+      },
+      executeRedo: async () => {
+        const ref = doc(db, "sessions", newId);
+        await setDoc(ref, sessionData);
+        setActiveSession(sessionData);
+      },
+    });
+
     return sessionData;
   };
 
@@ -349,6 +371,41 @@ export function useSessions() {
 
     await updateDoc(docRef, updateData);
     setActiveSession(null);
+
+    const prevSessionState = { ...data };
+
+    recordUndoAction({
+      entityType: "session",
+      entityId: targetId,
+      actionType: "session_end",
+      description: `Finalizar sesión (${durationMins}m)`,
+      undoDescription: `Sesión reabierta y cronómetro reactivado`,
+      redoDescription: `Sesión finalizada (${durationMins}m)`,
+      executeUndo: async () => {
+        const ref = doc(db, "sessions", targetId);
+        await updateDoc(ref, {
+          status: "en_curso",
+          endTime: null,
+          lastHeartbeat: Timestamp.now(),
+          durationMins: 0,
+          updatedAt: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+        const restoredSnap = await getDoc(ref);
+        if (restoredSnap.exists()) {
+          setActiveSession({ id: restoredSnap.id, ...restoredSnap.data() } as SessionDoc);
+        }
+      },
+      executeRedo: async () => {
+        const ref = doc(db, "sessions", targetId);
+        await updateDoc(ref, {
+          ...updateData,
+          updatedAt: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+        setActiveSession(null);
+      },
+    });
   };
 
   // Registrar sesión manual retrospectiva
@@ -397,6 +454,24 @@ export function useSessions() {
 
     const docRef = doc(db, "sessions", newId);
     await setDoc(docRef, sessionData);
+
+    recordUndoAction({
+      entityType: "session",
+      entityId: newId,
+      actionType: "create",
+      description: `Registrar sesión manual (${durationMins}m)`,
+      undoDescription: `Sesión manual eliminada`,
+      redoDescription: `Sesión manual recreada`,
+      executeUndo: async () => {
+        const ref = doc(db, "sessions", newId);
+        await deleteDoc(ref);
+      },
+      executeRedo: async () => {
+        const ref = doc(db, "sessions", newId);
+        await setDoc(ref, sessionData);
+      },
+    });
+
     return sessionData;
   };
 

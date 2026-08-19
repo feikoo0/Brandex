@@ -13,6 +13,7 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { recordUndoAction } from "@/lib/undoManager";
 import type { Member, DriveLink } from "@/lib/types";
 
 export const INITIAL_MEMBERS: Member[] = [
@@ -273,22 +274,96 @@ export function useMembers() {
     };
 
     await setDoc(doc(db, "members", newId), newMember);
+
+    recordUndoAction({
+      entityType: "member",
+      entityId: newId,
+      actionType: "create",
+      description: `Crear miembro: "${newMember.nombre}"`,
+      undoDescription: `Miembro "${newMember.nombre}" eliminado`,
+      redoDescription: `Miembro "${newMember.nombre}" recreado`,
+      executeUndo: async () => {
+        await deleteDoc(doc(db, "members", newId));
+      },
+      executeRedo: async () => {
+        await setDoc(doc(db, "members", newId), newMember);
+      },
+    });
+
     return newId;
   }, []);
 
   const updateMember = useCallback(async (id: string, data: Partial<Member>): Promise<void> => {
+    const prevMember = members.find((m) => String(m.id) === String(id));
     const docRef = doc(db, "members", String(id));
     await updateDoc(docRef, {
       ...data,
       updatedAt: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
-  }, []);
+
+    if (prevMember) {
+      const memberName = prevMember.nombre || "Miembro";
+      const prevSnapshot: any = {};
+      for (const key of Object.keys(data)) {
+        if (key === "id") continue;
+        prevSnapshot[key] = (prevMember as any)[key] !== undefined ? (prevMember as any)[key] : null;
+      }
+
+      recordUndoAction({
+        entityType: "member",
+        entityId: String(id),
+        actionType: "update",
+        description: `Modificar miembro: "${memberName}"`,
+        undoDescription: `Miembro "${memberName}" restaurado`,
+        redoDescription: `Miembro "${memberName}" modificado`,
+        executeUndo: async () => {
+          const ref = doc(db, "members", String(id));
+          await updateDoc(ref, {
+            ...prevSnapshot,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+        executeRedo: async () => {
+          const ref = doc(db, "members", String(id));
+          await updateDoc(ref, {
+            ...data,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+      });
+    }
+  }, [members]);
 
   const deleteMember = useCallback(async (id: string): Promise<void> => {
+    const prevMember = members.find((m) => String(m.id) === String(id));
     const docRef = doc(db, "members", String(id));
     await deleteDoc(docRef);
-  }, []);
+
+    if (prevMember) {
+      const memberName = prevMember.nombre || "Miembro";
+      recordUndoAction({
+        entityType: "member",
+        entityId: String(id),
+        actionType: "delete",
+        description: `Eliminar miembro: "${memberName}"`,
+        undoDescription: `Miembro "${memberName}" restaurado`,
+        redoDescription: `Miembro "${memberName}" eliminado`,
+        executeUndo: async () => {
+          await setDoc(doc(db, "members", String(id)), {
+            ...prevMember,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+        executeRedo: async () => {
+          await deleteDoc(doc(db, "members", String(id)));
+        },
+      });
+    }
+  }, [members]);
 
   return {
     members,

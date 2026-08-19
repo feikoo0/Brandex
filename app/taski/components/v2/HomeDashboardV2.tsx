@@ -8,7 +8,7 @@ import KanbanBoardV2 from "./KanbanBoardV2";
 import TaskTableView from "../TaskTableView";
 import DeleteConfirmModal from "../DeleteConfirmModal";
 import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
-import { useRecentSessions } from "@/hooks/useSessions";
+import { useRecentSessions, useSessions } from "@/hooks/useSessions";
 import { playSound } from "../../utils/audio";
 import { parseTimeToHours, getCardColorTheme, CARD_COLOR_KEYS } from "@/lib/utils";
 import { autoEvaluateProjectStatus } from "../../utils/data";
@@ -520,6 +520,7 @@ export function HomeDashboardV2({
   };
 
   const { sessions: recentSessions } = useRecentSessions(100);
+  const { activeSession } = useSessions();
 
   const todayEffort = React.useMemo<{
     verde: number;
@@ -534,7 +535,52 @@ export function HomeDashboardV2({
     tasksVerde: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
     tasksNaranja: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
     allTodayTasks: { id: number | string; title: string; hours: number; isCompleted?: boolean; executedMins?: number }[];
+    todayExecutedMins?: number;
   }>(() => {
+    // 1. Helper para verificar si una fecha o timestamp pertenece a "Hoy"
+    const isSameDayAsToday = (dateVal: any): boolean => {
+      if (!dateVal) return false;
+      const d = dateVal.toDate ? dateVal.toDate() : new Date(dateVal);
+      if (isNaN(d.getTime())) return false;
+      const today = new Date();
+      return (
+        d.getFullYear() === today.getFullYear() &&
+        d.getMonth() === today.getMonth() &&
+        d.getDate() === today.getDate()
+      );
+    };
+
+    // 2. Calcular la suma total de minutos de todas las sesiones registradas HOY en el estudio
+    const todaySessionsList = (recentSessions || []).filter(s => {
+      return isSameDayAsToday(s.startTime || s.createdAt || s.created_at || s.created);
+    });
+
+    let todayExecutedMins = todaySessionsList.reduce((sum, s) => {
+      if (s.status === "en_curso") {
+        const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+        const elapsed = isNaN(startMs) ? 0 : Math.max(1, Math.round((Date.now() - startMs) / 60000));
+        return sum + elapsed;
+      }
+      if (s.durationMins && s.durationMins > 0) {
+        return sum + s.durationMins;
+      }
+      if (s.startTime && s.endTime) {
+        const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+        const endMs = s.endTime?.toMillis ? s.endTime.toMillis() : new Date(s.endTime).getTime();
+        if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+          return sum + Math.max(1, Math.round((endMs - startMs) / 60000));
+        }
+      }
+      return sum;
+    }, 0);
+
+    // Si hay una sesión activa de hoy que aún no figura en la lista de recientes
+    if (activeSession && isSameDayAsToday(activeSession.startTime) && !todaySessionsList.some(s => s.id === activeSession.id)) {
+      const startMs = activeSession.startTime?.toMillis ? activeSession.startTime.toMillis() : new Date(activeSession.startTime).getTime();
+      const elapsed = isNaN(startMs) ? 0 : Math.max(1, Math.round((Date.now() - startMs) / 60000));
+      todayExecutedMins += elapsed;
+    }
+
     const todayKanbanList = (filteredKanbanTasks || []).filter(t => {
       return getCalendarDaysDiff(t.dueDate) <= 0;
     });
@@ -591,8 +637,8 @@ export function HomeDashboardV2({
     const gris = Math.max(0, limiteHorasDia - total);
     const maxVal = Math.max(limiteHorasDia, total);
 
-    return { verde, naranja, gris, excedente, maxVal, verdeCount, naranjaCount, nextTask, total, tasksVerde, tasksNaranja, allTodayTasks };
-  }, [filteredKanbanTasks, limiteHorasDia, getCalendarDaysDiff, recentSessions]);
+    return { verde, naranja, gris, excedente, maxVal, verdeCount, naranjaCount, nextTask, total, tasksVerde, tasksNaranja, allTodayTasks, todayExecutedMins };
+  }, [filteredKanbanTasks, limiteHorasDia, getCalendarDaysDiff, recentSessions, activeSession]);
 
   const handleUpdateTaskStatus = React.useCallback((projId: string | number, taskId: string | number, status: string) => {
     onUpdateProjects(prev => prev.map(p => {

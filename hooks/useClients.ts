@@ -12,6 +12,7 @@ import {
   serverTimestamp 
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { recordUndoAction } from "@/lib/undoManager";
 import type { Client } from "@/lib/types";
 
 export const INITIAL_CLIENTS: Client[] = [
@@ -428,24 +429,98 @@ export function useClients() {
     };
 
     await setDoc(doc(db, "clients", newId), newClient);
+
+    recordUndoAction({
+      entityType: "client",
+      entityId: newId,
+      actionType: "create",
+      description: `Crear cliente: "${newClient.nombre}"`,
+      undoDescription: `Cliente "${newClient.nombre}" eliminado`,
+      redoDescription: `Cliente "${newClient.nombre}" recreado`,
+      executeUndo: async () => {
+        await deleteDoc(doc(db, "clients", newId));
+      },
+      executeRedo: async () => {
+        await setDoc(doc(db, "clients", newId), newClient);
+      },
+    });
+
     return newId;
   }, []);
 
   // Actualizar cliente
   const updateClient = useCallback(async (id: string | number, data: Partial<Client>): Promise<void> => {
+    const prevClient = clients.find((c) => String(c.id) === String(id));
     const docRef = doc(db, "clients", String(id));
     await updateDoc(docRef, {
       ...data,
       updatedAt: serverTimestamp(),
       updated_at: serverTimestamp(),
     });
-  }, []);
+
+    if (prevClient) {
+      const clientName = prevClient.nombre || "Cliente";
+      const prevSnapshot: any = {};
+      for (const key of Object.keys(data)) {
+        if (key === "id") continue;
+        prevSnapshot[key] = (prevClient as any)[key] !== undefined ? (prevClient as any)[key] : null;
+      }
+
+      recordUndoAction({
+        entityType: "client",
+        entityId: String(id),
+        actionType: "update",
+        description: `Modificar cliente: "${clientName}"`,
+        undoDescription: `Cliente "${clientName}" restaurado`,
+        redoDescription: `Cliente "${clientName}" modificado`,
+        executeUndo: async () => {
+          const ref = doc(db, "clients", String(id));
+          await updateDoc(ref, {
+            ...prevSnapshot,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+        executeRedo: async () => {
+          const ref = doc(db, "clients", String(id));
+          await updateDoc(ref, {
+            ...data,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+      });
+    }
+  }, [clients]);
 
   // Eliminar cliente
   const deleteClient = useCallback(async (id: string | number): Promise<void> => {
+    const prevClient = clients.find((c) => String(c.id) === String(id));
     const docRef = doc(db, "clients", String(id));
     await deleteDoc(docRef);
-  }, []);
+
+    if (prevClient) {
+      const clientName = prevClient.nombre || "Cliente";
+      recordUndoAction({
+        entityType: "client",
+        entityId: String(id),
+        actionType: "delete",
+        description: `Eliminar cliente: "${clientName}"`,
+        undoDescription: `Cliente "${clientName}" restaurado`,
+        redoDescription: `Cliente "${clientName}" eliminado`,
+        executeUndo: async () => {
+          await setDoc(doc(db, "clients", String(id)), {
+            ...prevClient,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        },
+        executeRedo: async () => {
+          await deleteDoc(doc(db, "clients", String(id)));
+        },
+      });
+    }
+  }, [clients]);
 
   return {
     clients,

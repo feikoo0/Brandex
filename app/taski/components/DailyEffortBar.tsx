@@ -24,6 +24,7 @@ export interface TodayEffortData {
   tasksNaranja: TodayEffortTask[];
   allTodayTasks?: TodayEffortTask[];
   realExecutedHours?: number;
+  todayExecutedMins?: number;
 }
 
 export interface DailyEffortBarProps {
@@ -65,14 +66,16 @@ export const DailyEffortBar: React.FC<DailyEffortBarProps> = ({
     remainingText = `${remM}min`;
   }
 
-  // Calcula el avance real acumulado en sesiones trabajadas
-  const totalExecutedMins = tasksToRender.reduce((sum, t) => {
-    if (t.isCompleted) {
-      const estMins = (t.hours || 0) * 60;
-      return sum + Math.max(estMins, t.executedMins || 0);
-    }
-    return sum + (t.executedMins || 0);
-  }, 0);
+  // Calcula el avance real acumulado en sesiones trabajadas HOY
+  const totalExecutedMins = typeof todayEffort.todayExecutedMins === "number"
+    ? todayEffort.todayExecutedMins
+    : tasksToRender.reduce((sum, t) => {
+        if (t.isCompleted) {
+          const estMins = (t.hours || 0) * 60;
+          return sum + Math.max(estMins, t.executedMins || 0);
+        }
+        return sum + (t.executedMins || 0);
+      }, 0);
 
   const execH = Math.floor(totalExecutedMins / 60);
   const execM = totalExecutedMins % 60;
@@ -103,7 +106,7 @@ export const DailyEffortBar: React.FC<DailyEffortBarProps> = ({
           )}
         </div>
 
-        {totalHours > 0 && (
+        {(totalHours > 0 || totalExecutedMins > 0) && (
           <div className={`text-[11px] font-normal ${isNightMode ? 'text-[#ffffff6b]' : 'text-slate-500'}`}>
             {executedText}
           </div>
