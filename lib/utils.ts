@@ -140,42 +140,61 @@ export function getDynamicGreeting(name: string = "Feiko"): { title: string; sub
   return options[index];
 }
 
-export function parseEsfuerzoMins(esfuerzo: string): number {
-  if (!esfuerzo) return 0;
-  const s = esfuerzo.toLowerCase();
-  const h = s.match(/(\d+)\s*h/);
-  const m = s.match(/(\d+)\s*min/);
-  let t = 0;
-  if (h) t += parseInt(h[1]) * 60;
-  if (m) t += parseInt(m[1]);
-  if (t) return t;
+export function parseTimeToMinutes(timeStr: string | undefined | null): number {
+  if (!timeStr) return 0;
+  const s = String(timeStr).trim().toLowerCase().replace(",", ".");
+
+  // Presets de esfuerzo
   if (s.includes("flash")) return 15;
-  if (s.includes("corto") || s.includes("rápido")) return 30;
+  if (s.includes("corto") || s.includes("rápido") || s.includes("rapido")) return 30;
   if (s.includes("medio") || s.includes("normal")) return 60;
   if (s.includes("largo")) return 120;
-  if (s.includes("maratón") || s.includes("+3")) return 180;
+  if (s.includes("maratón") || s.includes("maraton") || s.includes("+3")) return 180;
+
+  // Formato tipo código de tiempo HH:MM o H:MM (ej. 1:30, 02:45)
+  const timeCodeMatch = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (timeCodeMatch) {
+    const hours = parseInt(timeCodeMatch[1], 10);
+    const mins = parseInt(timeCodeMatch[2], 10);
+    return hours * 60 + mins;
+  }
+
+  // Formato combinado horas y minutos (ej. "1h 30m", "1 hora 30 min", "1h30m", "2 hrs 15 min")
+  const combinedMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hora|horas)\s*(?:y\s*)?(\d+)\s*(?:m|min|mins|minutos)?/);
+  if (combinedMatch) {
+    const hours = parseFloat(combinedMatch[1]);
+    const mins = parseInt(combinedMatch[2], 10);
+    return Math.round(hours * 60) + (isNaN(mins) ? 0 : mins);
+  }
+
+  // Formato sólo horas (ej. "1.5h", "2h", "1 hora", "2 horas", "3 horas o más", "3 hrs")
+  const hoursMatch = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hora|horas)/);
+  if (hoursMatch) {
+    return Math.round(parseFloat(hoursMatch[1]) * 60);
+  }
+
+  // Formato sólo minutos (ej. "15 min", "30 mins", "45m", "15 minutos")
+  const minsMatch = s.match(/(\d+)\s*(?:m|min|mins|minuto|minutos)/);
+  if (minsMatch) {
+    return parseInt(minsMatch[1], 10);
+  }
+
+  // Fallback: número suelto (ej. "3", "1.5", "45")
+  const plainNum = parseFloat(s);
+  if (!isNaN(plainNum) && plainNum > 0) {
+    return plainNum <= 12 ? Math.round(plainNum * 60) : Math.round(plainNum);
+  }
+
   return 0;
 }
 
 export function parseTimeToHours(timeStr: string | undefined | null): number {
-  if (!timeStr) return 0;
-  const clean = timeStr.trim().toLowerCase();
-  
-  // Handle formats like "15 min", "30 min"
-  if (clean.includes("min")) {
-    const minMatch = clean.match(/(\d+(?:\.\d+)?)/);
-    if (minMatch) {
-      return parseFloat(minMatch[1]) / 60;
-    }
-  }
-  
-  // Handle formats like "1.5h", "2h", "1 hora", "2 horas", "3 horas o más"
-  const hrMatch = clean.match(/(\d+(?:\.\d+)?)/);
-  if (hrMatch) {
-    return parseFloat(hrMatch[1]);
-  }
-  
-  return 0;
+  const mins = parseTimeToMinutes(timeStr);
+  return mins / 60;
+}
+
+export function parseEsfuerzoMins(esfuerzo: string): number {
+  return parseTimeToMinutes(esfuerzo);
 }
 
 export interface CardColorTheme {

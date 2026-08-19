@@ -28,7 +28,16 @@ function getLastSessionText(taskSessions: SessionDoc[]): string | null {
   if (!taskSessions || taskSessions.length === 0) return null;
   let latestTime: number = 0;
   for (const s of taskSessions) {
-    const raw = s.startTime;
+    let raw = s.endTime || s.updatedAt || s.updated_at;
+    if (!raw && s.startTime && s.durationMins > 0) {
+      const startMs = s.startTime.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+      if (!isNaN(startMs)) {
+        const endMs = startMs + s.durationMins * 60 * 1000;
+        if (endMs > latestTime) latestTime = endMs;
+        continue;
+      }
+    }
+    if (!raw) raw = s.startTime;
     if (!raw) continue;
     const ms = raw.toMillis ? raw.toMillis() : new Date(raw).getTime();
     if (!isNaN(ms) && ms > latestTime) {
@@ -46,15 +55,42 @@ function getLastSessionText(taskSessions: SessionDoc[]): string | null {
   }
 }
 
-function getRelativeTime(timestamp: any): string {
-  if (!timestamp) return "Recientemente";
-  const ms = timestamp.toMillis ? timestamp.toMillis() : new Date(timestamp).getTime();
-  if (isNaN(ms)) return "Recientemente";
-  const diffMins = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+function getSessionEndRelativeTime(s: SessionDoc): string {
+  if (s.status === "en_curso" || (!s.endTime && s.durationMins === 0)) {
+    return "En curso";
+  }
 
+  let endMs: number | null = null;
+  const endTimestamp = s.endTime || s.updatedAt || s.updated_at;
+  if (endTimestamp) {
+    endMs = endTimestamp.toMillis ? endTimestamp.toMillis() : new Date(endTimestamp).getTime();
+  }
+
+  // Si no hay endTime pero hay startTime y durationMins, calculamos: startTime + durationMins
+  if ((!endMs || isNaN(endMs)) && s.startTime && s.durationMins > 0) {
+    const startMs = s.startTime.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+    if (!isNaN(startMs)) {
+      endMs = startMs + s.durationMins * 60 * 1000;
+    }
+  }
+
+  if (!endMs || isNaN(endMs)) {
+    const fallback = s.createdAt || s.created || s.startTime;
+    if (fallback) {
+      endMs = fallback.toMillis ? fallback.toMillis() : new Date(fallback).getTime();
+    }
+  }
+
+  if (!endMs || isNaN(endMs)) return "Recientemente";
+
+  const diffMins = Math.max(0, Math.floor((Date.now() - endMs) / 60000));
+
+  if (diffMins <= 0) return "Hace un momento";
   if (diffMins < 60) return `Hace ${diffMins}m`;
   const diffHours = Math.floor(diffMins / 60);
-  return `Hace ${diffHours}h`;
+  if (diffHours < 24) return `Hace ${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `Hace ${diffDays}d`;
 }
 
 function getDateGroupTitle(timestamp: any): string {
@@ -163,10 +199,42 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
   const { activeSession, startSession, endSession } = useSessions();
   const { data } = useData();
   const [isMounted, setIsMounted] = useState(false);
+  const [activeElapsedSecs, setActiveElapsedSecs] = useState<number>(0);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  // Contador de tiempo en vivo segundo a segundo cuando hay una sesión activa
+  useEffect(() => {
+    if (!activeSession?.startTime) {
+      setActiveElapsedSecs(0);
+      return;
+    }
+
+    const startMs = activeSession.startTime.toMillis
+      ? activeSession.startTime.toMillis()
+      : new Date(activeSession.startTime).getTime();
+
+    const update = () => {
+      const secs = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+      setActiveElapsedSecs(secs);
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
+
+  const formatRunningTime = (totalSecs: number) => {
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    if (hrs > 0) {
+      return `${hrs}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+    }
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
 
   const { projectMap, clientMap, taskMap, internalTodayTasks } = useMemo(() => {
     const pMap = new Map<string, any>();
@@ -511,13 +579,13 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                       </motion.div>
                   </div>
 
-                  {/* Botón en Píldora (+ Sesión / Stop) */}
+                  {/* Botón en Píldora (+ Sesión / Tiempo en Vivo) */}
                   <button
                     onClick={() => handleToggleSession(t)}
-                    title={isActive ? "Detener Sesión" : "Iniciar Sesión de Trabajo"}
-                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1 transition-all shrink-0 shadow-sm ${
+                    title={isActive ? `Detener Sesión (${formatRunningTime(activeElapsedSecs)})` : "Iniciar Sesión de Trabajo"}
+                    className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all shrink-0 shadow-sm ${
                       isActive
-                        ? "bg-rose-500 text-white hover:bg-rose-600"
+                        ? "bg-rose-500 text-white hover:bg-rose-600 shadow-rose-500/20"
                         : isNightMode
                           ? "bg-white text-slate-950 hover:bg-slate-200"
                           : "bg-amber-950 text-amber-50 hover:bg-amber-900"
@@ -525,8 +593,8 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                   >
                     {isActive ? (
                       <>
-                        <Square className="w-3 h-3 fill-current" />
-                        <span>Stop</span>
+                        <Square className="w-2.5 h-2.5 fill-current shrink-0" />
+                        <span className="font-mono font-bold tracking-tight">{formatRunningTime(activeElapsedSecs)}</span>
                       </>
                     ) : (
                       <>
@@ -592,7 +660,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                     const projectName = project?.nombre || project?.title || task?.projectName || "Proyecto";
 
                     const badge = getOriginBadge(s.origin);
-                    const relTime = getRelativeTime(s.startTime);
+                    const relTime = getSessionEndRelativeTime(s);
                     const dotBgColor = getProjectBgColor(project, task);
 
                     return (

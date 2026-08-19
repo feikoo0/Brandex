@@ -11,6 +11,7 @@ import KanbanBoard from "./KanbanBoard";
 import TaskTableView from "./TaskTableView";
 import DeleteConfirmModal from "./DeleteConfirmModal";
 import { MonoActivityHeatmap } from "@/components/ui/mono-activity-heatmap";
+import { GitHubActivity } from "@/components/ui/github-activity";
 import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
 import { useRecentSessions } from "@/hooks/useSessions";
 import { playSound } from "../utils/audio";
@@ -1459,19 +1460,29 @@ export function HomeDashboard({
               )}
             </div>
 
-            {/* Bottom Right Row: 2 Rectángulos Redondeados */}
+            {/* Bottom Right Row: 2 Rectángulos Redondeados (Invertidos) */}
             <div className="grid grid-cols-2 gap-5 -mt-10 relative z-20">
+              <div className="h-[300px]">
+                <GitHubActivity
+                  accent="#3b82f6"
+                  cellSize={13}
+                  months={4}
+                  showMonths={true}
+                  sessions={recentSessions}
+                  tasks={projects.flatMap((p) => p.tasks || [])}
+                  projects={projects}
+                  noContainer={true}
+                  className="h-full w-full"
+                />
+              </div>
               <div className="h-[300px]">
                 <MonoActivityHeatmap
                   theme={isNightMode ? "dark" : "light"}
                   accentColor="blue"
-                  title="Registro de Sesiones"
-                  badgeLabel="Sky Blue Grid"
                   sessions={recentSessions}
                   tasks={projects.flatMap((p) => p.tasks || [])}
                 />
               </div>
-              <div className={`h-[300px] rounded-[28px] ${bgStyle} border border-white/10`} />
             </div>
         </div>
 

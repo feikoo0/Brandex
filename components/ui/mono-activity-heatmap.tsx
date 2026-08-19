@@ -13,6 +13,12 @@ export interface ActivityDay {
   sessionCount: number;
 }
 
+export interface MonthBlock {
+  key: string;
+  name: string;
+  weeks: (ActivityDay | null)[][];
+}
+
 export interface MonoActivityHeatmapProps {
   theme?: "dark" | "light";
   accentColor?: "green" | "blue" | "purple" | "mono";
@@ -28,12 +34,10 @@ export interface MonoActivityHeatmapProps {
     sessions?: Array<{ id?: number; date?: string; hours?: number }>;
     status?: string;
   }>;
-  weeksCount?: number;
-  title?: string;
-  badgeLabel?: string;
+  monthsCount?: number;
 }
 
-const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NAMES_ES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
 // Helper para convertir cualquier timestamp o fecha a "YYYY-MM-DD" local
 function formatDateToLocalKey(dateInput: any): string | null {
@@ -65,39 +69,55 @@ function formatDateToLocalKey(dateInput: any): string | null {
   }
 }
 
+// Formateador amigable de fecha en español (ej: "18 Ago 2026")
+function formatDisplayDate(dateStr: string): string {
+  try {
+    const parts = dateStr.split("-").map(Number);
+    if (parts.length === 3) {
+      const [y, m, d] = parts;
+      const monthLabel = MONTH_NAMES_ES[m - 1] || "";
+      return `${d} ${monthLabel} ${y}`;
+    }
+    return dateStr;
+  } catch {
+    return dateStr;
+  }
+}
+
 /**
- * Procesa las sesiones reales de Firestore y tareas para generar la matriz de días
+ * Agrupa los días y semanas separados por bloques mensuales con calendario exacto
  */
-function processSynchronizedSessions(
-  weeks = 20,
+function generateMonthBlocks(
+  monthsCount = 4,
   sessions?: SessionDoc[],
   tasks?: any[]
-): ActivityDay[] {
+): MonthBlock[] {
   const today = new Date();
-  
-  // Mapa de acumulación por fecha YYYY-MM-DD
-  const dailyMetrics: Record<string, { hours: number; sessionCount: number; tasksCompleted: number }> = {};
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth(); // 0 a 11
+  const todayStr = formatDateToLocalKey(today);
 
-  // 1. Procesar sesiones directas de Firestore (`sessions` collection)
+  // 1. Recopilar métricas de sesiones reales
+  const dailyMetrics: Record<string, { hours: number; sessionCount: number }> = {};
+
   if (sessions && Array.isArray(sessions)) {
     sessions.forEach((s) => {
       const dateKey = formatDateToLocalKey(s.startTime || s.created || s.createdAt);
       if (!dateKey) return;
 
       if (!dailyMetrics[dateKey]) {
-        dailyMetrics[dateKey] = { hours: 0, sessionCount: 0, tasksCompleted: 0 };
+        dailyMetrics[dateKey] = { hours: 0, sessionCount: 0 };
       }
 
       const durationHours = (s.durationMins && s.durationMins > 0)
         ? s.durationMins / 60
-        : 0.5; // fallback mínimo 30 min
+        : 0.5;
 
       dailyMetrics[dateKey].hours += durationHours;
       dailyMetrics[dateKey].sessionCount += 1;
     });
   }
 
-  // 2. Procesar sesiones y entregas embebidas en tareas
   if (tasks && Array.isArray(tasks)) {
     tasks.forEach((t) => {
       if (t.sessions && Array.isArray(t.sessions)) {
@@ -106,79 +126,103 @@ function processSynchronizedSessions(
           if (!dateKey) return;
 
           if (!dailyMetrics[dateKey]) {
-            dailyMetrics[dateKey] = { hours: 0, sessionCount: 0, tasksCompleted: 0 };
+            dailyMetrics[dateKey] = { hours: 0, sessionCount: 0 };
           }
 
           dailyMetrics[dateKey].hours += (ts.hours || 0);
           dailyMetrics[dateKey].sessionCount += 1;
         });
       }
-
-      if (t.fecha_programada && t.status === "Completado") {
-        const dateKey = formatDateToLocalKey(t.fecha_programada);
-        if (dateKey) {
-          if (!dailyMetrics[dateKey]) {
-            dailyMetrics[dateKey] = { hours: 0, sessionCount: 0, tasksCompleted: 0 };
-          }
-          dailyMetrics[dateKey].tasksCompleted += 1;
-        }
-      }
     });
   }
 
   const hasAnyRealActivity = Object.keys(dailyMetrics).length > 0;
+  const result: MonthBlock[] = [];
 
-  return Array.from({ length: weeks * 7 }, (_, idx) => {
-    const day = new Date(today);
-    day.setDate(day.getDate() - (weeks * 7 - 1 - idx));
-    const dateStr = formatDateToLocalKey(day) || day.toISOString().slice(0, 10);
-    
-    const metric = dailyMetrics[dateStr];
-    let totalHours = metric ? metric.hours : 0;
-    let sessionCount = metric ? metric.sessionCount : 0;
-    let level = 0;
+  // Construir cada bloque mensual
+  for (let i = monthsCount - 1; i >= 0; i--) {
+    const targetDate = new Date(currentYear, currentMonth - i, 1);
+    const year = targetDate.getFullYear();
+    const monthIndex = targetDate.getMonth();
+    const monthName = MONTH_NAMES_ES[monthIndex];
+    const key = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
 
-    if (totalHours > 0 || sessionCount > 0) {
-      // Escala de intensidad basada en horas de sesión trabajadas en el día:
-      // - Nivel 1: > 0 a 1.5 horas (actividad ligera)
-      // - Nivel 2: 1.5h a 3.5 horas (actividad moderada)
-      // - Nivel 3: 3.5h a 5.5 horas (actividad alta)
-      // - Nivel 4: > 5.5 horas (foco máximo)
-      if (totalHours <= 1.5) level = 1;
-      else if (totalHours <= 3.5) level = 2;
-      else if (totalHours <= 5.5) level = 3;
-      else level = 4;
-    } else if (!hasAnyRealActivity) {
-      // Semilla visual determinista en caso de que no haya ninguna sesión en la BD
-      let hash = 0;
-      for (let i = 0; i < dateStr.length; i++) {
-        hash = (hash << 5) - hash + dateStr.charCodeAt(i);
-        hash |= 0;
+    // Cantidad de días en el mes
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+
+    // Desplazamiento del 1er día de la semana (Lunes = 0, ..., Domingo = 6)
+    const firstDayRaw = targetDate.getDay();
+    const firstDayOffset = (firstDayRaw + 6) % 7;
+
+    const weeks: (ActivityDay | null)[][] = [];
+    let currentWeek: (ActivityDay | null)[] = [];
+
+    // Rellenar días anteriores del 1er día como invisibles
+    for (let p = 0; p < firstDayOffset; p++) {
+      currentWeek.push(null);
+    }
+
+    for (let dayNum = 1; dayNum <= daysInMonth; dayNum++) {
+      const dateStr = `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+      const isFuture = dateStr > (todayStr || "");
+
+      const metric = dailyMetrics[dateStr];
+      let totalHours = metric ? metric.hours : 0;
+      let sessionCount = metric ? metric.sessionCount : 0;
+      let level = 0;
+
+      if (!isFuture) {
+        if (totalHours > 0 || sessionCount > 0) {
+          if (totalHours <= 1.5) level = 1;
+          else if (totalHours <= 3.5) level = 2;
+          else if (totalHours <= 5.5) level = 3;
+          else level = 4;
+        } else if (!hasAnyRealActivity) {
+          // Semilla visual determinista
+          let hash = 0;
+          for (let c = 0; c < dateStr.length; c++) {
+            hash = (hash << 5) - hash + dateStr.charCodeAt(c);
+            hash |= 0;
+          }
+          const pseudo = Math.abs(hash % 100) / 100;
+          if (pseudo > 0.45) {
+            level = Math.floor((pseudo * 10) % 4) + 1;
+            totalHours = Math.round((level * 1.3 + pseudo) * 10) / 10;
+            sessionCount = Math.max(1, Math.floor(level * 1.5));
+          }
+        }
       }
-      const pseudo = Math.abs(hash % 100) / 100;
-      if (pseudo > 0.4) {
-        level = Math.floor((pseudo * 10) % 4) + 1;
-        totalHours = Math.round((level * 1.3 + (pseudo * 2)) * 10) / 10;
-        sessionCount = Math.max(1, Math.floor(level * 1.5));
+
+      currentWeek.push({
+        date: dateStr,
+        count: sessionCount,
+        hours: Math.round(totalHours * 10) / 10,
+        level,
+        sessionCount,
+      });
+
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
       }
     }
 
-    return {
-      date: dateStr,
-      count: sessionCount,
-      hours: Math.round(totalHours * 10) / 10,
-      level,
-      sessionCount,
-    };
-  });
-}
+    // Completar última semana con placeholders invisibles
+    if (currentWeek.length > 0) {
+      while (currentWeek.length < 7) {
+        currentWeek.push(null);
+      }
+      weeks.push(currentWeek);
+    }
 
-function chunkIntoWeeks(daysList: ActivityDay[]): ActivityDay[][] {
-  const weeks: ActivityDay[][] = [];
-  for (let i = 0; i < daysList.length; i += 7) {
-    weeks.push(daysList.slice(i, i + 7));
+    result.push({
+      key,
+      name: monthName,
+      weeks,
+    });
   }
-  return weeks;
+
+  return result;
 }
 
 export function MonoActivityHeatmap({
@@ -186,67 +230,39 @@ export function MonoActivityHeatmap({
   accentColor = "blue",
   compact = false,
   className,
-  data,
   sessions,
   tasks,
-  weeksCount = 20,
-  title = "Registro de Sesiones",
-  badgeLabel,
+  monthsCount = 4,
 }: MonoActivityHeatmapProps) {
   const isDark = theme === "dark";
   const [hoveredDay, setHoveredDay] = useState<ActivityDay | null>(null);
 
-  // Sincronización reactiva de datos
-  const rawDays = useMemo(() => {
-    if (data && data.length > 0) return data;
-    return processSynchronizedSessions(weeksCount, sessions, tasks);
-  }, [data, sessions, tasks, weeksCount]);
+  // Fecha actual para trazo blanco de "Hoy"
+  const todayStr = useMemo(() => formatDateToLocalKey(new Date()), []);
 
-  const weeksGrid = useMemo(() => chunkIntoWeeks(rawDays), [rawDays]);
-  
-  const totalHoursLogged = useMemo(
-    () => rawDays.reduce((acc, d) => acc + d.hours, 0),
-    [rawDays]
-  );
-
-  const totalSessionsLogged = useMemo(
-    () => rawDays.reduce((acc, d) => acc + d.sessionCount, 0),
-    [rawDays]
-  );
+  // Bloques de meses divididos horizontalmente
+  const monthBlocks = useMemo(() => {
+    return generateMonthBlocks(monthsCount, sessions, tasks);
+  }, [monthsCount, sessions, tasks]);
 
   // Paleta Sky Blue oficial de Taski
   const palette = useMemo(() => {
     switch (accentColor) {
       case "blue":
-        return {
-          bg: "#3b82f6",
-          badgeClass: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-          badgeText: badgeLabel || "Sky Blue Grid",
-        };
+        return { bg: "#3b82f6" };
       case "green":
-        return {
-          bg: "#39d353",
-          badgeClass: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-          badgeText: badgeLabel || "Emerald Matrix",
-        };
+        return { bg: "#39d353" };
       case "purple":
-        return {
-          bg: "#a855f7",
-          badgeClass: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-          badgeText: badgeLabel || "Violet Pulse",
-        };
+        return { bg: "#a855f7" };
       case "mono":
       default:
-        return {
-          bg: isDark ? "#FFFFFF" : "#09090B",
-          badgeClass: "bg-white/10 text-white border-white/20",
-          badgeText: badgeLabel || "Monochrome Heat",
-        };
+        return { bg: isDark ? "#FFFFFF" : "#09090B" };
     }
-  }, [accentColor, isDark, badgeLabel]);
+  }, [accentColor, isDark]);
 
   // Escala de opacidad / luminosidad por nivel (0 a 4)
-  const getCellOpacity = (level: number) => {
+  const getCellOpacity = (level: number, isToday: boolean) => {
+    if (isToday) return 1.0;
     switch (level) {
       case 0:
         return isDark ? 0.07 : 0.09;
@@ -263,168 +279,124 @@ export function MonoActivityHeatmap({
     }
   };
 
-  // Nombres de meses para la cabecera
-  const monthLabels = useMemo(() => {
-    if (weeksGrid.length === 0) return MONTH_NAMES.slice(0, 5);
-    const months: string[] = [];
-    let lastMonth = -1;
-
-    weeksGrid.forEach((week) => {
-      if (week[0]) {
-        const m = new Date(week[0].date).getMonth();
-        if (m !== lastMonth) {
-          months.push(MONTH_NAMES[m]);
-          lastMonth = m;
-        }
-      }
-    });
-
-    return months.length >= 4 ? months.slice(-5) : MONTH_NAMES.slice(0, 5);
-  }, [weeksGrid]);
-
   return (
     <div
       className={cn(
-        "relative w-full rounded-[28px] transition-all duration-300 group flex flex-col justify-between overflow-hidden p-5 font-sans select-none border",
-        compact ? "h-[220px] sm:h-[268px]" : "h-full min-h-[290px]",
+        "relative w-full h-full rounded-[28px] transition-all duration-300 group flex flex-col justify-center overflow-hidden p-3.5 sm:p-4 font-sans select-none border",
         isDark
           ? "bg-[#181818] border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] text-white hover:border-white/15"
           : "bg-white border-neutral-200 shadow-[0_4px_20px_rgba(0,0,0,0.04)] text-black",
         className
       )}
     >
-      {/* Cabecera Superior: Título, Badge de Estado y Métrica Total de Sesiones */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "text-xs font-semibold tracking-wider uppercase",
-                isDark ? "text-[#ffffff6b]" : "text-neutral-500"
-              )}
-            >
-              {title}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-mono border",
-                palette.badgeClass
-              )}
-            >
-              {palette.badgeText}
-            </span>
-          </div>
-          <div className="text-xl font-bold tracking-tight tabular-nums mt-0.5 font-sans text-[#ffffffd6] flex items-baseline gap-1.5">
-            <span>{Math.round(totalHoursLogged)}h</span>
-            <span className="text-xs font-normal text-[#ffffff6b]">
-              registradas ({totalSessionsLogged} sesiones)
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Área del Lienzo del Heatmap */}
+      {/* Área del Lienzo del Heatmap Adaptado */}
       <div
         className={cn(
-          "relative w-full flex-1 rounded-[18px] overflow-hidden p-3.5 transition-colors duration-300 flex flex-col justify-center items-center border",
+          "relative w-full h-full flex-1 rounded-[22px] overflow-hidden p-4 sm:p-5 transition-colors duration-300 flex flex-col justify-center items-center border font-sans",
           isDark ? "bg-[#121212] border-white/[0.06]" : "bg-[#f4f4f6] border-neutral-200"
         )}
       >
-        {/* Etiquetas de Meses */}
-        <div className="flex justify-between items-center mb-2 w-full max-w-[340px] px-1">
-          {monthLabels.map((month, idx) => (
-            <span
-              key={idx}
-              className={cn(
-                "text-[10px] font-mono text-center flex-1",
-                isDark ? "text-[#ffffff6b]" : "text-neutral-500"
-              )}
-            >
-              {month}
-            </span>
-          ))}
-        </div>
-
-        {/* Grilla Matricial de 20 Semanas × 7 Días */}
+        {/* Contenedor Principal: Meses Divididos Horizontalmente con Separación */}
         <div
-          className="flex justify-center items-center gap-[3.5px] w-full max-w-full overflow-x-auto py-1 hide-scrollbar"
+          className="flex items-start justify-center gap-3 sm:gap-5 w-full max-w-full"
           onPointerLeave={() => setHoveredDay(null)}
         >
-          {weeksGrid.map((week, weekIdx) => (
-            <div key={weekIdx} className="flex flex-col gap-[3.5px] items-center shrink-0">
-              {week.map((day, dayIdx) => (
-                <motion.div
-                  key={`${weekIdx}-${dayIdx}`}
-                  onPointerEnter={() => setHoveredDay(day)}
-                  onPointerDown={() => setHoveredDay(day)}
-                  className="w-[10px] h-[10px] sm:w-[11px] sm:h-[11px] min-w-[10px] min-h-[10px] rounded-[2.5px] transition-all cursor-pointer"
-                  style={{
-                    backgroundColor: palette.bg,
-                    opacity: getCellOpacity(day.level),
-                  }}
-                  whileHover={{ scale: 1.45, zIndex: 20 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                />
-              ))}
+          {monthBlocks.map((month) => (
+            <div key={month.key} className="flex flex-col items-center gap-2.5">
+              {/* Título del Mes Centrado Exactamente con su Cuadrícula */}
+              <span
+                className={cn(
+                  "text-[12px] sm:text-[13px] font-medium font-sans text-center select-none",
+                  isDark ? "text-[#ffffff6b]" : "text-neutral-500"
+                )}
+              >
+                {month.name}
+              </span>
+
+              {/* Columnas de Semanas del Mes */}
+              <div className="flex gap-1 sm:gap-[5px] items-center">
+                {month.weeks.map((week, weekIdx) => (
+                  <div key={weekIdx} className="flex flex-col gap-1 sm:gap-[5px] items-center">
+                    {week.map((day, dayIdx) => {
+                      if (!day) {
+                        // Placeholder invisible para alinear el día 1 en su fila correspondiente
+                        return (
+                          <div
+                            key={`placeholder-${weekIdx}-${dayIdx}`}
+                            className="w-[14px] h-[14px] sm:w-[16px] sm:h-[16px] md:w-[17px] md:h-[17px] shrink-0 opacity-0 pointer-events-none"
+                          />
+                        );
+                      }
+
+                      const isToday = day.date === todayStr;
+
+                      return (
+                        <motion.div
+                          key={day.date}
+                          onPointerEnter={() => setHoveredDay(day)}
+                          onPointerDown={() => setHoveredDay(day)}
+                          className={cn(
+                            "w-[14px] h-[14px] sm:w-[16px] sm:h-[16px] md:w-[17px] md:h-[17px] rounded-[3.5px] transition-all cursor-pointer shrink-0",
+                            isToday
+                              ? "border-2 border-white ring-1.5 ring-white/50 shadow-[0_0_8px_rgba(255,255,255,0.45)]"
+                              : "border-0"
+                          )}
+                          style={{
+                            backgroundColor: palette.bg,
+                            opacity: getCellOpacity(day.level, isToday),
+                          }}
+                          whileHover={{ scale: 1.35, zIndex: 20 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
 
         {/* Telemetría / Barra Informativa de Hover */}
-        <div className="h-5 mt-2 flex items-center justify-center">
+        <div className="h-6 mt-3.5 flex items-center justify-center font-sans">
           {hoveredDay ? (
             <motion.span
               initial={{ opacity: 0, y: 2 }}
               animate={{ opacity: 1, y: 0 }}
               className={cn(
-                "text-[10px] font-mono",
-                isDark ? "text-blue-300 font-medium" : "text-blue-700 font-semibold"
+                "text-[12px] sm:text-[13px] font-sans font-medium",
+                isDark ? "text-[#ffffffd6]" : "text-neutral-800"
               )}
             >
               {hoveredDay.hours > 0 ? (
                 <>
-                  <strong className="text-white">{hoveredDay.hours}h</strong> ({hoveredDay.sessionCount} {hoveredDay.sessionCount === 1 ? "sesión" : "sesiones"}) el {hoveredDay.date}
+                  <strong className="text-sky-400 font-semibold">{hoveredDay.hours}h</strong>
+                  <span className="text-[#ffffff6b]"> ({hoveredDay.sessionCount} {hoveredDay.sessionCount === 1 ? "sesión" : "sesiones"}) el </span>
+                  <span className="text-[#ffffffd6]">{formatDisplayDate(hoveredDay.date)}</span>
+                  {hoveredDay.date === todayStr && (
+                    <span className="ml-1.5 text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-white font-medium border border-white/20">Hoy</span>
+                  )}
                 </>
               ) : (
-                <>Sin sesiones registradas el {hoveredDay.date}</>
+                <>
+                  <span className="text-[#ffffff6b]">Sin sesiones el </span>
+                  <span className="text-[#ffffffd6]">{formatDisplayDate(hoveredDay.date)}</span>
+                  {hoveredDay.date === todayStr && (
+                    <span className="ml-1.5 text-[11px] px-2 py-0.5 rounded-full bg-white/10 text-white font-medium border border-white/20">Hoy</span>
+                  )}
+                </>
               )}
             </motion.span>
           ) : (
             <span
               className={cn(
-                "text-[10px] font-mono",
-                isDark ? "text-white/30" : "text-neutral-400"
+                "text-[12px] sm:text-[13px] font-sans font-normal",
+                isDark ? "text-[#ffffff6b]" : "text-neutral-500"
               )}
             >
               Pasa el cursor sobre los nodos para ver horas de sesión
             </span>
           )}
-        </div>
-      </div>
-
-      {/* Pie de Información y Leyenda de Intensidad */}
-      <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/[0.06] text-[11px] font-mono">
-        <span className={isDark ? "text-[#ffffff6b]" : "text-neutral-600"}>
-          20 Semanas × 7 Días
-        </span>
-
-        {/* Mini Escala / Leyenda */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[9px] text-[#ffffff6b]">Menos</span>
-          <div className="flex items-center gap-1">
-            {[0, 1, 2, 3, 4].map((lvl) => (
-              <div
-                key={lvl}
-                className="w-2 h-2 rounded-[1.5px]"
-                style={{
-                  backgroundColor: palette.bg,
-                  opacity: getCellOpacity(lvl),
-                }}
-                title={`Nivel ${lvl}`}
-              />
-            ))}
-          </div>
-          <span className="text-[9px] text-[#ffffff6b]">Más</span>
         </div>
       </div>
     </div>

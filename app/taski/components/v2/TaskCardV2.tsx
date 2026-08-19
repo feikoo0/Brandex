@@ -149,7 +149,7 @@ export const TaskCardV2Content: React.FC<TaskCardV2Props> = ({
   );
 
   // Hook reactivo para el tiempo acumulado en vivo y semáforo de esfuerzo (Uso A)
-  const timeData = useTaskAccumulatedTime(taskId, task?.time);
+  const timeData = useTaskAccumulatedTime(taskId, task?.time, undefined, task?.sessions);
 
   if (!task) return null;
 
@@ -675,14 +675,26 @@ export const TaskCardV2Content: React.FC<TaskCardV2Props> = ({
           </div>
 
           {/* Derecha: Tiempo acumulado vs estimado (Uso A) */}
-          <div className="flex items-center gap-1.5 text-[#ffffff6b] shrink-0" title={`Consumo: ${Math.round(timeData.consumptionPercent * 100)}% (${timeData.formattedComparison})`}>
+          <div
+            className="flex items-center gap-1.5 shrink-0 select-none"
+            title={`Consumo: ${Math.round(timeData.consumptionPercent * 100)}% (${timeData.formattedComparison})${timeData.isExceeded ? ' - ¡Tiempo excedido!' : ''}`}
+          >
             <EffortGaugeRing
               progress={timeData.consumptionPercent}
               severity={timeData.effortSeverity}
               size={13}
               strokeWidth={1.75}
+              showCenterDot={true}
             />
-            <span className="text-[14px] font-medium text-[#ffffffd6] whitespace-nowrap">
+            <span
+              className={`text-[14px] font-medium whitespace-nowrap transition-colors ${
+                timeData.isExceeded
+                  ? "text-rose-400 font-semibold"
+                  : timeData.effortSeverity === "mid"
+                  ? "text-amber-400"
+                  : "text-[#ffffffd6]"
+              }`}
+            >
               {timeData.formattedComparison}
             </span>
           </div>
