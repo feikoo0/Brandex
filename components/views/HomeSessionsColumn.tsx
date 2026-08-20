@@ -124,6 +124,20 @@ function getDateGroupTitle(timestamp: any): string {
   return date.toLocaleDateString("es-ES", { month: "short", day: "numeric" });
 }
 
+export function formatSessionDurationDisplay(durationMins: number): string {
+  if (!durationMins || durationMins <= 0) return "0 min";
+  const hours = Math.floor(durationMins / 60);
+  const mins = durationMins % 60;
+
+  if (hours > 0 && mins > 0) {
+    return `${hours}h ${mins}m`;
+  } else if (hours > 0) {
+    return `${hours}h`;
+  } else {
+    return `${mins} min`;
+  }
+}
+
 export function getProjectBgColor(project: any, task?: any): string {
   if (project) {
     return getSingleSourceProjectColor(project).hslCss;
@@ -168,7 +182,18 @@ function getDueText(t: any): { text: string; isOverdue: boolean } {
   if (t.dueDate instanceof Date) {
     dueDateObj = t.dueDate;
   } else {
-    const rawDue = t.dueDate || t.fecha_limite || t.deadline || t.fecha_programada;
+    const rawDue = 
+      t.dueDate || 
+      t.fecha_limite || 
+      t.deadline || 
+      t.fechaEntrega || 
+      t.fecha_programada || 
+      t.project?.fechaFin || 
+      t.project?.fecha_fin || 
+      t.project?.deadline || 
+      t.project?.deadlineRaw || 
+      t.project?.dueDate || 
+      t.project?.fechaInicio;
     if (rawDue) {
       if (typeof rawDue === "string") {
         dueDateObj = new Date(rawDue.includes("T") ? rawDue : rawDue + "T00:00:00");
@@ -929,7 +954,11 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className={`text-xs font-black ${isNightMode ? 'text-white' : 'text-amber-950'}`}>{s.durationMins > 0 ? `${s.durationMins} min` : "En curso"}</div>
+                          <div className={`text-xs font-black ${isNightMode ? 'text-white' : 'text-amber-950'}`}>
+                            {s.status === "en_curso" || (!s.endTime && s.durationMins === 0)
+                              ? "En curso"
+                              : formatSessionDurationDisplay(s.durationMins)}
+                          </div>
                           <div className={`text-[9px] font-medium ${isNightMode ? 'text-white/30' : 'text-amber-900/60'}`}>{relTime}</div>
                         </div>
                       </motion.div>
@@ -1088,7 +1117,7 @@ export function HomeSessionsColumn({ todayTasks: externalTodayTasks, allTasks, p
                             <div className={`text-[10px] flex items-center gap-1.5 mt-0.5 truncate ${isNightMode ? "text-white/40" : "text-slate-500"}`}>
                               <span className="font-semibold">{projectName}</span>
                               <span>•</span>
-                              <span>{s.durationMins > 0 ? `${s.durationMins} min` : "0 min"}</span>
+                              <span>{s.durationMins > 0 ? formatSessionDurationDisplay(s.durationMins) : "0 min"}</span>
                             </div>
                           </div>
                         </div>

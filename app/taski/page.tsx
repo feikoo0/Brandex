@@ -627,12 +627,12 @@ export default function BrandexV3Page() {
     { id: "inicio", label: "Inicio", path: "/inicio" },
     { id: "home", label: "Work", path: "/" },
     { id: "proyectos", label: "Proyectos", path: "/proyectos" },
-    { id: "finanzas", label: "Finanzas", path: "/admin" },
+    { id: "clientes", label: "Clientes", path: "/cliente" },
   ];
 
   const secondaryMenuItems = [
-    { id: "clientes", label: "Clientes", path: "/cliente" },
     { id: "equipo", label: "Equipo", path: "/equipo" },
+    { id: "finanzas", label: "Finanzas", path: "/admin" },
     { id: "recursos", label: "Recursos", path: "/recursos" },
   ];
 

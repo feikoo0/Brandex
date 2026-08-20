@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useSessions, useTaskSessions } from "@/hooks/useSessions";
 import { Play, Square, Plus, Clock, Bot, User, ShieldCheck, Search, AlertTriangle, ChevronDown, Loader2 } from "lucide-react";
 import type { SessionOrigin } from "@/lib/types";
+import { formatSessionDurationDisplay } from "@/components/views/HomeSessionsColumn";
 
 interface TaskCardSessionsProps {
   taskId: string;
@@ -215,7 +216,7 @@ export function TaskCardSessions({ taskId, projectId, clientId, workerId }: Task
                     <span>{badge.label}</span>
                   </div>
 
-                  <span className="font-bold text-white/80">{s.durationMins} min</span>
+                  <span className="font-bold text-white/80">{formatSessionDurationDisplay(s.durationMins)}</span>
                   {s.summary && <span className="text-white/40 truncate max-w-[160px] text-[11px]">- {s.summary}</span>}
                 </div>
 

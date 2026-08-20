@@ -30,7 +30,11 @@ export interface Task {
   sessions?: { id: number; date: string; hours: number }[];
   deadline?: string;
   fecha_programada?: string;
+  fechaProg?: string;
   fecha_limite?: string;
+  fechaEntrega?: string;
+  fechaFin?: string;
+  dueDate?: any;
   fecha_creacion?: string;
   fecha_hora_completado?: string;
   hora_inicio?: string;
@@ -390,7 +394,17 @@ export function ProjectDashboard({
       };
 
       tasks.forEach(t => {
-        const targetDateStr = t.fecha_limite || t.deadline || t.fecha_programada;
+        const targetDateStr = 
+          t.fecha_limite || 
+          t.deadline || 
+          t.fechaEntrega || 
+          t.fecha_programada || 
+          project?.fechaFin || 
+          (project as any)?.fecha_fin || 
+          project?.deadline || 
+          (project as any)?.deadlineRaw || 
+          (project as any)?.dueDate || 
+          project?.startDate;
         if (!targetDateStr) {
           map["Sin categoría"].push(t);
           return;

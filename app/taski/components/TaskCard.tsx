@@ -7,7 +7,7 @@ import { MoreHorizontal, Trash2 } from "lucide-react";
 import { Project, Task } from "./ProjectDashboard";
 import TaskCardPopovers, { TaskCardMenuPopover } from "./TaskCardPopovers";
 import { playSound } from "../utils/audio";
-import { getCardColorTheme, CARD_COLOR_KEYS, getSingleSourceProjectColor } from "@/lib/utils";
+import { getCardColorTheme, CARD_COLOR_KEYS, getSingleSourceProjectColor, parseAnyDate, getCalendarDaysDiff as getCalendarDaysDiffUtil } from "@/lib/utils";
 import FormatoShape from "./FormatoShape";
 import { EffortGaugeRing, DELIVERY_THRESHOLDS, GaugeSeverity } from "./EffortGaugeRing";
 import { useTaskAccumulatedTime } from "./useTaskAccumulatedTime";
@@ -162,44 +162,58 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   const rawIndex = foundIndex !== -1 ? foundIndex + 1 : (taskIndex !== undefined ? (taskIndex < realTotalTasks ? taskIndex + 1 : taskIndex) : ((task as any)?.taskIndex !== undefined ? (task as any).taskIndex + 1 : 1));
   const displayTaskIndex = Math.min(Math.max(1, rawIndex), realTotalTasks);
 
-  // 2. Entrega (Deadline) Date
-  const limitDate = (task.fecha_limite ? new Date(task.fecha_limite + "T00:00:00") : (task.deadline ? new Date(task.deadline + "T00:00:00") : (() => {
-    let offset = 0;
-    if (task.status === "Completado") offset = 12;
-    else if (task.status === "En Proceso") offset = 0;
-    else {
-      const numericId = parseInt(String(task.id).replace(/\D/g, ""), 10) || 0;
-      if (numericId % 3 === 0) offset = 1;
-      else if (numericId % 3 === 1) offset = 4;
-      else offset = 15;
-    }
-    const d = new Date();
-    d.setDate(d.getDate() + offset);
-    return d;
-  })()));
+  const parentProject = projects.find(p => String(p.id) === String(projectId)) || project;
 
-  const formattedLimitDate = limitDate.toLocaleDateString("es-ES", { day: "numeric", month: "short" });
-  const diffLimitDays = getCalendarDaysDiff(limitDate);
+  // 2. Entrega (Deadline) Date - Sincronizada con la fecha del calendario del proyecto o de la tarea
+  const rawTaskLimit = 
+    task.fecha_limite || 
+    task.deadline || 
+    task.dueDate || 
+    task.fechaEntrega || 
+    task.fecha_programada || 
+    task.fechaFin || 
+    (task as any).fecha_fin;
 
-  let deliveryLabel = "";
+  const rawProjectLimit = 
+    (parentProject as any)?.fechaFin || 
+    (parentProject as any)?.fecha_fin || 
+    (parentProject as any)?.deadline || 
+    (parentProject as any)?.deadlineRaw || 
+    (parentProject as any)?.dueDate || 
+    (parentProject as any)?.fecha_limite || 
+    (parentProject as any)?.fechaEntrega || 
+    (parentProject as any)?.endDate || 
+    (parentProject as any)?.fechaInicio || 
+    (parentProject as any)?.fecha_inicio || 
+    (parentProject as any)?.startDate || 
+    (parentProject as any)?.fecha;
+
+  // La fecha del calendario del proyecto es la autoridad principal para todas sus tareas
+  const limitDate = parseAnyDate(rawProjectLimit) || parseAnyDate(rawTaskLimit);
+
+  let deliveryLabel = "Sin fecha";
   let deliverySeverity: GaugeSeverity = "low";
 
-  if (diffLimitDays < 0) {
-    const overdue = Math.abs(diffLimitDays);
-    deliveryLabel = `Atrasada ${overdue} ${overdue === 1 ? "día" : "días"}`;
-    deliverySeverity = "high";
-  } else if (diffLimitDays === 0) {
-    deliveryLabel = "Entrega hoy";
-    deliverySeverity = "high";
-  } else if (diffLimitDays === 1) {
-    deliveryLabel = "Entrega mañana";
-    deliverySeverity = "mid";
-  } else if (diffLimitDays <= DELIVERY_THRESHOLDS.low) {
-    deliveryLabel = `Entrega en ${diffLimitDays} días`;
-    deliverySeverity = "mid";
-  } else {
-    deliveryLabel = `Entrega en ${diffLimitDays} días`;
-    deliverySeverity = "low";
+  if (limitDate) {
+    const diffLimitDays = getCalendarDaysDiff(limitDate);
+
+    if (diffLimitDays < 0) {
+      const overdue = Math.abs(diffLimitDays);
+      deliveryLabel = `Atrasada ${overdue} ${overdue === 1 ? "día" : "días"}`;
+      deliverySeverity = "high";
+    } else if (diffLimitDays === 0) {
+      deliveryLabel = "Entrega hoy";
+      deliverySeverity = "high";
+    } else if (diffLimitDays === 1) {
+      deliveryLabel = "Entrega mañana";
+      deliverySeverity = "mid";
+    } else if (diffLimitDays <= DELIVERY_THRESHOLDS.low) {
+      deliveryLabel = `Entrega en ${diffLimitDays} días`;
+      deliverySeverity = "mid";
+    } else {
+      deliveryLabel = `Entrega en ${diffLimitDays} días`;
+      deliverySeverity = "low";
+    }
   }
 
   // Creation date
@@ -211,7 +225,6 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   else if (diffCreationDays === -1) relativeCreationLabel = "Ayer";
   else relativeCreationLabel = `Hace ${Math.abs(diffCreationDays)} días`;
 
-  const parentProject = projects.find(p => String(p.id) === String(projectId));
   const taskBgColor = parentProject ? getProjectBgColor(parentProject) : undefined;
   const taskColor = task.color || (parentProject as any)?.color || "Predeterminado";
   const currentTheme = getCardColorTheme(taskColor, isNightMode);

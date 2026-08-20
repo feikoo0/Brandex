@@ -8,7 +8,7 @@ import {
 import { useData, useUpdateProject, useUpdateTask, useCreateTask } from "@/hooks/useData";
 import { useClients } from "@/hooks/useClients";
 import { useProjectSummary } from "@/hooks/useProjectSummary";
-import { cn, getSingleSourceProjectColor, getSingleSourceClientColor, PROJECT_COLOR_PALETTE } from "@/lib/utils";
+import { cn, getSingleSourceProjectColor, getSingleSourceClientColor, PROJECT_COLOR_PALETTE, formatProjectCreatedDate } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import FormatoShape from "@/app/taski/components/FormatoShape";
 import { FORMATOS_ESTANDAR, getFormato } from "@/app/taski/utils/formatos";
@@ -373,7 +373,7 @@ export default function ProjectFullScreenView({
             />
           </div>
           <span className="text-white/70 font-medium">›</span>
-          <span className="text-white/90 font-semibold">Editar proyecto</span>
+          <span className="text-white/90 font-medium">{formatProjectCreatedDate(project)}</span>
         </div>
       </div>
 

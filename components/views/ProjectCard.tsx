@@ -7,7 +7,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useData } from "@/hooks/useData";
 import { useProjectSummary } from "@/hooks/useProjectSummary";
-import { cn, avatarOf, getSingleSourceProjectColor } from "@/lib/utils";
+import { cn, avatarOf, getSingleSourceProjectColor, parseAnyDate, getCalendarDaysDiff } from "@/lib/utils";
 import { STATUS_COLORS } from "@/lib/constants";
 import ProjectCoverFormats from "@/app/taski/components/ProjectCoverFormats";
 import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
@@ -18,65 +18,6 @@ export interface ProjectCardItemProps {
   cardStyle?: "cover" | "full";
 }
 
-function parseAnyDate(s?: any): Date | null {
-  if (!s) return null;
-  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
-  if (typeof s === "object" && s.toDate && typeof s.toDate === "function") {
-    try { return s.toDate(); } catch {}
-  }
-  const str = String(s).trim();
-  if (!str || str.toLowerCase() === "sin fecha" || str.toLowerCase() === "hoy") return null;
-
-  const currentYear = new Date().getFullYear();
-
-  // 1. Formato YYYY-MM-DD o ISO
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (isoMatch) {
-    const y = parseInt(isoMatch[1], 10);
-    const m = parseInt(isoMatch[2], 10) - 1;
-    const d = parseInt(isoMatch[3], 10);
-    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-      return new Date(y, m, d);
-    }
-  }
-
-  // 2. Formato DD/MM/YYYY
-  const latamMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-  if (latamMatch) {
-    const d = parseInt(latamMatch[1], 10);
-    const m = parseInt(latamMatch[2], 10) - 1;
-    const y = parseInt(latamMatch[3], 10);
-    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-      return new Date(y, m, d);
-    }
-  }
-
-  // 3. Formato amigable en español (ej: "17 Ago", "3 Ene", "25 Dic")
-  const spanishMonths: Record<string, number> = {
-    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
-    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
-  };
-
-  const friendlyMatch = str.match(/^(\d{1,2})\s+([a-zA-Z]{3,4})/i);
-  if (friendlyMatch) {
-    const day = parseInt(friendlyMatch[1], 10);
-    const monthKey = friendlyMatch[2].toLowerCase().substring(0, 3);
-    if (!isNaN(day) && spanishMonths[monthKey] !== undefined) {
-      return new Date(currentYear, spanishMonths[monthKey], day);
-    }
-  }
-
-  const fallback = new Date(str);
-  if (!isNaN(fallback.getTime())) {
-    if (fallback.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
-      fallback.setFullYear(currentYear);
-    }
-    return fallback;
-  }
-
-  return null;
-}
-
 function getDeliveryStatusText(fechaFin?: string, fechaInicio?: string): string {
   const rawDate = fechaFin || fechaInicio;
   if (!rawDate) return "Sin fecha";
@@ -84,18 +25,15 @@ function getDeliveryStatusText(fechaFin?: string, fechaInicio?: string): string 
   const targetDate = parseAnyDate(rawDate);
   if (!targetDate) return "Sin fecha";
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const targetMidnight = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate());
-
-  const diffDays = Math.round((targetMidnight.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = getCalendarDaysDiff(targetDate);
 
   if (diffDays < 0) {
     const overdue = Math.abs(diffDays);
     return `Atrasada ${overdue} ${overdue === 1 ? "día" : "días"}`;
   } else if (diffDays === 0) {
     return "Entrega hoy";
+  } else if (diffDays === 1) {
+    return "Entrega mañana";
   } else {
     return `Entrega en ${diffDays} ${diffDays === 1 ? "día" : "días"}`;
   }

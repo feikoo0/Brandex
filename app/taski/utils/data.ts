@@ -307,27 +307,40 @@ export const autoEvaluateProjectStatus = <T extends { tasks?: any[]; status?: st
       else statusColor = "bg-slate-500/20 border-slate-500/30 text-slate-300";
     }
 
-    let fecha_programada = t.fecha_programada;
-    if (!fecha_programada) {
-      let offset = 0;
-      if (status === "Completado") offset = 12;
-      else if (status === "En Proceso") offset = 0;
-      else {
-        const numId = Number(t.id) || 0;
-        if (numId % 3 === 0) offset = 1;
-        else if (numId % 3 === 1) offset = 4;
-        else offset = 15;
-      }
-      const d = new Date();
-      d.setDate(d.getDate() + offset);
-      fecha_programada = formatLocalDateHelper(d);
-    }
+    const projectDeadline = 
+      (project as any).fechaFin || 
+      (project as any).fecha_fin || 
+      (project as any).deadline || 
+      (project as any).deadlineRaw || 
+      (project as any).dueDate || 
+      (project as any).fechaEntrega;
+
+    const projectStartDate = 
+      (project as any).fechaInicio || 
+      (project as any).fecha_inicio || 
+      (project as any).startDate;
+
+    const fecha_programada = 
+      t.fecha_programada || 
+      t.fechaProg || 
+      projectDeadline || 
+      projectStartDate || 
+      formatLocalDateHelper(new Date());
+
+    const fecha_limite = 
+      t.fecha_limite || 
+      t.deadline || 
+      t.fechaEntrega || 
+      projectDeadline || 
+      fecha_programada;
 
     return {
       ...t,
       status,
       statusColor,
-      fecha_programada
+      fecha_programada,
+      fecha_limite,
+      deadline: fecha_limite,
     };
   });
 

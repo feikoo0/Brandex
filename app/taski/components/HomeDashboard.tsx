@@ -471,37 +471,51 @@ export function HomeDashboard({
     
     projects.forEach(p => {
       if (p.tasks) {
+        // Fechas de calendario del proyecto padre
+        const projectDeadline = 
+          (p as any).fechaFin || 
+          (p as any).fecha_fin || 
+          (p as any).deadline || 
+          (p as any).deadlineRaw || 
+          (p as any).dueDate || 
+          (p as any).fechaEntrega || 
+          (p as any).endDate;
+
+        const projectStartDate = 
+          (p as any).fechaInicio || 
+          (p as any).fecha_inicio || 
+          (p as any).startDate || 
+          (p as any).fecha;
+
         p.tasks.forEach((t, index) => {
           // Calculate completed tasks in the parent project
           const completedCount = p.tasks?.filter(tk => tk.status === "Completado").length || 0;
           const totalCount = p.tasks?.length || 0;
 
-          // Dynamically distribute due dates based on task ID if not set:
-          const progDateStr = t.fecha_programada || (() => {
-            let offset = 0;
-            if (t.status === "Completado") {
-              offset = 12; // Completado -> Este mes
-            } else {
-              // Stable distribution based strictly on task ID:
-              if (t.id % 3 === 0) offset = 1; // Tomorrow
-              else if (t.id % 3 === 1) offset = 4; // This Week
-              else offset = 15; // This Month
-            }
-            const d = new Date();
-            d.setDate(d.getDate() + offset);
-            return formatLocalDate(d);
-          })();
+          // Sincronizar fechas programadas y de entrega con la tarea o el calendario del proyecto:
+          const progDateStr = 
+            t.fecha_programada || 
+            t.fechaProg || 
+            t.fecha_limite || 
+            t.deadline || 
+            projectDeadline || 
+            projectStartDate || 
+            formatLocalDate(new Date());
 
-          const limitDateStr = t.fecha_limite || t.deadline || progDateStr;
+          const limitDateStr = 
+            t.fecha_limite || 
+            t.deadline || 
+            t.fechaEntrega || 
+            projectDeadline || 
+            progDateStr;
 
-          const createdDateStr = t.fecha_creacion || (() => {
-            const d = new Date();
-            const offset = 2 + (t.id % 5);
-            d.setDate(d.getDate() - offset);
-            return formatLocalDate(d);
-          })();
+          const createdDateStr = 
+            t.fecha_creacion || 
+            (t as any).createdAt || 
+            projectStartDate || 
+            formatLocalDate(new Date());
 
-          const dueDate = new Date(progDateStr + "T00:00:00");
+          const dueDate = new Date(progDateStr.includes("T") ? progDateStr : progDateStr + "T00:00:00");
 
           list.push({
             id: `kt-${p.id}-${t.id}`,
@@ -751,7 +765,7 @@ export function HomeDashboard({
           return Math.max(max, num);
         }, 0);
         const newId = maxId + 1;
-        const defaultDeadline = (p as any).fecha_limite || ((p as any).deadlineRaw) || ((p as any).deadline && /^\d{4}-\d{2}-\d{2}$/.test((p as any).deadline) ? (p as any).deadline : undefined);
+        const defaultDeadline = (p as any).fechaFin || (p as any).fecha_fin || (p as any).fecha_limite || ((p as any).deadlineRaw) || ((p as any).deadline && /^\d{4}-\d{2}-\d{2}$/.test((p as any).deadline) ? (p as any).deadline : undefined);
         const newTask: Task = {
           id: newId,
           title: "Nueva tarea",

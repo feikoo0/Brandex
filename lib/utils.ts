@@ -54,6 +54,116 @@ export function daysUntil(iso: string): number {
   return Math.round((target.getTime() - now.getTime()) / 86_400_000);
 }
 
+/**
+ * Parsea de forma segura cualquier formato de fecha (ISO, YYYY-MM-DD, DD/MM/YYYY, Timestamp, Date)
+ * preservando la medianoche local para evitar desfasajes por zona horaria.
+ */
+export function parseAnyDate(raw: any): Date | null {
+  if (!raw) return null;
+  if (raw instanceof Date) return isNaN(raw.getTime()) ? null : raw;
+  if (typeof raw === "number") {
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (typeof raw === "object") {
+    if (typeof raw.toDate === "function") {
+      try {
+        const d = raw.toDate();
+        return isNaN(d.getTime()) ? null : d;
+      } catch {
+        return null;
+      }
+    }
+    if (typeof raw.seconds === "number") {
+      const d = new Date(raw.seconds * 1000);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof raw._seconds === "number") {
+      const d = new Date(raw._seconds * 1000);
+      return isNaN(d.getTime()) ? null : d;
+    }
+  }
+  if (typeof raw === "string") {
+    const str = raw.trim();
+    if (!str || str === "Sin Fecha" || str === "Sin fecha" || str === "—" || str === "null" || str === "undefined") {
+      return null;
+    }
+
+    // 0. Palabras clave comunes
+    const lower = str.toLowerCase();
+    if (lower === "hoy") {
+      return new Date();
+    }
+    if (lower === "ayer") {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d;
+    }
+
+    // 1. Formato ISO completo con hora (ej: "2026-08-20T04:55:00.000Z")
+    if (str.includes("T") || str.includes("Z")) {
+      const fullDate = new Date(str);
+      if (!isNaN(fullDate.getTime())) {
+        return fullDate;
+      }
+    }
+
+    // 2. Formato YYYY-MM-DD (parse local time a medianoche)
+    const isoMatch = str.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (isoMatch) {
+      const y = parseInt(isoMatch[1], 10);
+      const m = parseInt(isoMatch[2], 10) - 1;
+      const d = parseInt(isoMatch[3], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(y, m, d);
+      }
+    }
+
+    // 3. Formato DD/MM/YYYY o DD-MM-YYYY
+    const latamMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+    if (latamMatch) {
+      const d = parseInt(latamMatch[1], 10);
+      const m = parseInt(latamMatch[2], 10) - 1;
+      const y = parseInt(latamMatch[3], 10);
+      if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
+        return new Date(y, m, d);
+      }
+    }
+
+    // 4. Formato amigable en español (ej: "17 Ago", "3 Ene", "25 Dic", "Domingo 23 Agosto")
+    const spanishMonths: Record<string, number> = {
+      ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+      jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
+    };
+
+    const friendlyMatch = str.match(/(\d{1,2})\s+([a-zA-ZáéíóúÁÉÍÓÚ]{3,10})/i);
+    if (friendlyMatch) {
+      const day = parseInt(friendlyMatch[1], 10);
+      const monthStr = friendlyMatch[2].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").substring(0, 3);
+      if (!isNaN(day) && spanishMonths[monthStr] !== undefined) {
+        return new Date(new Date().getFullYear(), spanishMonths[monthStr], day);
+      }
+    }
+
+    const fallback = new Date(str);
+    if (!isNaN(fallback.getTime())) {
+      return fallback;
+    }
+  }
+  return null;
+}
+
+/**
+ * Retorna la diferencia en días calendario enteros entre la fecha destino y hoy (medianoche local)
+ */
+export function getCalendarDaysDiff(targetDate: Date): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0, 0);
+  const diffTime = target.getTime() - today.getTime();
+  return Math.round(diffTime / (1000 * 60 * 60 * 24));
+}
+
 // Greeting based on hour with randomized variations
 export function greeting(name: string = "Feiko"): string {
   const user = name.trim() || "Feiko";
@@ -234,64 +344,6 @@ export const PROJECT_COLOR_PALETTE: ColorPresetItem[] = [
   { name: "Gris Acero", key: "Gris", h: 215, s: 14, l: 40, hslStr: "hsl(215, 14%, 40%)", solidColor: "#475569", gradient: "bg-slate-700", glow: "bg-slate-500" },
 ];
 
-export function parseAnyDate(s?: any): Date | null {
-  if (!s) return null;
-  if (s instanceof Date) return isNaN(s.getTime()) ? null : s;
-  if (typeof s === "object" && s.toDate && typeof s.toDate === "function") {
-    try { return s.toDate(); } catch {}
-  }
-  const str = String(s).trim();
-  if (!str || str.toLowerCase() === "sin fecha" || str.toLowerCase() === "hoy") return null;
-
-  const currentYear = new Date().getFullYear();
-
-  // 1. Formato YYYY-MM-DD o ISO
-  const isoMatch = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
-  if (isoMatch) {
-    const y = parseInt(isoMatch[1], 10);
-    const m = parseInt(isoMatch[2], 10) - 1;
-    const d = parseInt(isoMatch[3], 10);
-    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-      return new Date(y, m, d);
-    }
-  }
-
-  // 2. Formato DD/MM/YYYY
-  const latamMatch = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-  if (latamMatch) {
-    const d = parseInt(latamMatch[1], 10);
-    const m = parseInt(latamMatch[2], 10) - 1;
-    const y = parseInt(latamMatch[3], 10);
-    if (!isNaN(y) && !isNaN(m) && !isNaN(d)) {
-      return new Date(y, m, d);
-    }
-  }
-
-  // 3. Formato amigable en español (ej: "17 Ago", "3 Ene", "25 Dic")
-  const spanishMonths: Record<string, number> = {
-    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
-    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
-  };
-
-  const friendlyMatch = str.match(/^(\d{1,2})\s+([a-zA-Z]{3,4})/i);
-  if (friendlyMatch) {
-    const day = parseInt(friendlyMatch[1], 10);
-    const monthKey = friendlyMatch[2].toLowerCase().substring(0, 3);
-    if (!isNaN(day) && spanishMonths[monthKey] !== undefined) {
-      return new Date(currentYear, spanishMonths[monthKey], day);
-    }
-  }
-
-  const fallback = new Date(str);
-  if (!isNaN(fallback.getTime())) {
-    if (fallback.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
-      fallback.setFullYear(currentYear);
-    }
-    return fallback;
-  }
-
-  return null;
-}
 
 export function getClientLastProjectText(clientProjects: any[]): string {
   if (!clientProjects || clientProjects.length === 0) {
@@ -342,6 +394,99 @@ export function getClientLastProjectText(clientProjects: any[]): string {
     const years = Math.max(1, Math.floor(diffDays / 365));
     return `Último proyecto hace ${years} ${years === 1 ? "año" : "años"}`;
   }
+}
+
+/**
+ * Formatea la fecha de creación de un proyecto.
+ * - Si es reciente (hasta 7 días), muestra formato relativo: "creado hace x días", "creado hace 1 día", "creado hoy", etc.
+ * - Cuando sobrepasa los 7 días, muestra fecha calendario tipo "creado el xx de xx de xxxx".
+ */
+export function formatProjectCreatedDate(input: any): string {
+  if (!input) return "creado hoy";
+
+  let rawDate = input;
+  if (
+    typeof input === "object" &&
+    !(input instanceof Date) &&
+    typeof input.toDate !== "function" &&
+    typeof input.seconds !== "number" &&
+    typeof input._seconds !== "number"
+  ) {
+    // 1. Prioridad absoluta: Campos directos de fecha de creación
+    rawDate =
+      input.createdAt ||
+      input.created_at ||
+      input.fecha_creacion ||
+      input.fechaCreacion ||
+      input.created;
+
+    // 2. Si el ID del proyecto contiene un timestamp numérico (ej. "proj-1724148000000")
+    if (!rawDate && input.id) {
+      const idStr = String(input.id);
+      const match = idStr.match(/(\d{10,13})/);
+      if (match) {
+        const ts = parseInt(match[1], 10);
+        if (!isNaN(ts) && ts > 1600000000000) {
+          rawDate = new Date(ts);
+        }
+      }
+    }
+
+    // 3. Fallback para proyectos existentes o plantillas que no poseían createdAt previo
+    if (!rawDate) {
+      rawDate =
+        input.fechaInicio ||
+        input.fecha_inicio ||
+        input.startDate ||
+        input.start_date ||
+        input.fecha ||
+        input.fechaEntrega ||
+        input.deadline;
+    }
+  }
+
+  const date = parseAnyDate(rawDate);
+  if (!date) return "creado hoy";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((today.getTime() - targetDay.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    const diffMs = now.getTime() - date.getTime();
+    if (diffMs > 0 && diffMs < 60000) {
+      return "creado hace un momento";
+    }
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    if (diffMins > 0 && diffMins < 60) {
+      return `creado hace ${diffMins} min`;
+    }
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours > 0 && diffHours < 24) {
+      return `creado hace ${diffHours} ${diffHours === 1 ? "hora" : "horas"}`;
+    }
+    return "creado hoy";
+  }
+
+  if (diffDays === 1) {
+    return "creado hace 1 día";
+  }
+
+  if (diffDays <= 7) {
+    return `creado hace ${diffDays} días`;
+  }
+
+  // Cuando sobrepasa los 7 días, formato calendario tipo "creado el xx de xx de xxxx"
+  const meses = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+  ];
+  const dia = String(date.getDate()).padStart(2, "0");
+  const mes = meses[date.getMonth()];
+  const anio = date.getFullYear();
+
+  return `creado el ${dia} de ${mes} de ${anio}`;
 }
 
 export function getSingleSourceColor(entity: any): { h: number; s: number; l: number; hslCss: string } {

@@ -41,7 +41,7 @@ import LinearDropdownPopover, { PopoverOption } from "./LinearDropdownPopover";
 import LinearDatePopover from "./LinearDatePopover";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PROJECT_COLOR_PALETTE, getSingleSourceProjectColor } from "@/lib/utils";
+import { PROJECT_COLOR_PALETTE, getSingleSourceProjectColor, formatProjectCreatedDate } from "@/lib/utils";
 
 export interface Task {
   id: number;
@@ -1318,8 +1318,10 @@ export default function NewProjectModal({
                                     />
                                   </div>
                                   <span className="text-white/70 font-medium">›</span>
-                                  <span className="text-white/90 font-semibold">
-                                    {(activeEditingProject || editingProject) ? "Editar proyecto" : "Nuevo proyecto"}
+                                  <span className="text-white/90 font-medium">
+                                    {(activeEditingProject || editingProject)
+                                      ? formatProjectCreatedDate(activeEditingProject || editingProject)
+                                      : "Nuevo proyecto"}
                                   </span>
                                 </div>
 
