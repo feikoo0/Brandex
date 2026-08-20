@@ -24,6 +24,7 @@ import type { SessionDoc, SessionOrigin } from "@/lib/types";
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
 const TIMEOUT_ORPHAN_MS = 15 * 60 * 1000;    // 15 minutos
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 30 días de retención en papelera
 
 // Helper para convertir Timestamps a milisegundos de forma segura
 function getMillis(ts: any): number {
@@ -63,6 +64,24 @@ async function checkAndAutoCloseOrphans(sessions: SessionDoc[]) {
   }
 }
 
+// Auto-purgar sesiones que lleven más de 30 días en el basurero
+async function autoPruneOldTrashSessions(sessions: SessionDoc[]) {
+  const nowMs = Date.now();
+  for (const s of sessions) {
+    if (s.isDeleted || s.status === "deleted") {
+      const deletedMs = getMillis(s.deletedAt || s.deleted_at || s.updatedAt || s.updated_at);
+      if (nowMs - deletedMs > THIRTY_DAYS_MS) {
+        try {
+          const docRef = doc(db, "sessions", s.id);
+          await deleteDoc(docRef);
+        } catch (err) {
+          console.error("Error al purgar sesión antigua de la papelera:", err);
+        }
+      }
+    }
+  }
+}
+
 /**
  * Hook para obtener sesiones de una tarea específica con límite y paginación ("cargar más")
  */
@@ -89,8 +108,10 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
       const snap = await getDocs(q);
       const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
       await checkAndAutoCloseOrphans(list);
+      await autoPruneOldTrashSessions(list);
 
-      setSessions(list);
+      const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
+      setSessions(activeList);
       setLastDocSnap(snap.docs[snap.docs.length - 1] || null);
       setHasMore(snap.docs.length >= initialLimit);
     } catch (err) {
@@ -113,8 +134,10 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
       const snap = await getDocs(q);
       const moreList: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
       await checkAndAutoCloseOrphans(moreList);
+      await autoPruneOldTrashSessions(moreList);
 
-      setSessions((prev) => [...prev, ...moreList]);
+      const activeMore = moreList.filter((s) => !s.isDeleted && s.status !== "deleted");
+      setSessions((prev) => [...prev, ...activeMore]);
       setLastDocSnap(snap.docs[snap.docs.length - 1] || null);
       setHasMore(snap.docs.length >= initialLimit);
     } catch (err) {
@@ -141,8 +164,10 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
       async (snap) => {
         const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
         await checkAndAutoCloseOrphans(list);
+        await autoPruneOldTrashSessions(list);
 
-        setSessions(list);
+        const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
+        setSessions(activeList);
         setLastDocSnap(snap.docs[snap.docs.length - 1] || null);
         setHasMore(snap.docs.length >= initialLimit);
         setIsLoading(false);
@@ -177,7 +202,8 @@ export function useRecentSessions(limitCount: number = 30) {
       const snap = await getDocs(q);
       const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
       await checkAndAutoCloseOrphans(list);
-      setSessions(list);
+      await autoPruneOldTrashSessions(list);
+      setSessions(list.filter((s) => !s.isDeleted && s.status !== "deleted"));
     } catch (err) {
       console.error("Error fetching recent sessions:", err);
     } finally {
@@ -198,7 +224,8 @@ export function useRecentSessions(limitCount: number = 30) {
       async (snap) => {
         const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
         await checkAndAutoCloseOrphans(list);
-        setSessions(list);
+        await autoPruneOldTrashSessions(list);
+        setSessions(list.filter((s) => !s.isDeleted && s.status !== "deleted"));
         setIsLoading(false);
       },
       (err) => {
@@ -475,12 +502,198 @@ export function useSessions() {
     return sessionData;
   };
 
+  // Mover sesiones a la papelera (soft delete con retención de 30 días)
+  const softDeleteSessions = async (sessionIds: string[]) => {
+    if (!sessionIds || sessionIds.length === 0) return;
+    const nowTs = Timestamp.now();
+
+    for (const id of sessionIds) {
+      try {
+        const docRef = doc(db, "sessions", id);
+        await updateDoc(docRef, {
+          isDeleted: true,
+          deletedAt: nowTs,
+          deleted_at: nowTs,
+          updatedAt: nowTs,
+          updated_at: nowTs,
+        });
+      } catch (err) {
+        console.error(`Error enviando sesión ${id} a la papelera:`, err);
+      }
+    }
+
+    recordUndoAction({
+      entityType: "session",
+      entityId: sessionIds.join(","),
+      actionType: "delete",
+      description: `Mover ${sessionIds.length} ${sessionIds.length === 1 ? 'sesión' : 'sesiones'} a la papelera`,
+      undoDescription: `Sesiones restauradas de la papelera`,
+      redoDescription: `Sesiones devueltas a la papelera`,
+      executeUndo: async () => {
+        for (const id of sessionIds) {
+          const ref = doc(db, "sessions", id);
+          await updateDoc(ref, {
+            isDeleted: false,
+            deletedAt: null,
+            deleted_at: null,
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        }
+      },
+      executeRedo: async () => {
+        for (const id of sessionIds) {
+          const ref = doc(db, "sessions", id);
+          await updateDoc(ref, {
+            isDeleted: true,
+            deletedAt: serverTimestamp(),
+            deleted_at: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+            updated_at: serverTimestamp(),
+          });
+        }
+      },
+    });
+  };
+
+  // Restaurar sesiones de la papelera
+  const restoreSessions = async (sessionIds: string[]) => {
+    if (!sessionIds || sessionIds.length === 0) return;
+    const nowTs = Timestamp.now();
+
+    for (const id of sessionIds) {
+      try {
+        const docRef = doc(db, "sessions", id);
+        await updateDoc(docRef, {
+          isDeleted: false,
+          deletedAt: null,
+          deleted_at: null,
+          updatedAt: nowTs,
+          updated_at: nowTs,
+        });
+      } catch (err) {
+        console.error(`Error restaurando sesión ${id} de la papelera:`, err);
+      }
+    }
+  };
+
+  // Eliminar sesiones definitivamente
+  const permanentDeleteSessions = async (sessionIds: string[]) => {
+    if (!sessionIds || sessionIds.length === 0) return;
+
+    for (const id of sessionIds) {
+      try {
+        const docRef = doc(db, "sessions", id);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.error(`Error eliminando sesión permanentemente ${id}:`, err);
+      }
+    }
+  };
+
   return {
     activeSession,
     startSession,
     endSession,
     addManualSession,
     checkActiveSession,
+    softDeleteSessions,
+    restoreSessions,
+    permanentDeleteSessions,
+  };
+}
+
+export interface TrashSessionDoc extends SessionDoc {
+  daysRemaining: number;
+}
+
+/**
+ * Hook para gestionar las sesiones en la papelera (retención de 30 días)
+ */
+export function useTrashSessions() {
+  const [trashSessions, setTrashSessions] = useState<TrashSessionDoc[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    const q = query(
+      collection(db, "sessions"),
+      orderBy("startTime", "desc"),
+      fsLimit(150)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      async (snap) => {
+        const nowMs = Date.now();
+        const rawList: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
+        await autoPruneOldTrashSessions(rawList);
+
+        const deletedList = rawList.filter((s) => s.isDeleted || s.status === "deleted");
+
+        const trashWithDays: TrashSessionDoc[] = deletedList.map((s) => {
+          const deletedMs = getMillis(s.deletedAt || s.deleted_at || s.updatedAt || s.updated_at);
+          const daysPassed = Math.floor((nowMs - deletedMs) / (1000 * 60 * 60 * 24));
+          const daysRemaining = Math.max(0, 30 - daysPassed);
+          return {
+            ...s,
+            daysRemaining,
+          };
+        });
+
+        trashWithDays.sort((a, b) => {
+          const aMs = getMillis(a.deletedAt || a.deleted_at || a.updatedAt);
+          const bMs = getMillis(b.deletedAt || b.deleted_at || b.updatedAt);
+          return bMs - aMs;
+        });
+
+        setTrashSessions(trashWithDays);
+        setIsLoading(false);
+      },
+      (err) => {
+        console.error("Error subscribing to trash sessions:", err);
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  const restore = async (sessionIds: string[]) => {
+    const nowTs = Timestamp.now();
+    for (const id of sessionIds) {
+      const docRef = doc(db, "sessions", id);
+      await updateDoc(docRef, {
+        isDeleted: false,
+        deletedAt: null,
+        deleted_at: null,
+        updatedAt: nowTs,
+        updated_at: nowTs,
+      });
+    }
+  };
+
+  const permanentDelete = async (sessionIds: string[]) => {
+    for (const id of sessionIds) {
+      const docRef = doc(db, "sessions", id);
+      await deleteDoc(docRef);
+    }
+  };
+
+  const emptyTrash = async () => {
+    for (const s of trashSessions) {
+      const docRef = doc(db, "sessions", s.id);
+      await deleteDoc(docRef);
+    }
+  };
+
+  return {
+    trashSessions,
+    trashCount: trashSessions.length,
+    isLoading,
+    restoreSessions: restore,
+    permanentDeleteSessions: permanentDelete,
+    emptyTrash,
   };
 }
 
@@ -514,6 +727,7 @@ export function useEntitySessionStats(entityType: "client" | "member" | "user" |
 
         snapshot.forEach((docSnap) => {
           const data = docSnap.data() as SessionDoc;
+          if (data.isDeleted || data.status === "deleted") return;
           totalMins += data.durationMins || 0;
           count++;
         });

@@ -90,7 +90,6 @@ export function GlobalNav({
   const primaryTabs: NavItem[] = [
     { id: "inicio", label: "Inicio" },
     { id: "home", label: "Work" },
-    { id: "home_v2", label: "Work v2" },
     { id: "proyectos", label: "Proyectos" },
     { id: "clientes", label: "Clientes" },
     { id: "equipo", label: "Equipo" },
@@ -109,7 +108,6 @@ export function GlobalNav({
     switch (id) {
       case "inicio": return <Home className={iconClass} strokeWidth={strokeWidth} />;
       case "home": return <Kanban className={iconClass} strokeWidth={strokeWidth} />;
-      case "home_v2": return <Kanban className={iconClass} strokeWidth={strokeWidth} />;
       case "proyectos": return <Folder className={iconClass} strokeWidth={strokeWidth} />;
       case "clientes": return <Briefcase className={iconClass} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={iconClass} strokeWidth={strokeWidth} />;
@@ -124,7 +122,6 @@ export function GlobalNav({
   const resolvedTitle = title || (
     activeTab === "inicio" ? "Inicio" :
     activeTab === "home" ? "Work" :
-    activeTab === "home_v2" ? "Work v2" :
     activeTab === "proyectos" ? "Panel de Proyectos" :
     activeTab === "clientes" ? "Directorio de Clientes" :
     activeTab === "equipo" ? "Espacio de Equipo" :
@@ -135,7 +132,6 @@ export function GlobalNav({
 
   const resolvedSubtitle = subtitle || (
     activeTab === "home" ? "flujo y entregables activos" :
-    activeTab === "home_v2" ? "flujo y entregables activos (v2)" :
     activeTab === "proyectos" ? "catálogo general de entregas" :
     activeTab === "clientes" ? "marcas asociadas y contratos" :
     activeTab === "equipo" ? "colaboradores y carga de trabajo" :

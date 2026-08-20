@@ -205,7 +205,7 @@ export interface Worker {
 
 // ── Session Types ─────────────────────────────────────────────────────────────
 export type SessionOrigin = "manual" | "agent_self" | "agent_research" | "agent_qa_visual";
-export type SessionStatus = "en_curso" | "completada" | "completada_forzada";
+export type SessionStatus = "en_curso" | "completada" | "completada_forzada" | "deleted";
 
 export interface SessionDoc {
   id: string;
@@ -220,6 +220,9 @@ export interface SessionDoc {
   lastHeartbeat: any; // Firestore Timestamp
   durationMins: number;
   summary?: string;
+  isDeleted?: boolean;
+  deletedAt?: any; // Firestore Timestamp
+  deleted_at?: any;
   created: any;
   createdAt?: any;
   updatedAt: any;

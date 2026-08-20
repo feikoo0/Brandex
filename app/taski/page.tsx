@@ -17,7 +17,6 @@ import TimeHeatmap from "./components/TimeHeatmap";
 import { TeamDashboard } from "./components/TeamDashboard";
 import { ClientsDashboard } from "./components/ClientsDashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
-import { HomeDashboardV2 } from "./components/v2/HomeDashboardV2";
 import { InicioDashboard } from "./components/InicioDashboard";
 import { ProjectsView } from "@/components/views/ProjectsView";
 import { GlobalNav } from "@/components/navigation/GlobalNav";
@@ -159,7 +158,7 @@ export default function BrandexV3Page() {
     localStorage.setItem("taski_is_night_mode", String(nextMode));
   };
   const isNeumorphic = true;
-  const isSearchActive = (activeTab === "home" || activeTab === "home_v2") && homeView === "buscar";
+  const isSearchActive = activeTab === "home" && homeView === "buscar";
   const [activeProject, setActiveProject] = useState<string | number>(1);
   const [activeTaskId, setActiveTaskId] = useState<number | null>(null);
   const [openDropdownId, setOpenDropdownId] = useState<number | null>(null);
@@ -627,7 +626,6 @@ export default function BrandexV3Page() {
   const primaryMenuItems = [
     { id: "inicio", label: "Inicio", path: "/inicio" },
     { id: "home", label: "Work", path: "/" },
-    { id: "home_v2", label: "Work v2", path: "/taski" },
     { id: "proyectos", label: "Proyectos", path: "/proyectos" },
     { id: "finanzas", label: "Finanzas", path: "/admin" },
   ];
@@ -653,7 +651,6 @@ export default function BrandexV3Page() {
     switch (id) {
       case "inicio": return <Home className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "home": return <Kanban className={className} fill={fill} strokeWidth={strokeWidth} />;
-      case "home_v2": return <Kanban className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos": return <Folder className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos_v2": return <Layers className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={className} fill={fill} strokeWidth={strokeWidth} />;
@@ -1140,7 +1137,7 @@ export default function BrandexV3Page() {
       >
         {/* Dynamic Header Wrapper aligned with the 12-column grid */}
         <div className="absolute top-5 left-6 right-6 h-[64px] grid grid-cols-12 gap-5 items-center z-50 pointer-events-auto">
-          {(activeTab === "home" || activeTab === "home_v2") ? (
+          {activeTab === "home" ? (
             <>
               {/* Left Column (3 cols) above Sessions Column: Logo Spacer + Dynamic Title */}
               <div className="col-span-3 flex items-center h-full gap-2 min-w-0">
@@ -1578,39 +1575,6 @@ export default function BrandexV3Page() {
               onSearchQueryChange={setSearchQuery}
             />
           )}
-
-          {/* Render Home Dashboard V2 (Work v2) */}
-          {activeTab === "home_v2" && (
-            <HomeDashboardV2
-              projects={projects}
-              onSelectTab={(tab) => setActiveTab(tab)}
-              onSelectProject={(projectId) => {
-                const targetProject = projects.find((p) => String(p.id) === String(projectId));
-                if (targetProject) {
-                  setActiveProject(targetProject.id);
-                  setEditingProjectModal(targetProject);
-                  setShowNewProjectModal(true);
-                  playSound('click');
-                } else {
-                  setActiveProject(projectId);
-                  setActiveTab("proyectos");
-                }
-              }}
-              isNeumorphic={isNeumorphic}
-              isNightMode={isNightMode}
-              activeView={homeView}
-              onViewChange={setHomeView}
-              viewFilterMode={viewFilterMode}
-              groupingMode={groupingMode}
-              onUpdateProjects={setProjects}
-              isHomeEditMode={isHomeEditMode}
-              onDeleteProject={deleteProject}
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
-            />
-          )}
-
-
 
           {/* Render Team Dashboard */}
           {activeTab === "equipo" && (

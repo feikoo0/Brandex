@@ -9,8 +9,8 @@ import TaskCardPopovers, { TaskCardMenuPopover } from "./TaskCardPopovers";
 import { playSound } from "../utils/audio";
 import { getCardColorTheme, CARD_COLOR_KEYS, getSingleSourceProjectColor } from "@/lib/utils";
 import FormatoShape from "./FormatoShape";
-import { EffortGaugeRing, DELIVERY_THRESHOLDS, GaugeSeverity } from "./v2/EffortGaugeRing";
-import { useTaskAccumulatedTime } from "./v2/useTaskAccumulatedTime";
+import { EffortGaugeRing, DELIVERY_THRESHOLDS, GaugeSeverity } from "./EffortGaugeRing";
+import { useTaskAccumulatedTime } from "./useTaskAccumulatedTime";
 
 function getProjectBgColor(project: Project): string {
   return getSingleSourceProjectColor(project).hslCss;
