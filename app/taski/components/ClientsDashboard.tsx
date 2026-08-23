@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, 
@@ -31,6 +31,8 @@ export interface ClientsDashboardProps {
   projects: Project[];
   onUpdateProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   onSelectProject?: (projectId: number | string) => void;
+  onCreateProject?: (preselectedClientId?: string) => void;
+  defaultToFirstClient?: boolean;
   isNeumorphic?: boolean;
   isNightMode?: boolean;
 }
@@ -39,6 +41,8 @@ export function ClientsDashboard({
   projects = [],
   onUpdateProjects,
   onSelectProject,
+  onCreateProject,
+  defaultToFirstClient = false,
   isNeumorphic = false,
   isNightMode = true,
 }: ClientsDashboardProps) {
@@ -49,6 +53,13 @@ export function ClientsDashboard({
   const [displayMode, setDisplayMode] = useState<"grid" | "list">("grid");
   const [cardVariant, setCardVariant] = useState<"cover" | "full">("cover");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Auto-seleccionar primer cliente si defaultToFirstClient está activo
+  useEffect(() => {
+    if (defaultToFirstClient && !selectedClientId && clients.length > 0) {
+      setSelectedClientId(String(clients[0].id));
+    }
+  }, [defaultToFirstClient, selectedClientId, clients]);
 
   const filterTabs = ["Todos", "VIP", "Activo", "Pausa", "Prospecto"];
 
@@ -75,19 +86,29 @@ export function ClientsDashboard({
     return clients.find((c) => String(c.id) === String(selectedClientId)) || null;
   }, [clients, selectedClientId]);
 
-  // If a client is selected, render the 4-Zone Detail View
+  // If a client is selected, render the Work 1-mirrored Clientes V2 Detail View
   if (selectedClient) {
     return (
       <EntityDetailView
         entity={selectedClient}
         entityType="client"
         allProjects={projects}
+        allClients={clients}
+        onSelectClient={(newClientId) => {
+          setSelectedClientId(String(newClientId));
+          playSound('click');
+        }}
         onBack={() => {
           setSelectedClientId(null);
           playSound('click');
         }}
         onOpenProject={(projId) => {
           if (onSelectProject) onSelectProject(projId);
+        }}
+        onCreateProject={(cliId) => {
+          if (onCreateProject) {
+            onCreateProject(cliId);
+          }
         }}
         onUpdateEntity={async (updated) => {
           await updateClient(selectedClient.id, updated);

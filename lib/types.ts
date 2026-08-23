@@ -257,7 +257,23 @@ export interface LoginResponse {
   id?: string;
   nombre?: string;
   token?: string;
+  workspaceId?: string;
+  pin?: string;
+  isNewUser?: boolean;
+  email?: string;
+  name?: string;
+  googleUid?: string;
   error?: string;
+}
+
+export interface OnboardingSurveyData {
+  name: string;
+  brandName?: string;
+  email?: string;
+  googleUid?: string;
+  specialty?: string;
+  useCases?: string[];
+  teamSize?: string;
 }
 
 // ── UI State ──────────────────────────────────────────────────────────────────

@@ -20,11 +20,22 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { recordUndoAction } from "@/lib/undoManager";
+import { useAuthStore } from "@/lib/store";
 import type { SessionDoc, SessionOrigin } from "@/lib/types";
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
 const TIMEOUT_ORPHAN_MS = 15 * 60 * 1000;    // 15 minutos
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 30 días de retención en papelera
+
+function getSessionsColName(workspaceId?: string | null): string {
+  if (!workspaceId) {
+    return "sessions_unauthorized";
+  }
+  if (workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789") {
+    return "sessions";
+  }
+  return `ws_${workspaceId}_sessions`;
+}
 
 // Helper para convertir Timestamps a milisegundos de forma segura
 function getMillis(ts: any): number {
@@ -37,7 +48,7 @@ function getMillis(ts: any): number {
 }
 
 // Auto-cierre de seguridad para sesiones huérfanas
-async function checkAndAutoCloseOrphans(sessions: SessionDoc[]) {
+async function checkAndAutoCloseOrphans(sessions: SessionDoc[], colName: string = "sessions") {
   const nowMs = Date.now();
   for (const s of sessions) {
     if (s.status === "en_curso") {
@@ -46,7 +57,7 @@ async function checkAndAutoCloseOrphans(sessions: SessionDoc[]) {
         const startMs = getMillis(s.startTime);
         const durationMins = Math.max(1, Math.round((lastHbMs - startMs) / 60000));
         try {
-          const docRef = doc(db, "sessions", s.id);
+          const docRef = doc(db, colName, s.id);
           await updateDoc(docRef, {
             status: "completada_forzada",
             endTime: s.lastHeartbeat || Timestamp.now(),
@@ -65,14 +76,14 @@ async function checkAndAutoCloseOrphans(sessions: SessionDoc[]) {
 }
 
 // Auto-purgar sesiones que lleven más de 30 días en el basurero
-async function autoPruneOldTrashSessions(sessions: SessionDoc[]) {
+async function autoPruneOldTrashSessions(sessions: SessionDoc[], colName: string = "sessions") {
   const nowMs = Date.now();
   for (const s of sessions) {
     if (s.isDeleted || s.status === "deleted") {
       const deletedMs = getMillis(s.deletedAt || s.deleted_at || s.updatedAt || s.updated_at);
       if (nowMs - deletedMs > THIRTY_DAYS_MS) {
         try {
-          const docRef = doc(db, "sessions", s.id);
+          const docRef = doc(db, colName, s.id);
           await deleteDoc(docRef);
         } catch (err) {
           console.error("Error al purgar sesión antigua de la papelera:", err);
@@ -86,6 +97,9 @@ async function autoPruneOldTrashSessions(sessions: SessionDoc[]) {
  * Hook para obtener sesiones de una tarea específica con límite y paginación ("cargar más")
  */
 export function useTaskSessions(taskId: string | null, initialLimit: number = 10) {
+  const workspaceId = useAuthStore((s) => s.workspaceId) || "brandex-master";
+  const colName = getSessionsColName(workspaceId);
+
   const [sessions, setSessions] = useState<SessionDoc[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasMore, setHasMore] = useState<boolean>(false);
@@ -100,15 +114,15 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     setIsLoading(true);
     try {
       const q = query(
-        collection(db, "sessions"),
+        collection(db, colName),
         where("task_id", "==", String(taskId)),
         orderBy("startTime", "desc"),
         fsLimit(initialLimit)
       );
       const snap = await getDocs(q);
       const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-      await checkAndAutoCloseOrphans(list);
-      await autoPruneOldTrashSessions(list);
+      await checkAndAutoCloseOrphans(list, colName);
+      await autoPruneOldTrashSessions(list, colName);
 
       const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
       setSessions(activeList);
@@ -119,13 +133,13 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     } finally {
       setIsLoading(false);
     }
-  }, [taskId, initialLimit]);
+  }, [taskId, initialLimit, colName]);
 
   const loadMore = async () => {
     if (!taskId || !lastDocSnap || !hasMore) return;
     try {
       const q = query(
-        collection(db, "sessions"),
+        collection(db, colName),
         where("task_id", "==", String(taskId)),
         orderBy("startTime", "desc"),
         startAfter(lastDocSnap),
@@ -133,8 +147,8 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
       );
       const snap = await getDocs(q);
       const moreList: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-      await checkAndAutoCloseOrphans(moreList);
-      await autoPruneOldTrashSessions(moreList);
+      await checkAndAutoCloseOrphans(moreList, colName);
+      await autoPruneOldTrashSessions(moreList, colName);
 
       const activeMore = moreList.filter((s) => !s.isDeleted && s.status !== "deleted");
       setSessions((prev) => [...prev, ...activeMore]);
@@ -153,7 +167,7 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     }
     setIsLoading(true);
     const q = query(
-      collection(db, "sessions"),
+      collection(db, colName),
       where("task_id", "==", String(taskId)),
       orderBy("startTime", "desc"),
       fsLimit(initialLimit)
@@ -163,8 +177,8 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
       q,
       async (snap) => {
         const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-        await checkAndAutoCloseOrphans(list);
-        await autoPruneOldTrashSessions(list);
+        await checkAndAutoCloseOrphans(list, colName);
+        await autoPruneOldTrashSessions(list, colName);
 
         const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
         setSessions(activeList);
@@ -179,7 +193,7 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     );
 
     return () => unsubscribe();
-  }, [taskId, initialLimit]);
+  }, [taskId, initialLimit, colName]);
 
   return { sessions, isLoading, hasMore, loadMore, refetch: fetchSessions };
 }
@@ -188,33 +202,46 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
  * Hook para obtener el feed de sesiones recientes agrupables por fecha
  */
 export function useRecentSessions(limitCount: number = 30) {
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const colName = getSessionsColName(workspaceId);
+
   const [sessions, setSessions] = useState<SessionDoc[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchRecent = useCallback(async () => {
+    if (!workspaceId) {
+      setSessions([]);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     try {
       const q = query(
-        collection(db, "sessions"),
+        collection(db, colName),
         orderBy("startTime", "desc"),
         fsLimit(limitCount)
       );
       const snap = await getDocs(q);
       const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-      await checkAndAutoCloseOrphans(list);
-      await autoPruneOldTrashSessions(list);
+      await checkAndAutoCloseOrphans(list, colName);
+      await autoPruneOldTrashSessions(list, colName);
       setSessions(list.filter((s) => !s.isDeleted && s.status !== "deleted"));
     } catch (err) {
       console.error("Error fetching recent sessions:", err);
     } finally {
       setIsLoading(false);
     }
-  }, [limitCount]);
+  }, [limitCount, colName, workspaceId]);
 
   useEffect(() => {
+    if (!workspaceId) {
+      setSessions([]);
+      setIsLoading(false);
+      return;
+    }
     setIsLoading(true);
     const q = query(
-      collection(db, "sessions"),
+      collection(db, colName),
       orderBy("startTime", "desc"),
       fsLimit(limitCount)
     );
@@ -223,8 +250,8 @@ export function useRecentSessions(limitCount: number = 30) {
       q,
       async (snap) => {
         const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-        await checkAndAutoCloseOrphans(list);
-        await autoPruneOldTrashSessions(list);
+        await checkAndAutoCloseOrphans(list, colName);
+        await autoPruneOldTrashSessions(list, colName);
         setSessions(list.filter((s) => !s.isDeleted && s.status !== "deleted"));
         setIsLoading(false);
       },
@@ -235,7 +262,7 @@ export function useRecentSessions(limitCount: number = 30) {
     );
 
     return () => unsubscribe();
-  }, [limitCount]);
+  }, [limitCount, colName]);
 
   return { sessions, isLoading, refetch: fetchRecent };
 }
@@ -244,13 +271,16 @@ export function useRecentSessions(limitCount: number = 30) {
  * Hook maestro para operaciones de inicio, fin, heartbeat y sesión manual
  */
 export function useSessions() {
+  const workspaceId = useAuthStore((s) => s.workspaceId) || "brandex-master";
+  const colName = getSessionsColName(workspaceId);
+
   const [activeSession, setActiveSession] = useState<SessionDoc | null>(null);
 
   // Buscar sesión activa en curso al montar
   const checkActiveSession = useCallback(async () => {
     try {
       const q = query(
-        collection(db, "sessions"),
+        collection(db, colName),
         where("status", "==", "en_curso"),
         orderBy("startTime", "desc"),
         fsLimit(1)
@@ -263,7 +293,7 @@ export function useSessions() {
         
         if (nowMs - lastHbMs > TIMEOUT_ORPHAN_MS) {
           // Auto-cerrar sesión fantasma expirada
-          await checkAndAutoCloseOrphans([s]);
+          await checkAndAutoCloseOrphans([s], colName);
           setActiveSession(null);
         } else {
           setActiveSession(s);
@@ -274,7 +304,7 @@ export function useSessions() {
     } catch (err) {
       console.error("Error checking active session:", err);
     }
-  }, []);
+  }, [colName]);
 
   useEffect(() => {
     checkActiveSession();
@@ -285,7 +315,7 @@ export function useSessions() {
     if (!activeSession) return;
     const interval = setInterval(async () => {
       try {
-        const docRef = doc(db, "sessions", activeSession.id);
+        const docRef = doc(db, colName, activeSession.id);
         const nowTs = Timestamp.now();
         await updateDoc(docRef, {
           lastHeartbeat: nowTs,
@@ -298,7 +328,7 @@ export function useSessions() {
     }, HEARTBEAT_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, colName]);
 
   // Iniciar nueva sesión
   const startSession = async ({
@@ -343,7 +373,7 @@ export function useSessions() {
       updated_at: nowTs,
     };
 
-    const docRef = doc(db, "sessions", newId);
+    const docRef = doc(db, colName, newId);
     await setDoc(docRef, sessionData);
     setActiveSession(sessionData);
 
@@ -355,12 +385,12 @@ export function useSessions() {
       undoDescription: "Sesión cancelada y cronómetro detenido",
       redoDescription: "Sesión reactivada",
       executeUndo: async () => {
-        const ref = doc(db, "sessions", newId);
+        const ref = doc(db, colName, newId);
         await deleteDoc(ref);
         setActiveSession(null);
       },
       executeRedo: async () => {
-        const ref = doc(db, "sessions", newId);
+        const ref = doc(db, colName, newId);
         await setDoc(ref, sessionData);
         setActiveSession(sessionData);
       },
@@ -374,7 +404,7 @@ export function useSessions() {
     const targetId = sessionId || activeSession?.id;
     if (!targetId) return;
 
-    const docRef = doc(db, "sessions", targetId);
+    const docRef = doc(db, colName, targetId);
     const snap = await getDoc(docRef);
     if (!snap.exists()) return;
 
@@ -409,7 +439,7 @@ export function useSessions() {
       undoDescription: `Sesión reabierta y cronómetro reactivado`,
       redoDescription: `Sesión finalizada (${durationMins}m)`,
       executeUndo: async () => {
-        const ref = doc(db, "sessions", targetId);
+        const ref = doc(db, colName, targetId);
         await updateDoc(ref, {
           status: "en_curso",
           endTime: null,
@@ -424,7 +454,7 @@ export function useSessions() {
         }
       },
       executeRedo: async () => {
-        const ref = doc(db, "sessions", targetId);
+        const ref = doc(db, colName, targetId);
         await updateDoc(ref, {
           ...updateData,
           updatedAt: serverTimestamp(),
@@ -479,7 +509,7 @@ export function useSessions() {
       updated_at: nowTs,
     };
 
-    const docRef = doc(db, "sessions", newId);
+    const docRef = doc(db, colName, newId);
     await setDoc(docRef, sessionData);
 
     recordUndoAction({
@@ -490,11 +520,11 @@ export function useSessions() {
       undoDescription: `Sesión manual eliminada`,
       redoDescription: `Sesión manual recreada`,
       executeUndo: async () => {
-        const ref = doc(db, "sessions", newId);
+        const ref = doc(db, colName, newId);
         await deleteDoc(ref);
       },
       executeRedo: async () => {
-        const ref = doc(db, "sessions", newId);
+        const ref = doc(db, colName, newId);
         await setDoc(ref, sessionData);
       },
     });
@@ -509,7 +539,7 @@ export function useSessions() {
 
     for (const id of sessionIds) {
       try {
-        const docRef = doc(db, "sessions", id);
+        const docRef = doc(db, colName, id);
         await updateDoc(docRef, {
           isDeleted: true,
           deletedAt: nowTs,
@@ -531,7 +561,7 @@ export function useSessions() {
       redoDescription: `Sesiones devueltas a la papelera`,
       executeUndo: async () => {
         for (const id of sessionIds) {
-          const ref = doc(db, "sessions", id);
+          const ref = doc(db, colName, id);
           await updateDoc(ref, {
             isDeleted: false,
             deletedAt: null,
@@ -543,7 +573,7 @@ export function useSessions() {
       },
       executeRedo: async () => {
         for (const id of sessionIds) {
-          const ref = doc(db, "sessions", id);
+          const ref = doc(db, colName, id);
           await updateDoc(ref, {
             isDeleted: true,
             deletedAt: serverTimestamp(),
@@ -563,7 +593,7 @@ export function useSessions() {
 
     for (const id of sessionIds) {
       try {
-        const docRef = doc(db, "sessions", id);
+        const docRef = doc(db, colName, id);
         await updateDoc(docRef, {
           isDeleted: false,
           deletedAt: null,
@@ -583,7 +613,7 @@ export function useSessions() {
 
     for (const id of sessionIds) {
       try {
-        const docRef = doc(db, "sessions", id);
+        const docRef = doc(db, colName, id);
         await deleteDoc(docRef);
       } catch (err) {
         console.error(`Error eliminando sesión permanentemente ${id}:`, err);
@@ -611,13 +641,16 @@ export interface TrashSessionDoc extends SessionDoc {
  * Hook para gestionar las sesiones en la papelera (retención de 30 días)
  */
 export function useTrashSessions() {
+  const workspaceId = useAuthStore((s) => s.workspaceId) || "brandex-master";
+  const colName = getSessionsColName(workspaceId);
+
   const [trashSessions, setTrashSessions] = useState<TrashSessionDoc[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     setIsLoading(true);
     const q = query(
-      collection(db, "sessions"),
+      collection(db, colName),
       orderBy("startTime", "desc"),
       fsLimit(150)
     );
@@ -627,7 +660,7 @@ export function useTrashSessions() {
       async (snap) => {
         const nowMs = Date.now();
         const rawList: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
-        await autoPruneOldTrashSessions(rawList);
+        await autoPruneOldTrashSessions(rawList, colName);
 
         const deletedList = rawList.filter((s) => s.isDeleted || s.status === "deleted");
 
@@ -657,12 +690,12 @@ export function useTrashSessions() {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [colName]);
 
   const restore = async (sessionIds: string[]) => {
     const nowTs = Timestamp.now();
     for (const id of sessionIds) {
-      const docRef = doc(db, "sessions", id);
+      const docRef = doc(db, colName, id);
       await updateDoc(docRef, {
         isDeleted: false,
         deletedAt: null,
@@ -675,14 +708,14 @@ export function useTrashSessions() {
 
   const permanentDelete = async (sessionIds: string[]) => {
     for (const id of sessionIds) {
-      const docRef = doc(db, "sessions", id);
+      const docRef = doc(db, colName, id);
       await deleteDoc(docRef);
     }
   };
 
   const emptyTrash = async () => {
     for (const s of trashSessions) {
-      const docRef = doc(db, "sessions", s.id);
+      const docRef = doc(db, colName, s.id);
       await deleteDoc(docRef);
     }
   };
@@ -701,6 +734,10 @@ export function useTrashSessions() {
  * Hook para obtener estadísticas agregadas de sesiones por cliente o por miembro de equipo
  */
 export function useEntitySessionStats(entityType: "client" | "member" | "user" | "project", entityId: string | number | null) {
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+  const colName = getSessionsColName(workspaceId);
+
   const [totalHours, setTotalHours] = useState<number>(0);
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -715,7 +752,7 @@ export function useEntitySessionStats(entityType: "client" | "member" | "user" |
 
     const fieldName = entityType === "client" ? "client_id" : entityType === "member" ? "worker_id" : "project_id";
     const q = query(
-      collection(db, "sessions"),
+      collection(db, colName),
       where(fieldName, "==", String(entityId))
     );
 
@@ -732,25 +769,24 @@ export function useEntitySessionStats(entityType: "client" | "member" | "user" |
           count++;
         });
 
-        // Fallback dinámico si no hay sesiones registradas aún
-        const fallbackHours = entityType === "client" ? 28 : entityType === "member" ? 35 : 12;
+        // Fallback dinámico solo si es master
+        const fallbackHours = isMaster ? (entityType === "client" ? 28 : entityType === "member" ? 35 : 12) : 0;
         const calculatedHours = totalMins > 0 ? Math.round((totalMins / 60) * 10) / 10 : fallbackHours;
 
         setTotalHours(calculatedHours);
-        setTotalSessions(Math.max(count, 4));
+        setTotalSessions(isMaster ? Math.max(count, 4) : count);
         setIsLoading(false);
       },
       (err) => {
         console.error(`Error querying sessions for ${entityType} ${entityId}:`, err);
-        setTotalHours(entityType === "client" ? 28 : 35);
-        setTotalSessions(4);
+        setTotalHours(isMaster ? (entityType === "client" ? 28 : 35) : 0);
+        setTotalSessions(isMaster ? 4 : 0);
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, [entityType, entityId]);
+  }, [entityType, entityId, colName, isMaster]);
 
   return { totalHours, totalSessions, isLoading };
 }
-

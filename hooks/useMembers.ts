@@ -160,18 +160,35 @@ export const INITIAL_MEMBERS: Member[] = [
   }
 ];
 
+import { useAuthStore } from "@/lib/store";
+
 export function useMembers() {
-  const [members, setMembers] = useState<Member[]>(INITIAL_MEMBERS);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+
+  const [members, setMembers] = useState<Member[]>(isMaster ? INITIAL_MEMBERS : []);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Real-time listener for Firestore collection "members" (with fallback migration from "v3_members")
+  // Real-time listener for Firestore collection "members" (or workspace collection)
   useEffect(() => {
-    const colRef = collection(db, "members");
+    if (!workspaceId) {
+      setMembers([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const colName = isMaster ? "members" : `ws_${workspaceId}_members`;
+    const colRef = collection(db, colName);
 
     const unsubscribe = onSnapshot(
       colRef,
       async (snapshot) => {
         if (snapshot.empty) {
+          if (!isMaster) {
+            setMembers([]);
+            setIsLoading(false);
+            return;
+          }
           try {
             // Check if legacy "v3_members" has documents to migrate
             const legacySnap = await getDocs(collection(db, "v3_members"));

@@ -177,19 +177,6 @@ function generateMonthBlocks(
           else if (totalHours <= 3.5) level = 2;
           else if (totalHours <= 5.5) level = 3;
           else level = 4;
-        } else if (!hasAnyRealActivity) {
-          // Semilla visual determinista
-          let hash = 0;
-          for (let c = 0; c < dateStr.length; c++) {
-            hash = (hash << 5) - hash + dateStr.charCodeAt(c);
-            hash |= 0;
-          }
-          const pseudo = Math.abs(hash % 100) / 100;
-          if (pseudo > 0.45) {
-            level = Math.floor((pseudo * 10) % 4) + 1;
-            totalHours = Math.round((level * 1.3 + pseudo) * 10) / 10;
-            sessionCount = Math.max(1, Math.floor(level * 1.5));
-          }
         }
       }
 

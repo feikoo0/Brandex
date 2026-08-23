@@ -3,10 +3,13 @@
 import React, { useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Mail, Lock, Eye, EyeOff, Loader2, ArrowRight } from "lucide-react";
+import { Loader2, ShieldCheck, ArrowRight } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
-import { login } from "@/lib/api";
-import type { Role } from "@/lib/types";
+import { loginWithCode } from "@/lib/api";
+import { OtpInput, type OtpStatus } from "@/components/ui/OtpInput";
+import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { playSound } from "@/app/taski/utils/audio";
+import type { Role, LoginResponse } from "@/lib/types";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,11 +19,13 @@ export default function LoginPage() {
   const [pointerPos, setPointerPos] = useState({ x: "50%", y: "50%" });
   const [isHovered, setIsHovered] = useState(false);
 
-  const [usuario, setUsuario] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [code, setCode] = useState("");
+  const [status, setStatus] = useState<OtpStatus>("idle");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Onboarding Modal State
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current) return;
@@ -35,39 +40,53 @@ export default function LoginPage() {
     setIsHovered(false);
   }, []);
 
-  const navigateByRole = (role: Role, id: string, nombre: string, userToken: string) => {
-    setAuth(role, id, nombre, userToken);
-    const dest: Record<Role, string> = {
-      admin: "/admin",
-      diseno: "/equipo",
-      cliente: "/cliente",
-    };
-    router.push(dest[role] ?? "/admin");
-  };
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!usuario.trim() || !password.trim()) {
-      setError("Por favor ingresa tu correo y contraseña");
-      return;
-    }
+  const handleVerifyCode = async (enteredCode: string) => {
+    if (!enteredCode || enteredCode.length < 6 || loading) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const data = await login(usuario.trim(), password.trim());
+      const data = await loginWithCode(enteredCode.trim());
       if (data.ok && data.role) {
-        navigateByRole(data.role as Role, data.id || "admin", data.nombre || usuario, data.token || "");
+        setStatus("success");
+        setAuth(
+          (data.role as Role) || "admin",
+          data.id || "admin",
+          data.nombre || "Usuario",
+          data.token || "",
+          data.workspaceId || "brandex-master"
+        );
+
+        // Transición fluida tras completar el anillo de éxito
+        setTimeout(() => {
+          router.push("/taski");
+        }, 550);
       } else {
-        setError(data.error ?? "Credenciales incorrectas");
+        setStatus("error");
+        setError(data.error ?? "Llave de acceso no válida");
       }
     } catch (err: any) {
+      setStatus("error");
       setError(err.message || "Error al conectar con el servidor");
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  const handleOnboardingSuccess = (res: LoginResponse) => {
+    setIsOnboardingOpen(false);
+    if (res && res.role && res.workspaceId) {
+      setAuth(
+        (res.role as Role) || "admin",
+        res.id || "admin",
+        res.nombre || "Usuario",
+        res.token || "",
+        res.workspaceId
+      );
+      router.push("/taski");
+    }
+  };
 
   return (
     <div
@@ -84,12 +103,10 @@ export default function LoginPage() {
         } as React.CSSProperties
       }
     >
-      {/* Fondo Interactivo con Patrón de Dots (Idéntico a Inicio en /taski) */}
+      {/* Fondo Interactivo con Patrón de Dots */}
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-        {/* Capa 1: Fondo oscuro base */}
         <div className="absolute inset-0 bg-[#181817]" />
 
-        {/* Capa 2: Grilla estática de dots enmascarada */}
         <div
           className="absolute inset-0 opacity-45"
           style={{
@@ -112,7 +129,6 @@ export default function LoginPage() {
           />
         </div>
 
-        {/* Capa 3: Grilla de dots interactiva con foco spotlight al mover el puntero */}
         <div
           className="absolute inset-0 transition-opacity duration-150 ease-[ease] motion-reduce:transition-none [@media(hover:none)]:hidden"
           style={{
@@ -128,25 +144,22 @@ export default function LoginPage() {
           }}
         />
 
-        {/* Capa 4: Resplandor difuso superior */}
         <div className="absolute left-[calc(50%-6.25rem)] top-[-6.625rem] h-[22rem] w-[30rem] rotate-[32deg] rounded-full bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.045)_0%,rgba(255,255,255,0.018)_38%,transparent_72%)] blur-3xl" />
-
-        {/* Capa 5: Degradado vertical sutil superior */}
         <div className="absolute inset-x-0 top-0 h-44 bg-[linear-gradient(to_bottom,rgba(255,255,255,0.015),transparent)]" />
       </div>
 
-      {/* Capa 2B: Tarjeta Central Redondeada (#181818, rounded-[24px]) */}
-      <div className="relative z-10 w-full max-w-[390px] bg-[#181818] rounded-[24px] p-7 md:p-8">
+      {/* Tarjeta Central (#181818, border-white/10, rounded-[24px]) */}
+      <div className="relative z-10 w-full max-w-[420px] bg-[#181818] border border-white/10 rounded-[24px] p-7 md:p-9 shadow-2xl shadow-black/60 flex flex-col items-center">
         
-        {/* Cabecera: Logo de Taski con el texto de Taski */}
-        <div className="flex flex-col items-center justify-center gap-3 mb-7">
+        {/* Cabecera: Logo de Taski */}
+        <div className="flex flex-col items-center justify-center gap-2.5 mb-7 text-center">
           <div className="flex items-center justify-center gap-3">
-            <div className="w-9 h-9 relative flex items-center justify-center">
+            <div className="w-10 h-10 relative flex items-center justify-center">
               <Image
                 src="/taski-icon.png"
                 alt="Taski"
-                width={36}
-                height={36}
+                width={40}
+                height={40}
                 className="object-contain"
                 priority
               />
@@ -155,98 +168,76 @@ export default function LoginPage() {
               Taski
             </span>
           </div>
-          <p className="text-xs text-[#ffffff6b]">
-            Inicia sesión con tu cuenta
+          <p className="text-xs text-[#ffffff6b] max-w-[280px]">
+            Ingresa tu llave de 6 dígitos para acceder al espacio de trabajo
           </p>
         </div>
 
-        {/* Formulario de Login */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Campo Correo / Usuario (Capa 3: #222222, border-white/10, rounded-xl) */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b]">
-              Correo o usuario
-            </label>
-            <div className="relative flex items-center">
-              <Mail className="w-4 h-4 absolute left-3.5 text-white/30 pointer-events-none" />
-              <input
-                type="text"
-                value={usuario}
-                onChange={(e) => {
-                  setUsuario(e.target.value);
-                  if (error) setError(null);
-                }}
-                placeholder="ejemplo@correo.com"
-                className="w-full bg-[#222222] border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-sm text-[#ffffffd6] placeholder-white/30 outline-none focus:border-white/20 transition-colors"
-                autoComplete="username"
-              />
-            </div>
-          </div>
+        {/* OTP Input Component */}
+        <div className="w-full flex flex-col items-center justify-center my-1">
+          <OtpInput
+            length={6}
+            value={code}
+            onChange={(val) => {
+              setCode(val);
+              if (status !== "idle") setStatus("idle");
+              if (error) setError(null);
+            }}
+            onComplete={(val) => handleVerifyCode(val)}
+            type="both"
+            size="md"
+            status={status}
+            disabled={loading || status === "success"}
+            autoFocus
+          />
 
-          {/* Campo Contraseña (Capa 3: #222222, border-white/10, rounded-xl) */}
-          <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b]">
-              Contraseña
-            </label>
-            <div className="relative flex items-center">
-              <Lock className="w-4 h-4 absolute left-3.5 text-white/30 pointer-events-none" />
-              <input
-                type={showPassword ? "text" : "password"}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (error) setError(null);
-                }}
-                placeholder="••••••••"
-                className="w-full bg-[#222222] border border-white/10 rounded-xl pl-10 pr-10 py-3.5 text-sm text-[#ffffffd6] placeholder-white/30 outline-none focus:border-white/20 transition-colors"
-                autoComplete="current-password"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 text-white/30 hover:text-white/70 transition-colors cursor-pointer"
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Mensaje de error */}
-          {error && (
-            <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-medium text-center">
-              {error}
-            </div>
-          )}
-
-          {/* Botón de Acción Principal (Azul Taski #3a7bd5) */}
-          <button
-            type="submit"
-            disabled={loading || !usuario.trim() || !password.trim()}
-            className="w-full py-3.5 px-4 bg-[#3a7bd5] hover:bg-[#316ec2] active:scale-[0.99] text-white font-bold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none mt-2 cursor-pointer"
-          >
-            {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              "Iniciar Sesión"
+          {/* Feedback de estado */}
+          <div className="min-h-[26px] mt-3 flex items-center justify-center">
+            {loading && (
+              <div className="flex items-center gap-2 text-xs text-white/50 animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3a7bd5]" />
+                <span>Verificando llave...</span>
+              </div>
             )}
-          </button>
-        </form>
+            {status === "success" && (
+              <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                <ShieldCheck className="w-4 h-4" />
+                <span>Acceso verificado • Iniciando Taski...</span>
+              </div>
+            )}
+            {error && (
+              <div className="text-xs text-rose-400 font-medium text-center">
+                {error}
+              </div>
+            )}
+          </div>
+        </div>
 
-        {/* Separación Fina (h-px bg-white/10) */}
-        <div className="h-px bg-white/10 my-6" />
+        {/* Separador Fino */}
+        <div className="w-full h-px bg-white/10 my-5" />
 
-        {/* Botón de Acceso Directo (Capa 3: #222222, border-white/10, rounded-xl) */}
+        {/* Disparador de Onboarding: Crear nuevo espacio */}
         <button
           type="button"
-          onClick={() => router.push("/taski")}
-          className="w-full py-3.5 px-4 bg-[#222222] hover:bg-white/[0.08] active:scale-[0.99] text-[#ffffffd6] hover:text-white border border-white/10 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+          onClick={() => {
+            playSound("click");
+            setIsOnboardingOpen(true);
+          }}
+          className="text-xs text-white/50 hover:text-white hover:underline transition-all flex items-center gap-1.5 cursor-pointer py-1"
         >
-          <span>Acceso directo al lienzo Taski</span>
-          <ArrowRight className="w-3.5 h-3.5 text-white/50" />
+          <span>¿Eres nuevo?</span>
+          <strong className="text-[#3a7bd5] font-semibold">Crear nuevo espacio</strong>
+          <ArrowRight className="w-3 h-3 text-[#3a7bd5]" />
         </button>
 
       </div>
+
+      {/* Modal de Onboarding & Encuesta Beta */}
+      <OnboardingModal
+        isOpen={isOnboardingOpen}
+        onClose={() => setIsOnboardingOpen(false)}
+        onSuccess={handleOnboardingSuccess}
+      />
     </div>
   );
 }

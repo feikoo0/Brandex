@@ -30,13 +30,70 @@ import type {
   Worker,
 } from "@/lib/types";
 
+import { useAuthStore } from "@/lib/store";
+
 const QUERY_KEY = ["taski-firestore-data"];
 
 // ── Full data directly from pure Firestore collections ─────────────────────────
 export function useData() {
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+
   return useQuery<BraindexData>({
-    queryKey: QUERY_KEY,
+    queryKey: [QUERY_KEY[0], workspaceId || "none"],
     queryFn: async () => {
+      if (!workspaceId) {
+        return {
+          clientes: [],
+          proyectos: [],
+          tareas: [],
+          trabajadores: [],
+          recursos: [],
+        };
+      }
+
+      // 0. Si es un workspace aislado (no master), leer solo sus colecciones particionadas
+      if (!isMaster) {
+        try {
+          const [clientsSnap, membersSnap, projSnap, tasksSnap] = await Promise.all([
+            getDocs(collection(db, `ws_${workspaceId}_clients`)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, `ws_${workspaceId}_members`)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, `ws_${workspaceId}_projects`)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, `ws_${workspaceId}_tasks`)).catch(() => ({ empty: true, docs: [] as any[] })),
+          ]);
+
+          const clientsList: Client[] = clientsSnap.empty
+            ? []
+            : clientsSnap.docs.map((d: any) => ({ ...d.data(), id: d.id } as Client));
+          const workersList: any[] = membersSnap.empty
+            ? []
+            : membersSnap.docs.map((d: any) => ({ ...d.data(), id: d.id }));
+          const projectsList: Project[] = projSnap.empty
+            ? []
+            : projSnap.docs.map((d: any) => ({ ...d.data(), id: d.id } as Project));
+          const tasksList: Task[] = tasksSnap.empty
+            ? []
+            : tasksSnap.docs.map((d: any) => ({ ...d.data(), id: d.id } as Task));
+
+          return {
+            clientes: clientsList,
+            proyectos: projectsList,
+            tareas: tasksList,
+            trabajadores: workersList,
+            recursos: [],
+          };
+        } catch (e) {
+          console.error("Error reading isolated workspace data:", e);
+          return {
+            clientes: [],
+            proyectos: [],
+            tareas: [],
+            trabajadores: [],
+            recursos: [],
+          };
+        }
+      }
+
       // 1. Clientes (colección 'clients' con fallback de 'v3_clients')
       let clientsList: Client[] = [];
       try {

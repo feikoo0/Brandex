@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X, PanelLeftOpen, Kanban, ListFilter, Database, ChevronRight, ChevronLeft, MoreHorizontal, ArrowRight, User } from "lucide-react";
+import { Home, Folder, Users, Briefcase, DollarSign, Settings, TrendingUp, ArrowUpRight, Wallet, Activity, Sun, Moon, Search, LayoutGrid, Table, CalendarDays, SquarePen, SlidersHorizontal, Archive, Layers, ChevronDown, Bell, Plus, Trash2, Loader2, X, PanelLeftOpen, Kanban, ListFilter, Database, ChevronRight, ChevronLeft, MoreHorizontal, ArrowRight, User, LogOut, KeyRound, Check, ShieldAlert, Rocket } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import { collection, getDocs, doc, setDoc, deleteDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -19,10 +19,13 @@ import { ClientsDashboard } from "./components/ClientsDashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { InicioDashboard } from "./components/InicioDashboard";
 import { ProjectsView } from "@/components/views/ProjectsView";
+import { SuperAdminView } from "@/components/views/SuperAdminView";
+import { useSystemFeatures } from "@/hooks/useSystemFeatures";
 import { GlobalNav } from "@/components/navigation/GlobalNav";
 import { FinanzasGlobalesDashboard } from "./components/FinanzasGlobalesDashboard";
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { persistProjectUpdate } from "./utils/persist";
+import { useRouter } from "next/navigation";
 import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 
@@ -116,7 +119,23 @@ function getProjectBgColor(project: Project): string {
 }
 
 export default function BrandexV3Page() {
-  const [activeTab, setActiveTab] = useState("home");
+  const router = useRouter();
+  const role = useAuthStore((s) => s.role);
+  const token = useAuthStore((s) => s.token);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+
+  const [isAuthReady, setIsAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!role || !token || !workspaceId) {
+      router.replace("/");
+      return;
+    }
+    setIsAuthReady(true);
+  }, [role, token, workspaceId, router]);
+
+  const [activeTab, setActiveTab] = useState(() => (isMaster ? "inicio" : "home"));
   const [isMoreExpanded, setIsMoreExpanded] = useState(false);
   const [homeView, setHomeView] = useState<"buscar" | "kanban" | "tabla" | "timeline">("kanban");
   const [previousHomeView, setPreviousHomeView] = useState<"kanban" | "tabla" | "timeline">("kanban");
@@ -194,7 +213,10 @@ export default function BrandexV3Page() {
   else if (hour >= 19) greeting = "Buenas noches";
 
   const authUserName = useAuthStore((s) => s.userName);
-  const currentUserName = authUserName || "Feiko";
+  const currentUserName =
+    authUserName && authUserName.toLowerCase() !== "malebar"
+      ? authUserName
+      : (isMaster ? "Feiko" : "Usuario");
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [isClient, setIsClient] = useState(false);
@@ -208,17 +230,106 @@ export default function BrandexV3Page() {
   const [isLogoHovered, setIsLogoHovered] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAllProjectsList, setShowAllProjectsList] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const logout = useAuthStore((s) => s.logout);
+  const { isFeatureVisible } = useSystemFeatures();
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    if (isUserMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isUserMenuOpen]);
+
+  const handleLogout = () => {
+    playSound('pop');
+    logout();
+    setIsUserMenuOpen(false);
+    router.replace("/");
+  };
+
+  const handleCopyWorkspaceKey = () => {
+    try {
+      const keyToCopy = isMaster ? "159789" : (workspaceId?.replace("ws_", "") || "000000");
+      navigator.clipboard.writeText(keyToCopy);
+      playSound('click');
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    } catch {}
+  };
 
   // Initialize from localStorage on mount
   useEffect(() => {
+    if (!isAuthReady || !role || !workspaceId) return;
+
     setIsClient(true);
+    if (!isMaster) {
+      setActiveTab("home");
+    }
 
     const dynamicGreeting = getDynamicGreeting(currentUserName);
     setSessionGreetingObj(dynamicGreeting);
 
     const loadFromFirestore = async () => {
       try {
-        // 1. Cargar proyectos y tareas de Firestore
+        if (!isMaster) {
+          // En modo aislado / usuario nuevo, solo cargamos los proyectos creados en su workspace
+          const wsProjSnap = await getDocs(collection(db, `ws_${workspaceId}_projects`));
+          const wsTasksSnap = await getDocs(collection(db, `ws_${workspaceId}_tasks`));
+          
+          if (!wsProjSnap.empty) {
+            const nativeTasks = wsTasksSnap.docs.map((d) => d.data());
+            const list: Project[] = [];
+            wsProjSnap.forEach((docSnap) => {
+              const pData = docSnap.data() as Project;
+              const extraTasks = nativeTasks
+                .filter(
+                  (nt) =>
+                    String(nt.project_id) === String(pData.id) ||
+                    String(nt.proyecto_id) === String(pData.id)
+                )
+                .map((nt) => ({
+                  id: Number(nt.id) || Date.now(),
+                  title: nt.title || nt.nombre || nt.titulo || "Tarea sin título",
+                  desc: nt.desc || nt.contenido || "",
+                  format: nt.format || nt.formato || "Sin formato",
+                  formato: nt.formato || nt.format || "Sin formato",
+                  time: nt.time || nt.duracion || nt.tiempoEstimado || "Sin tiempo",
+                  status: (nt.status || nt.estado || "Planificado") as any,
+                  statusColor: "",
+                  subtasks: []
+                }));
+
+              const existingTaskIds = new Set((pData.tasks || []).map((t) => String(t.id)));
+              const mergedTasks = [
+                ...(pData.tasks || []),
+                ...extraTasks.filter((nt) => !existingTaskIds.has(String(nt.id)))
+              ];
+
+              list.push({
+                ...pData,
+                tasks: mergedTasks
+              });
+            });
+            const evaluated = list.map(autoEvaluateProjectStatus);
+            setProjects(evaluated);
+          } else {
+            setProjects([]);
+          }
+          setIsLoaded(true);
+          return;
+        }
+
+        // 1. Cargar proyectos y tareas de Firestore (Master)
         const v3ProjectsSnap = await getDocs(collection(db, "v3_projects"));
         const tasksSnap = await getDocs(collection(db, "tasks"));
         const nativeTasks = tasksSnap.docs.map((d) => d.data());
@@ -313,18 +424,26 @@ export default function BrandexV3Page() {
 
             const evaluated = list.map(autoEvaluateProjectStatus);
             setProjects(evaluated);
+          } else if (isMaster) {
+            setProjects(seedProjectsWithSessions(INITIAL_PROJECTS).map(autoEvaluateProjectStatus));
+          } else {
+            setProjects([]);
           }
         }
         setIsLoaded(true);
       } catch (err) {
         console.error("Firestore load error:", err);
-        setProjects(seedProjectsWithSessions(INITIAL_PROJECTS).map(autoEvaluateProjectStatus));
+        if (isMaster) {
+          setProjects(seedProjectsWithSessions(INITIAL_PROJECTS).map(autoEvaluateProjectStatus));
+        } else {
+          setProjects([]);
+        }
         setIsLoaded(true);
       }
     };
 
     loadFromFirestore();
-  }, []);
+  }, [isAuthReady, role, workspaceId, isMaster, currentUserName]);
 
   const updatePriority = (id: number, priority: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, priority } : p));
@@ -634,7 +753,11 @@ export default function BrandexV3Page() {
     { id: "equipo", label: "Equipo", path: "/equipo" },
     { id: "finanzas", label: "Finanzas", path: "/admin" },
     { id: "recursos", label: "Recursos", path: "/recursos" },
+    ...(isMaster ? [{ id: "superadmin", label: "SuperAdmin", path: "/superadmin" }] : []),
   ];
+
+  const visiblePrimaryItems = primaryMenuItems.filter((item) => isFeatureVisible(item.id, isMaster, !isMaster));
+  const visibleSecondaryItems = secondaryMenuItems.filter((item) => isFeatureVisible(item.id, isMaster, !isMaster));
 
   useEffect(() => {
     if (secondaryMenuItems.some((item) => item.id === activeTab)) {
@@ -655,9 +778,9 @@ export default function BrandexV3Page() {
       case "proyectos_v2": return <Layers className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "clientes": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
-      case "cliente_v2": return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "finanzas": return <DollarSign className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "recursos": return <Database className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "superadmin": return <ShieldAlert className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "ajustes": return <Settings className={className} fill={fill} strokeWidth={strokeWidth} />;
       default: return null;
     }
@@ -784,7 +907,19 @@ export default function BrandexV3Page() {
     return "text-[#ffffff6b] font-medium";
   };
 
-
+  if (!isAuthReady) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#181817] text-white select-none">
+        <div className="w-10 h-10 relative flex items-center justify-center mb-4 animate-pulse">
+          <Image src="/taski-icon.png" alt="Taski" width={40} height={40} className="object-contain" priority />
+        </div>
+        <div className="flex items-center gap-2 text-xs text-white/40">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#3a7bd5]" />
+          <span>Verificando acceso al workspace...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <main className={`relative w-full max-w-full h-screen overflow-hidden overflow-x-hidden select-none font-sans transition-colors duration-500 ${isNightMode ? 'bg-[#181817] text-neutral-100' : 'bg-[#dce1e8] text-slate-900'}`}>
@@ -913,7 +1048,7 @@ export default function BrandexV3Page() {
                 </span>
               </motion.button>
 
-              {primaryMenuItems.map((item) => {
+              {visiblePrimaryItems.map((item) => {
                 const isActive = activeTab === item.id;
                 const isHovered = hoveredMenuItem === item.id;
 
@@ -992,7 +1127,7 @@ export default function BrandexV3Page() {
                 </div>
               </motion.div>
 
-              {/* Secondary Menu Items (Clientes, Equipo, Recursos) when Expanded */}
+              {/* Secondary Menu Items (Clientes, Equipo, Recursos, SuperAdmin) when Expanded */}
               <AnimatePresence initial={false}>
                 {isMoreExpanded && (
                   <motion.div
@@ -1002,7 +1137,7 @@ export default function BrandexV3Page() {
                     transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
                     className="flex flex-col gap-0 overflow-hidden w-full"
                   >
-                    {secondaryMenuItems.map((item) => {
+                    {visibleSecondaryItems.map((item) => {
                       const isActive = activeTab === item.id;
                       const isHovered = hoveredMenuItem === item.id;
 
@@ -1100,28 +1235,132 @@ export default function BrandexV3Page() {
             </nav>
           </div>
 
-          {/* Tarjeta de Usuario hasta abajo */}
-          <motion.div
-            whileHover={{ scale: 1.01 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => {
-              setActiveTab("ajustes");
-              playSound('click');
-            }}
-            className="pointer-events-auto mt-auto group relative flex items-center gap-2.5 h-10 w-[232px] px-2 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 bg-transparent hover:bg-white/5 shrink-0"
-          >
-            {/* Círculo para foto de perfil a la izquierda */}
-            <div className="relative w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 via-indigo-500 to-sky-400 p-[1.5px] shrink-0 shadow-sm flex items-center justify-center">
-              <div className="w-full h-full rounded-full bg-[#181817] flex items-center justify-center overflow-hidden">
-                <User className="w-3.5 h-3.5 text-[#ffffffd6] group-hover:scale-110 transition-transform duration-200" />
-              </div>
-            </div>
+          {/* Tarjeta de Usuario y Menú Desplegable con Cerrar Sesión */}
+          <div ref={userMenuRef} className="relative mt-auto w-[232px] pointer-events-auto">
+            <AnimatePresence>
+              {isUserMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                  className="absolute bottom-[46px] left-0 w-[232px] bg-[#181818] border border-white/10 rounded-2xl p-1.5 shadow-2xl shadow-black/90 backdrop-blur-xl flex flex-col gap-0.5 z-[70]"
+                >
+                  {/* Encabezado del usuario */}
+                  <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.03]">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 via-indigo-500 to-sky-400 p-[1.5px] shrink-0">
+                      <div className="w-full h-full rounded-full bg-[#181817] flex items-center justify-center">
+                        <User className="w-3.5 h-3.5 text-[#ffffffd6]" />
+                      </div>
+                    </div>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-xs font-semibold text-[#ffffffd6] truncate">
+                        {currentUserName}
+                      </span>
+                      <span className="text-[10px] text-[#ffffff6b] truncate">
+                        {isMaster ? "Llave Maestra • Brandex" : `Workspace ${workspaceId?.replace("ws_", "")}`}
+                      </span>
+                    </div>
+                  </div>
 
-            {/* Nombre de usuario a 14px alineado al centro */}
-            <span className="text-[14px] font-normal text-[#ffffffd6] group-hover:text-white truncate leading-none">
-              Feiko
-            </span>
-          </motion.div>
+                  <div className="w-full h-px bg-white/10 my-1" />
+
+                  {/* Copiar Llave de Acceso */}
+                  <button
+                    type="button"
+                    onClick={handleCopyWorkspaceKey}
+                    className="w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-medium text-[#ffffffd6] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-3.5 h-3.5 text-[#3a7bd5]" />
+                      <span>Copiar llave de acceso</span>
+                    </div>
+                    {copiedKey && (
+                      <span className="text-[10px] font-semibold text-emerald-400 flex items-center gap-1">
+                        <Check className="w-3 h-3" />
+                        <span>Copiada</span>
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Ajustes */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("ajustes");
+                      setIsUserMenuOpen(false);
+                      playSound('click');
+                    }}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-[#ffffffd6] hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-[#ffffff6b]" />
+                    <span>Ajustes de espacio</span>
+                  </button>
+
+                  {/* Consola SuperAdmin (Exclusivo Master) */}
+                  {isMaster && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab("superadmin");
+                        setIsUserMenuOpen(false);
+                        playSound('click');
+                      }}
+                      className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    >
+                      <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
+                      <span>Consola SuperAdmin</span>
+                    </button>
+                  )}
+
+                  <div className="w-full h-px bg-white/10 my-1" />
+
+                  {/* Cerrar Sesión */}
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-colors cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Cerrar sesión</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Tarjeta de Usuario Trigger */}
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setIsUserMenuOpen((prev) => !prev);
+                playSound('click');
+              }}
+              className={`group relative flex items-center justify-between h-10 w-[232px] px-2 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-300 border-0 ${
+                isUserMenuOpen ? "bg-white/10 text-white" : "bg-transparent hover:bg-white/5 text-[#ffffffd6]"
+              } shrink-0`}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                {/* Círculo para foto de perfil a la izquierda */}
+                <div className="relative w-7 h-7 rounded-full bg-gradient-to-tr from-violet-600 via-indigo-500 to-sky-400 p-[1.5px] shrink-0 shadow-sm flex items-center justify-center">
+                  <div className="w-full h-full rounded-full bg-[#181817] flex items-center justify-center overflow-hidden">
+                    <User className="w-3.5 h-3.5 text-[#ffffffd6] group-hover:scale-110 transition-transform duration-200" />
+                  </div>
+                </div>
+
+                {/* Nombre de usuario dinámico */}
+                <span className="text-[14px] font-normal text-[#ffffffd6] group-hover:text-white truncate leading-none">
+                  {currentUserName}
+                </span>
+              </div>
+
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-[#ffffff6b] group-hover:text-white transition-transform duration-200 mr-1 ${
+                  isUserMenuOpen ? "rotate-180 text-white" : ""
+                }`}
+              />
+            </motion.div>
+          </div>
         </div>
       )}
 
@@ -1488,30 +1727,31 @@ export default function BrandexV3Page() {
             <div className="col-span-12 flex items-center justify-between h-full gap-2">
               <div className="flex items-center gap-4">
                 <div className="w-9 shrink-0" />
-                <span className={`text-xl md:text-2xl font-medium tracking-tight ${
-                  isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'
-                }`}>
-                  {activeTab === "inicio" ? "Inicio" :
-                   activeTab === "proyectos" ? "Panel de Proyectos" :
-                   activeTab === "equipo" ? "Espacio de Equipo" :
-                   activeTab === "clientes" ? "Directorio de Clientes" :
-                   activeTab === "cliente_v2" ? "Panel Cliente V2" :
-                   activeTab === "finanzas" ? "Métricas Financieras" :
-                   activeTab === "recursos" ? "Biblioteca de Recursos" :
-                   activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
-                </span>
                 {activeTab !== "inicio" && (
-                  <span className={`text-xl md:text-2xl font-normal tracking-tight ${
-                    isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
-                  }`}>
-                    {activeTab === "proyectos" ? "flujo y entregables activos" :
-                     activeTab === "equipo" ? "colaboradores y carga de trabajo" :
-                     activeTab === "clientes" ? "marcas asociadas y contratos" :
-                     activeTab === "cliente_v2" ? "visión 360° de marca y proyectos" :
-                     activeTab === "finanzas" ? "facturación y margen operativo" :
-                     activeTab === "recursos" ? "repositorio de assets y documentación" :
-                     activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
-                  </span>
+                  <>
+                    <span className={`text-xl md:text-2xl font-medium tracking-tight ${
+                      isNightMode ? 'text-[#FFFFFFD6]' : 'text-slate-900'
+                    }`}>
+                      {activeTab === "proyectos" ? "Panel de Proyectos" :
+                       activeTab === "equipo" ? "Espacio de Equipo" :
+                       activeTab === "clientes" ? "Directorio de Clientes" :
+                       activeTab === "finanzas" ? "Métricas Financieras" :
+                       activeTab === "recursos" ? "Biblioteca de Recursos" :
+                       activeTab === "superadmin" ? "Consola SuperAdmin" :
+                       activeTab === "ajustes" ? "Ajustes del Sistema" : sessionGreetingObj.title}
+                    </span>
+                    <span className={`text-xl md:text-2xl font-normal tracking-tight ${
+                      isNightMode ? 'text-[#ffffff6b]' : 'text-slate-600'
+                    }`}>
+                      {activeTab === "proyectos" ? "flujo y entregables activos" :
+                       activeTab === "equipo" ? "colaboradores y carga de trabajo" :
+                       activeTab === "clientes" ? "marcas asociadas y contratos" :
+                       activeTab === "finanzas" ? "facturación y margen operativo" :
+                       activeTab === "recursos" ? "repositorio de assets y documentación" :
+                       activeTab === "superadmin" ? "control de lanzamientos y usuarios beta" :
+                       activeTab === "ajustes" ? "configuración y preferencias" : sessionGreetingObj.subtitle}
+                    </span>
+                  </>
                 )}
               </div>
             </div>
@@ -1530,17 +1770,24 @@ export default function BrandexV3Page() {
         </div>
       )}
 
+      {/* Render SuperAdmin View (Consola de Control) */}
+      {activeTab === "superadmin" && (
+        <div className="absolute top-[75px] left-6 right-6 bottom-4 z-[70] pointer-events-auto rounded-3xl overflow-hidden">
+          <SuperAdminView />
+        </div>
+      )}
+
       {/* Empty Canvas View */}
-      {activeTab !== "proyectos" && (
+      {activeTab !== "proyectos" && activeTab !== "superadmin" && (
         <div
           key={activeTab}
           className={`absolute z-30 pointer-events-auto overflow-x-hidden ${
             activeTab === "inicio"
-              ? "inset-0 overflow-hidden"
+              ? "top-[75px] left-6 right-6 bottom-4 flex flex-col items-center justify-center"
               : "top-[80px] left-6 right-6 bottom-4 flex flex-col gap-6"
           }`}
         >
-          {/* Render Inicio Page with Hero Dot Background */}
+          {/* Render Inicio Page (Chat Copilot) */}
           {activeTab === "inicio" && (
             <InicioDashboard />
           )}
@@ -1591,6 +1838,24 @@ export default function BrandexV3Page() {
             <ClientsDashboard 
               projects={projects}
               onUpdateProjects={setProjects}
+              defaultToFirstClient={false}
+              onSelectProject={(projId) => {
+                const targetProject = projects.find((p) => String(p.id) === String(projId));
+                if (targetProject) {
+                  setActiveProject(targetProject.id);
+                  setEditingProjectModal(targetProject);
+                  setShowNewProjectModal(true);
+                  playSound('click');
+                } else {
+                  setActiveProject(projId);
+                  setActiveTab("proyectos");
+                }
+              }}
+              onCreateProject={(preselectedClientId) => {
+                setEditingProjectModal(null);
+                setShowNewProjectModal(true);
+                playSound('pop');
+              }}
               isNeumorphic={isNeumorphic}
               isNightMode={isNightMode}
             />

@@ -29,30 +29,46 @@ export interface ViewEntry {
   id?: string;
 }
 
-// ── Auth Store ────────────────────────────────────────────────────────────────
 interface AuthState {
-  role:      Role | null;
-  userId:    string | null;
-  userName:  string | null;
-  token:     string | null;
+  role:        Role | null;
+  userId:      string | null;
+  userName:    string | null;
+  token:       string | null;
+  workspaceId: string | null;
 
-  setAuth: (role: Role, id: string, name: string, token: string) => void;
+  setAuth: (role: Role, id: string, name: string, token: string, workspaceId?: string) => void;
   logout:  () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      role:     null,
-      userId:   null,
-      userName: null,
-      token:    null,
+      role:        null,
+      userId:      null,
+      userName:    null,
+      token:       null,
+      workspaceId: null,
 
-      setAuth: (role, userId, userName, token) =>
-        set({ role, userId, userName, token }),
+      setAuth: (role, userId, userName, token, workspaceId = "brandex-master") => {
+        if (typeof document !== "undefined") {
+          try {
+            const cookieValue = encodeURIComponent(
+              JSON.stringify({ token, workspaceId, role, userId, userName })
+            );
+            document.cookie = `taski_session=${cookieValue}; path=/; max-age=2592000; SameSite=Lax`;
+          } catch {}
+        }
+        set({ role, userId, userName, token, workspaceId });
+      },
 
-      logout: () =>
-        set({ role: null, userId: null, userName: null, token: null }),
+      logout: () => {
+        if (typeof document !== "undefined") {
+          try {
+            document.cookie = "taski_session=; path=/; max-age=0; SameSite=Lax";
+          } catch {}
+        }
+        set({ role: null, userId: null, userName: null, token: null, workspaceId: null });
+      },
     }),
     { name: "braindex-auth" }   // persisted in localStorage
   )

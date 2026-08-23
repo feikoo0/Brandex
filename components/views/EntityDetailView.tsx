@@ -6,15 +6,18 @@ import { EntityProfileVertical } from "./entity-detail/EntityProfileVertical";
 import { EntityProjectsKanban } from "./entity-detail/EntityProjectsKanban";
 import { EntityPropertiesGoals } from "./entity-detail/EntityPropertiesGoals";
 import { EntityFinancesInsights } from "./entity-detail/EntityFinancesInsights";
+import { ClientDetailViewV2 } from "./ClientDetailViewV2";
 import type { Client, Member, Project } from "@/lib/types";
 
 export interface EntityDetailViewProps {
   entity: Client | Member;
   entityType: "client" | "member" | "user";
   allProjects: any[];
+  allClients?: Client[];
+  onSelectClient?: (clientId: string) => void;
   onBack: () => void;
   onOpenProject: (projectId: string | number) => void;
-  onCreateProject?: () => void;
+  onCreateProject?: (preselectedClientId?: string) => void;
   onUpdateEntity: (updated: Partial<Client | Member>) => Promise<void> | void;
   className?: string;
 }
@@ -23,34 +26,43 @@ export function EntityDetailView({
   entity,
   entityType,
   allProjects = [],
+  allClients = [],
+  onSelectClient,
   onBack,
   onOpenProject,
   onCreateProject,
   onUpdateEntity,
   className = "",
 }: EntityDetailViewProps) {
-  // Filter projects belonging to this entity
+  // Filter projects belonging to this member entity
   const entityProjects = useMemo(() => {
     const entIdStr = String(entity.id);
     const entNameLower = (entity.nombre || (entity as any).name || "").toLowerCase();
 
     return allProjects.filter((p) => {
-      if (entityType === "client") {
-        // Match by client_id, cliente_ids or client name
-        const matchId = 
-          String(p.cliente_ids?.[0] || "") === entIdStr || 
-          String((p as any).cliente_id || "") === entIdStr ||
-          String((p as any).client || "") === entIdStr;
-        const matchName = (p as any).client?.toLowerCase() === entNameLower || (p as any).cliente?.toLowerCase() === entNameLower;
-        return matchId || matchName;
-      } else {
-        // Match by assigned worker ID or name
-        const matchId = (p.asignado_ids || []).map(String).includes(entIdStr);
-        const matchName = p.asignado?.toLowerCase().includes(entNameLower);
-        return matchId || matchName;
-      }
+      // Match by assigned worker ID or name
+      const matchId = (p.asignado_ids || []).map(String).includes(entIdStr);
+      const matchName = p.asignado?.toLowerCase().includes(entNameLower);
+      return matchId || matchName;
     });
-  }, [allProjects, entity, entityType]);
+  }, [allProjects, entity]);
+
+  // If entity is a client, render the new Work 1-mirrored ClientDetailViewV2
+  if (entityType === "client") {
+    return (
+      <ClientDetailViewV2
+        client={entity as Client}
+        projects={allProjects}
+        allClients={allClients}
+        onSelectClient={onSelectClient}
+        onBack={onBack}
+        onOpenProject={onOpenProject}
+        onCreateProject={onCreateProject}
+        onUpdateClient={onUpdateEntity as any}
+        className={className}
+      />
+    );
+  }
 
   const handleUpdateProjectStatus = async (projId: string | number, newStatus: string) => {
     // Project status updater callback

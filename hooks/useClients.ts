@@ -278,21 +278,39 @@ export const INITIAL_CLIENTS: Client[] = [
   }
 ];
 
+import { useAuthStore } from "@/lib/store";
+
 // Alias for legacy support
 export const INITIAL_V3_CLIENTS = INITIAL_CLIENTS;
 
 export function useClients() {
-  const [clients, setClients] = useState<Client[]>(INITIAL_CLIENTS);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+
+  const [clients, setClients] = useState<Client[]>(isMaster ? INITIAL_CLIENTS : []);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Real-time listener for Firestore collection "clients" (with fallback migration from "v3_clients")
+  // Real-time listener for Firestore collection "clients" (or workspace collection)
   useEffect(() => {
-    const colRef = collection(db, "clients");
+    if (!workspaceId) {
+      setClients([]);
+      setIsLoading(false);
+      return;
+    }
+
+    const colName = isMaster ? "clients" : `ws_${workspaceId}_clients`;
+    const colRef = collection(db, colName);
 
     const unsubscribe = onSnapshot(
       colRef,
       async (snapshot) => {
         if (snapshot.empty) {
+          if (!isMaster) {
+            setClients([]);
+            setIsLoading(false);
+            return;
+          }
+
           try {
             // Check if legacy "v3_clients" has documents to migrate
             const legacySnap = await getDocs(collection(db, "v3_clients"));
@@ -370,13 +388,13 @@ export function useClients() {
       },
       (err) => {
         console.error("Error subscribing to clients:", err);
-        setClients(INITIAL_CLIENTS);
+        setClients(isMaster ? INITIAL_CLIENTS : []);
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [isMaster, workspaceId]);
 
   // Crear nuevo cliente
   const createClient = useCallback(async (data: Partial<Client>): Promise<string> => {

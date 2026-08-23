@@ -204,18 +204,6 @@ function buildCalendarWeeks(
           else if (totalHours <= 3.5) level = 2;
           else if (totalHours <= 5.5) level = 3;
           else level = 4;
-        } else if (!hasAnyRealActivity) {
-          let hash = 0;
-          for (let i = 0; i < dateStr.length; i++) {
-            hash = (hash << 5) - hash + dateStr.charCodeAt(i);
-            hash |= 0;
-          }
-          const pseudo = Math.abs(hash % 100) / 100;
-          if (pseudo > 0.45) {
-            level = (Math.floor((pseudo * 10) % 4) + 1) as ContributionLevel;
-            totalHours = Math.round((level * 1.2 + pseudo) * 10) / 10;
-            sessionCount = Math.max(1, Math.floor(level * 1.5));
-          }
         }
       }
 

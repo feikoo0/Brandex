@@ -48,6 +48,27 @@ async function apiFetch<T>(
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
+export async function loginWithCode(
+  code: string
+): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("POST", "/api/login", { code });
+}
+
+export async function loginWithGoogle(googleUser: {
+  email: string | null;
+  uid: string;
+  displayName: string | null;
+  photoURL?: string | null;
+}): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("POST", "/api/login", { googleUser });
+}
+
+export async function createWorkspaceWithSurvey(
+  surveyData: import("./types").OnboardingSurveyData
+): Promise<LoginResponse> {
+  return apiFetch<LoginResponse>("POST", "/api/workspace/create", surveyData);
+}
+
 export async function login(
   usuario: string,
   password: string
