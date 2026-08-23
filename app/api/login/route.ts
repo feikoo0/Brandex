@@ -11,9 +11,6 @@ export async function POST(req: NextRequest) {
 
     // 1. Master Passcodes (Full Brandex Agency Workspace)
     const MASTER_KEYS = ["159789", "842910", "777777", "08e600", "MASTER"];
-    
-    // 2. Clean / Isolated Workspace Passcodes (Todo en blanco, 0 clientes, 0 proyectos, 0 tareas)
-    const CLEAN_KEYS = ["000000", "CLEAN", "GUEST"];
 
     const createSuccessResponse = (payload: {
       role: string;
@@ -89,7 +86,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Caso B: Login con PIN / Llave de Acceso ───────────────────────────────
+    // ── Caso B: Login con PIN / Llave de Acceso (WHITELIST ESTRICTA) ─────────────
     if (accessCode) {
       // B1: Llave Maestra (Full Brandex data)
       if (MASTER_KEYS.includes(accessCode) || accessCode === (process.env.ADMIN_PASS ?? "08e6003802A")) {
@@ -102,49 +99,43 @@ export async function POST(req: NextRequest) {
         });
       }
 
-      // B2: Llave Aislada Demo (Todo en blanco)
-      if (CLEAN_KEYS.includes(accessCode)) {
-        return createSuccessResponse({
-          role: "admin",
-          id: "guest_user",
-          nombre: "Usuario Taski",
-          workspaceId: "isolated_user",
-          token: "isolated-auth-token",
-        });
-      }
+      // B2: Buscar exclusivamente en la whitelist de Workspaces Registrados en Firestore
+      try {
+        let wsSnap = await getDocs(
+          query(collection(db, "workspaces"), where("pin", "==", accessCode))
+        );
 
-      // B3: Buscar si el PIN corresponde a un workspace creado por Onboarding
-      if (/^[0-9a-zA-Z]{6}$/.test(accessCode)) {
-        try {
-          const wsSnap = await getDocs(
-            query(collection(db, "workspaces"), where("pin", "==", accessCode))
+        if (wsSnap.empty) {
+          wsSnap = await getDocs(
+            query(collection(db, "workspaces"), where("workspaceId", "==", `ws_${accessCode}`))
           );
-          if (!wsSnap.empty) {
-            const wsData = wsSnap.docs[0].data();
-            return createSuccessResponse({
-              role: "admin",
-              id: wsData.googleUid || `user_${accessCode}`,
-              nombre: wsData.ownerName || `Workspace ${accessCode}`,
-              workspaceId: wsData.workspaceId || `ws_${accessCode}`,
-              token: `token_${accessCode}`,
-            });
-          }
-        } catch (e) {
-          console.error("Error buscando PIN en Firestore workspaces:", e);
         }
 
-        // B4: Si no está registrado pero es un formato válido de 6 caracteres, crear/acceder al workspace dinámico
-        return createSuccessResponse({
-          role: "admin",
-          id: `user_${accessCode.toLowerCase()}`,
-          nombre: `Workspace ${accessCode}`,
-          workspaceId: `ws_${accessCode.toLowerCase()}`,
-          token: `token_${accessCode}`,
-        });
+        if (wsSnap.empty) {
+          wsSnap = await getDocs(
+            query(collection(db, "onboarding_surveys"), where("pin", "==", accessCode))
+          );
+        }
+
+        if (!wsSnap.empty) {
+          const wsData = wsSnap.docs[0].data();
+          const resolvedName = wsData.ownerName || wsData.name || "Usuario Taski";
+          const resolvedWsId = wsData.workspaceId || (wsData.pin ? `ws_${wsData.pin}` : wsSnap.docs[0].id);
+          return createSuccessResponse({
+            role: "admin",
+            id: wsData.googleUid || `user_${accessCode}`,
+            nombre: resolvedName,
+            workspaceId: resolvedWsId,
+            token: `token_${accessCode}`,
+          });
+        }
+      } catch (e) {
+        console.error("Error buscando PIN en Firestore workspaces:", e);
       }
 
+      // Si no existe en la whitelist, denegar acceso rotundamente
       return NextResponse.json(
-        { ok: false, error: "Llave de acceso no válida" },
+        { ok: false, error: "Esta llave no está en la lista de acceso. Completa la encuesta para generar tu llave." },
         { status: 401 }
       );
     }
