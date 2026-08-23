@@ -747,3 +747,19 @@ export function getCardColorTheme(colorName: string = "Predeterminado", _isNight
       };
   }
 }
+
+/**
+ * Returns the exact Firestore collection name based on workspace tenancy.
+ * Master gets 'clients', 'projects', 'tasks', 'members', 'sessions'.
+ * Tenant workspaces get 'ws_[PIN]_[colName]' (avoiding duplicate 'ws_ws_' prefixes).
+ */
+export function getWorkspaceScopedCol(
+  baseCol: string,
+  workspaceId: string | null | undefined,
+  isMaster: boolean
+): string {
+  if (isMaster || !workspaceId) return baseCol;
+  const cleanId = workspaceId.startsWith("ws_") ? workspaceId : `ws_${workspaceId}`;
+  return `${cleanId}_${baseCol}`;
+}
+

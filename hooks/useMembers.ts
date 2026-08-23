@@ -160,6 +160,7 @@ export const INITIAL_MEMBERS: Member[] = [
   }
 ];
 
+import { getWorkspaceScopedCol } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 
 export function useMembers() {
@@ -177,7 +178,7 @@ export function useMembers() {
       return;
     }
 
-    const colName = isMaster ? "members" : `ws_${workspaceId}_members`;
+    const colName = getWorkspaceScopedCol("members", workspaceId, isMaster);
     const colRef = collection(db, colName);
 
     const unsubscribe = onSnapshot(
@@ -290,7 +291,8 @@ export function useMembers() {
       updated_at: serverTimestamp(),
     };
 
-    await setDoc(doc(db, "members", newId), newMember);
+    const targetCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
+    await setDoc(doc(db, targetCol, newId), newMember);
 
     recordUndoAction({
       entityType: "member",
@@ -300,19 +302,20 @@ export function useMembers() {
       undoDescription: `Miembro "${newMember.nombre}" eliminado`,
       redoDescription: `Miembro "${newMember.nombre}" recreado`,
       executeUndo: async () => {
-        await deleteDoc(doc(db, "members", newId));
+        await deleteDoc(doc(db, targetCol, newId));
       },
       executeRedo: async () => {
-        await setDoc(doc(db, "members", newId), newMember);
+        await setDoc(doc(db, targetCol, newId), newMember);
       },
     });
 
     return newId;
-  }, []);
+  }, [workspaceId, isMaster]);
 
   const updateMember = useCallback(async (id: string, data: Partial<Member>): Promise<void> => {
     const prevMember = members.find((m) => String(m.id) === String(id));
-    const docRef = doc(db, "members", String(id));
+    const targetCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
+    const docRef = doc(db, targetCol, String(id));
     await updateDoc(docRef, {
       ...data,
       updatedAt: serverTimestamp(),
@@ -335,7 +338,7 @@ export function useMembers() {
         undoDescription: `Miembro "${memberName}" restaurado`,
         redoDescription: `Miembro "${memberName}" modificado`,
         executeUndo: async () => {
-          const ref = doc(db, "members", String(id));
+          const ref = doc(db, targetCol, String(id));
           await updateDoc(ref, {
             ...prevSnapshot,
             updatedAt: serverTimestamp(),
@@ -343,7 +346,7 @@ export function useMembers() {
           });
         },
         executeRedo: async () => {
-          const ref = doc(db, "members", String(id));
+          const ref = doc(db, targetCol, String(id));
           await updateDoc(ref, {
             ...data,
             updatedAt: serverTimestamp(),
@@ -352,11 +355,12 @@ export function useMembers() {
         },
       });
     }
-  }, [members]);
+  }, [members, workspaceId, isMaster]);
 
   const deleteMember = useCallback(async (id: string): Promise<void> => {
     const prevMember = members.find((m) => String(m.id) === String(id));
-    const docRef = doc(db, "members", String(id));
+    const targetCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
+    const docRef = doc(db, targetCol, String(id));
     await deleteDoc(docRef);
 
     if (prevMember) {
@@ -369,18 +373,18 @@ export function useMembers() {
         undoDescription: `Miembro "${memberName}" restaurado`,
         redoDescription: `Miembro "${memberName}" eliminado`,
         executeUndo: async () => {
-          await setDoc(doc(db, "members", String(id)), {
+          await setDoc(doc(db, targetCol, String(id)), {
             ...prevMember,
             updatedAt: serverTimestamp(),
             updated_at: serverTimestamp(),
           });
         },
         executeRedo: async () => {
-          await deleteDoc(doc(db, "members", String(id)));
+          await deleteDoc(doc(db, targetCol, String(id)));
         },
       });
     }
-  }, [members]);
+  }, [members, workspaceId, isMaster]);
 
   return {
     members,

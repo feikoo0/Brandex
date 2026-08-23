@@ -26,7 +26,8 @@ import { FinanzasGlobalesDashboard } from "./components/FinanzasGlobalesDashboar
 import { SaveStatusBadge } from "./components/SaveStatusBadge";
 import { persistProjectUpdate } from "./utils/persist";
 import { useRouter } from "next/navigation";
-import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { getSingleSourceProjectColor, PROJECT_COLOR_PALETTE, getDynamicGreeting, getWorkspaceScopedCol } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 
 interface TaskSession {
@@ -235,6 +236,7 @@ export default function BrandexV3Page() {
   const [copiedKey, setCopiedKey] = useState(false);
   const logout = useAuthStore((s) => s.logout);
   const { isFeatureVisible } = useSystemFeatures();
+  const qc = useQueryClient();
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -283,8 +285,10 @@ export default function BrandexV3Page() {
       try {
         if (!isMaster) {
           // En modo aislado / usuario nuevo, solo cargamos los proyectos creados en su workspace
-          const wsProjSnap = await getDocs(collection(db, `ws_${workspaceId}_projects`));
-          const wsTasksSnap = await getDocs(collection(db, `ws_${workspaceId}_tasks`));
+          const wsProjCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+          const wsTasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
+          const wsProjSnap = await getDocs(collection(db, wsProjCol));
+          const wsTasksSnap = await getDocs(collection(db, wsTasksCol));
           
           if (!wsProjSnap.empty) {
             const nativeTasks = wsTasksSnap.docs.map((d) => d.data());
@@ -542,13 +546,21 @@ export default function BrandexV3Page() {
   const deleteProject = async (id: number | string) => {
     try {
       const projIdStr = String(id);
-      // 1. Delete from Firestore v3_projects and native projects collection
-      await deleteDoc(doc(db, "v3_projects", projIdStr));
-      await deleteDoc(doc(db, "projects", projIdStr)).catch(() => {});
+      const scopedProjectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+      const scopedV3Col = getWorkspaceScopedCol("v3_projects", workspaceId, isMaster);
+      const scopedTasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
-      // 2. Delete associated tasks from native tasks collection
+      // 1. Delete from Firestore scoped projects collections
+      await deleteDoc(doc(db, scopedV3Col, projIdStr)).catch(() => {});
+      await deleteDoc(doc(db, scopedProjectsCol, projIdStr)).catch(() => {});
+      if (isMaster) {
+        await deleteDoc(doc(db, "v3_projects", projIdStr)).catch(() => {});
+        await deleteDoc(doc(db, "projects", projIdStr)).catch(() => {});
+      }
+
+      // 2. Delete associated tasks from scoped tasks collection
       try {
-        const tasksSnap = await getDocs(collection(db, "tasks"));
+        const tasksSnap = await getDocs(collection(db, scopedTasksCol));
         const deletePromises: Promise<void>[] = [];
         tasksSnap.docs.forEach((tDoc) => {
           const tData = tDoc.data();
@@ -560,6 +572,8 @@ export default function BrandexV3Page() {
       } catch (tErr) {
         console.error("Error purging associated tasks from Firestore:", tErr);
       }
+
+      qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
       
       // 3. Update local state & localStorage
       setProjects(prev => {
@@ -679,9 +693,13 @@ export default function BrandexV3Page() {
     setActiveProject(newId);
 
     try {
-      await setDoc(doc(db, "v3_projects", String(newId)), newProject);
+      const scopedProjectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+      const scopedV3Col = getWorkspaceScopedCol("v3_projects", workspaceId, isMaster);
+      const scopedTasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
-      // Dual write to native /projects collection
+      await setDoc(doc(db, scopedV3Col, String(newId)), newProject);
+
+      // Dual write to native projects collection
       const nativeProject = {
         id: String(newId),
         nombre: newProject.title,
@@ -705,9 +723,12 @@ export default function BrandexV3Page() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
-      await setDoc(doc(db, "projects", String(newId)), nativeProject);
+      await setDoc(doc(db, scopedProjectsCol, String(newId)), nativeProject);
+      if (isMaster) {
+        await setDoc(doc(db, "projects", String(newId)), nativeProject).catch(() => {});
+      }
 
-      // Dual write tasks to native /tasks collection
+      // Dual write tasks to native tasks collection
       if (newProject.tasks && newProject.tasks.length > 0) {
         for (const t of newProject.tasks) {
           const nativeTask = {
@@ -731,9 +752,14 @@ export default function BrandexV3Page() {
             created_at: serverTimestamp(),
             updated_at: serverTimestamp(),
           };
-          await setDoc(doc(db, "tasks", String(t.id)), nativeTask);
+          await setDoc(doc(db, scopedTasksCol, String(t.id)), nativeTask);
+          if (isMaster) {
+            await setDoc(doc(db, "tasks", String(t.id)), nativeTask).catch(() => {});
+          }
         }
       }
+
+      qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
     } catch (e) {
       console.error("Error creating project in Firestore:", e);
     }

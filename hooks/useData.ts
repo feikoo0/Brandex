@@ -31,6 +31,7 @@ import type {
 } from "@/lib/types";
 
 import { useAuthStore } from "@/lib/store";
+import { getWorkspaceScopedCol } from "@/lib/utils";
 
 const QUERY_KEY = ["taski-firestore-data"];
 
@@ -55,11 +56,16 @@ export function useData() {
       // 0. Si es un workspace aislado (no master), leer solo sus colecciones particionadas
       if (!isMaster) {
         try {
+          const clientsCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+          const membersCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
+          const projCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+          const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
+
           const [clientsSnap, membersSnap, projSnap, tasksSnap] = await Promise.all([
-            getDocs(collection(db, `ws_${workspaceId}_clients`)).catch(() => ({ empty: true, docs: [] as any[] })),
-            getDocs(collection(db, `ws_${workspaceId}_members`)).catch(() => ({ empty: true, docs: [] as any[] })),
-            getDocs(collection(db, `ws_${workspaceId}_projects`)).catch(() => ({ empty: true, docs: [] as any[] })),
-            getDocs(collection(db, `ws_${workspaceId}_tasks`)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, clientsCol)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, membersCol)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, projCol)).catch(() => ({ empty: true, docs: [] as any[] })),
+            getDocs(collection(db, tasksCol)).catch(() => ({ empty: true, docs: [] as any[] })),
           ]);
 
           const clientsList: Client[] = clientsSnap.empty
@@ -70,10 +76,68 @@ export function useData() {
             : membersSnap.docs.map((d: any) => ({ ...d.data(), id: d.id }));
           const projectsList: Project[] = projSnap.empty
             ? []
-            : projSnap.docs.map((d: any) => ({ ...d.data(), id: d.id } as Project));
+            : projSnap.docs.map((d: any) => {
+                const data = d.data();
+                return {
+                  id: d.id,
+                  nombre: data.nombre || data.name || data.title || "Proyecto",
+                  cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : (data.client ? [String(data.client)] : [])),
+                  asignado_ids: data.asignado_ids || [],
+                  asignado: data.asignado || "",
+                  estadoProyecto: data.estadoProyecto || data.estado || data.status || "Planificación",
+                  estado: data.estado || data.estadoProyecto || data.status || "Planificación",
+                  area: data.area || "",
+                  formato: data.formato || "",
+                  prioridad: data.prioridad || "Media",
+                  ciclo: data.ciclo || "",
+                  esfuerzo: data.esfuerzo || "Medio",
+                  plataformas: data.plataformas || [],
+                  fechaInicio: data.fechaInicio || data.startDate || "",
+                  fechaFin: data.fechaFin || data.deadline || "",
+                  recursosDrive: data.recursosDrive || "",
+                  costo: data.costo !== undefined ? Number(data.costo) : (Number(String(data.cost || 0).replace(/[^0-9]/g, "")) || 0),
+                  tarea_ids: data.tarea_ids || [],
+                  descripcion: data.descripcion || data.desc || "",
+                  url: data.url || "",
+                  createdAt: data.createdAt || data.created_at || null,
+                  updatedAt: data.updatedAt || data.updated_at || null,
+                  created_at: data.created_at || data.createdAt || null,
+                  updated_at: data.updated_at || data.updatedAt || null,
+                  ...data,
+                } as Project;
+              });
           const tasksList: Task[] = tasksSnap.empty
             ? []
-            : tasksSnap.docs.map((d: any) => ({ ...d.data(), id: d.id } as Task));
+            : tasksSnap.docs.map((d: any) => {
+                const data = d.data();
+                return {
+                  id: d.id,
+                  titulo: data.titulo || data.title || "Tarea",
+                  estado: data.estado || data.status || "Pendiente",
+                  area: data.area || "",
+                  asignado: data.asignado || "",
+                  formato: data.formato || data.format || "",
+                  esfuerzo: data.esfuerzo || data.time || "1h",
+                  prioridad: data.prioridad || "Media",
+                  plataformas: data.plataformas || [],
+                  contenido: data.contenido || "",
+                  copy: data.copy || "",
+                  adminNotes: data.adminNotes || "",
+                  notasCliente: data.notasCliente || "",
+                  fechaProg: data.fechaProg || "",
+                  fechaEntrega: data.fechaEntrega || data.deadline || "",
+                  asignado_ids: data.asignado_ids || [],
+                  proyecto_ids: data.proyecto_ids || (data.proyecto_id ? [String(data.proyecto_id)] : (data.project_id ? [String(data.project_id)] : [])),
+                  cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : (data.client ? [String(data.client)] : [])),
+                  created: data.created || new Date().toISOString(),
+                  url: data.url || "",
+                  createdAt: data.createdAt || data.created_at || null,
+                  updatedAt: data.updatedAt || data.updated_at || null,
+                  created_at: data.created_at || data.createdAt || null,
+                  updated_at: data.updated_at || data.updatedAt || null,
+                  ...data,
+                } as Task;
+              });
 
           return {
             clientes: clientsList,
@@ -245,6 +309,10 @@ export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Task> & { titulo: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
+
       const newId = "task-" + Date.now();
       const taskDoc = {
         ...data,
@@ -257,7 +325,7 @@ export function useCreateTask() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
-      await setDoc(doc(db, "tasks", newId), taskDoc);
+      await setDoc(doc(db, tasksCol, newId), taskDoc);
 
       recordUndoAction({
         entityType: "task",
@@ -267,11 +335,11 @@ export function useCreateTask() {
         undoDescription: `Tarea "${taskDoc.titulo}" eliminada`,
         redoDescription: `Tarea "${taskDoc.titulo}" recreada`,
         executeUndo: async () => {
-          await deleteDoc(doc(db, "tasks", newId));
+          await deleteDoc(doc(db, tasksCol, newId));
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
         executeRedo: async () => {
-          await setDoc(doc(db, "tasks", newId), taskDoc);
+          await setDoc(doc(db, tasksCol, newId), taskDoc);
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
       });
@@ -291,11 +359,15 @@ export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Task> & { id: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
+
       // Snapshot previo desde caché
       const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
       const prevTask = currentCache?.tareas?.find((t) => String(t.id) === String(data.id));
 
-      const taskRef = doc(db, "tasks", String(data.id));
+      const taskRef = doc(db, tasksCol, String(data.id));
       await updateDoc(taskRef, {
         ...data,
         updatedAt: serverTimestamp(),
@@ -329,7 +401,7 @@ export function useUpdateTask() {
           undoDescription: undoDesc,
           redoDescription: desc,
           executeUndo: async () => {
-            const ref = doc(db, "tasks", String(data.id));
+            const ref = doc(db, tasksCol, String(data.id));
             await updateDoc(ref, {
               ...prevSnapshot,
               updatedAt: serverTimestamp(),
@@ -338,7 +410,7 @@ export function useUpdateTask() {
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
           executeRedo: async () => {
-            const ref = doc(db, "tasks", String(data.id));
+            const ref = doc(db, tasksCol, String(data.id));
             await updateDoc(ref, {
               ...data,
               updatedAt: serverTimestamp(),
@@ -359,10 +431,14 @@ export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (taskId: string) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
+
       const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
       const prevTask = currentCache?.tareas?.find((t) => String(t.id) === String(taskId));
 
-      await deleteDoc(doc(db, "tasks", String(taskId)));
+      await deleteDoc(doc(db, tasksCol, String(taskId)));
 
       if (prevTask) {
         const taskTitle = prevTask.titulo || "Tarea";
@@ -374,7 +450,7 @@ export function useDeleteTask() {
           undoDescription: `Tarea "${taskTitle}" restaurada`,
           redoDescription: `Tarea "${taskTitle}" eliminada`,
           executeUndo: async () => {
-            await setDoc(doc(db, "tasks", String(taskId)), {
+            await setDoc(doc(db, tasksCol, String(taskId)), {
               ...prevTask,
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
@@ -382,7 +458,7 @@ export function useDeleteTask() {
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
           executeRedo: async () => {
-            await deleteDoc(doc(db, "tasks", String(taskId)));
+            await deleteDoc(doc(db, tasksCol, String(taskId)));
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
         });
@@ -399,6 +475,10 @@ export function useCreateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Project> & { nombre: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const projectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+
       const newId = "proj-" + Date.now();
       const projectDoc = {
         ...data,
@@ -411,7 +491,7 @@ export function useCreateProject() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
-      await setDoc(doc(db, "projects", newId), projectDoc);
+      await setDoc(doc(db, projectsCol, newId), projectDoc);
 
       recordUndoAction({
         entityType: "project",
@@ -421,11 +501,11 @@ export function useCreateProject() {
         undoDescription: `Proyecto "${projectDoc.nombre}" eliminado`,
         redoDescription: `Proyecto "${projectDoc.nombre}" recreado`,
         executeUndo: async () => {
-          await deleteDoc(doc(db, "projects", newId));
+          await deleteDoc(doc(db, projectsCol, newId));
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
         executeRedo: async () => {
-          await setDoc(doc(db, "projects", newId), projectDoc);
+          await setDoc(doc(db, projectsCol, newId), projectDoc);
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
       });
@@ -492,11 +572,16 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (projectId: string) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const projectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
+      const v3Col = getWorkspaceScopedCol("v3_projects", workspaceId, isMaster);
+
       const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
       const prevProject = currentCache?.proyectos?.find((p) => String(p.id) === String(projectId));
 
-      await deleteDoc(doc(db, "projects", String(projectId)));
-      await deleteDoc(doc(db, "v3_projects", String(projectId))).catch(() => {});
+      await deleteDoc(doc(db, projectsCol, String(projectId)));
+      await deleteDoc(doc(db, v3Col, String(projectId))).catch(() => {});
 
       if (prevProject) {
         const projName = prevProject.nombre || "Proyecto";
@@ -508,12 +593,12 @@ export function useDeleteProject() {
           undoDescription: `Proyecto "${projName}" restaurado`,
           redoDescription: `Proyecto "${projName}" eliminado`,
           executeUndo: async () => {
-            await setDoc(doc(db, "projects", String(projectId)), {
+            await setDoc(doc(db, projectsCol, String(projectId)), {
               ...prevProject,
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            await setDoc(doc(db, "v3_projects", String(projectId)), {
+            await setDoc(doc(db, v3Col, String(projectId)), {
               ...prevProject,
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
@@ -521,8 +606,8 @@ export function useDeleteProject() {
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
           executeRedo: async () => {
-            await deleteDoc(doc(db, "projects", String(projectId)));
-            await deleteDoc(doc(db, "v3_projects", String(projectId))).catch(() => {});
+            await deleteDoc(doc(db, projectsCol, String(projectId)));
+            await deleteDoc(doc(db, v3Col, String(projectId))).catch(() => {});
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
         });
@@ -539,6 +624,10 @@ export function useCreateClient() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Client> & { nombre: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const clientsCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+
       const newId = "cli-" + Date.now();
       const clientDoc = {
         ...data,
@@ -549,7 +638,7 @@ export function useCreateClient() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
-      await setDoc(doc(db, "clients", newId), clientDoc);
+      await setDoc(doc(db, clientsCol, newId), clientDoc);
 
       recordUndoAction({
         entityType: "client",
@@ -559,11 +648,11 @@ export function useCreateClient() {
         undoDescription: `Cliente "${clientDoc.nombre}" eliminado`,
         redoDescription: `Cliente "${clientDoc.nombre}" recreado`,
         executeUndo: async () => {
-          await deleteDoc(doc(db, "clients", newId));
+          await deleteDoc(doc(db, clientsCol, newId));
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
         executeRedo: async () => {
-          await setDoc(doc(db, "clients", newId), clientDoc);
+          await setDoc(doc(db, clientsCol, newId), clientDoc);
           qc.invalidateQueries({ queryKey: QUERY_KEY });
         },
       });
@@ -578,10 +667,14 @@ export function useUpdateClient() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Client> & { id: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const clientsCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+
       const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
       const prevClient = currentCache?.clientes?.find((c) => String(c.id) === String(data.id));
 
-      const clientRef = doc(db, "clients", String(data.id));
+      const clientRef = doc(db, clientsCol, String(data.id));
       await updateDoc(clientRef, {
         ...data,
         updatedAt: serverTimestamp(),
@@ -604,7 +697,7 @@ export function useUpdateClient() {
           undoDescription: `Cliente "${clientName}" restaurado`,
           redoDescription: `Cliente "${clientName}" modificado`,
           executeUndo: async () => {
-            const ref = doc(db, "clients", String(data.id));
+            const ref = doc(db, clientsCol, String(data.id));
             await updateDoc(ref, {
               ...prevSnapshot,
               updatedAt: serverTimestamp(),
@@ -613,7 +706,7 @@ export function useUpdateClient() {
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
           executeRedo: async () => {
-            const ref = doc(db, "clients", String(data.id));
+            const ref = doc(db, clientsCol, String(data.id));
             await updateDoc(ref, {
               ...data,
               updatedAt: serverTimestamp(),
@@ -635,10 +728,14 @@ export function useUpdateWorker() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Worker> & { id: string }) => {
+      const { workspaceId } = useAuthStore.getState();
+      const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+      const membersCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
+
       const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
       const prevWorker = currentCache?.trabajadores?.find((w) => String(w.id) === String(data.id));
 
-      const memberRef = doc(db, "members", String(data.id));
+      const memberRef = doc(db, membersCol, String(data.id));
       await updateDoc(memberRef, {
         ...data,
         updatedAt: serverTimestamp(),
@@ -661,7 +758,7 @@ export function useUpdateWorker() {
           undoDescription: `Miembro "${workerName}" restaurado`,
           redoDescription: `Miembro "${workerName}" modificado`,
           executeUndo: async () => {
-            const ref = doc(db, "members", String(data.id));
+            const ref = doc(db, membersCol, String(data.id));
             await updateDoc(ref, {
               ...prevSnapshot,
               updatedAt: serverTimestamp(),
@@ -670,7 +767,7 @@ export function useUpdateWorker() {
             qc.invalidateQueries({ queryKey: QUERY_KEY });
           },
           executeRedo: async () => {
-            const ref = doc(db, "members", String(data.id));
+            const ref = doc(db, membersCol, String(data.id));
             await updateDoc(ref, {
               ...data,
               updatedAt: serverTimestamp(),

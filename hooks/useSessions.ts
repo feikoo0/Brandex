@@ -23,6 +23,8 @@ import { recordUndoAction } from "@/lib/undoManager";
 import { useAuthStore } from "@/lib/store";
 import type { SessionDoc, SessionOrigin } from "@/lib/types";
 
+import { getWorkspaceScopedCol } from "@/lib/utils";
+
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
 const TIMEOUT_ORPHAN_MS = 15 * 60 * 1000;    // 15 minutos
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 30 días de retención en papelera
@@ -31,10 +33,8 @@ function getSessionsColName(workspaceId?: string | null): string {
   if (!workspaceId) {
     return "sessions_unauthorized";
   }
-  if (workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789") {
-    return "sessions";
-  }
-  return `ws_${workspaceId}_sessions`;
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+  return getWorkspaceScopedCol("sessions", workspaceId, isMaster);
 }
 
 // Helper para convertir Timestamps a milisegundos de forma segura

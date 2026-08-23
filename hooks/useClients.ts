@@ -278,6 +278,7 @@ export const INITIAL_CLIENTS: Client[] = [
   }
 ];
 
+import { getWorkspaceScopedCol } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 
 // Alias for legacy support
@@ -298,7 +299,7 @@ export function useClients() {
       return;
     }
 
-    const colName = isMaster ? "clients" : `ws_${workspaceId}_clients`;
+    const colName = getWorkspaceScopedCol("clients", workspaceId, isMaster);
     const colRef = collection(db, colName);
 
     const unsubscribe = onSnapshot(
@@ -446,7 +447,8 @@ export function useClients() {
       updated_at: serverTimestamp(),
     };
 
-    await setDoc(doc(db, "clients", newId), newClient);
+    const targetCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+    await setDoc(doc(db, targetCol, newId), newClient);
 
     recordUndoAction({
       entityType: "client",
@@ -456,20 +458,21 @@ export function useClients() {
       undoDescription: `Cliente "${newClient.nombre}" eliminado`,
       redoDescription: `Cliente "${newClient.nombre}" recreado`,
       executeUndo: async () => {
-        await deleteDoc(doc(db, "clients", newId));
+        await deleteDoc(doc(db, targetCol, newId));
       },
       executeRedo: async () => {
-        await setDoc(doc(db, "clients", newId), newClient);
+        await setDoc(doc(db, targetCol, newId), newClient);
       },
     });
 
     return newId;
-  }, []);
+  }, [workspaceId, isMaster]);
 
   // Actualizar cliente
   const updateClient = useCallback(async (id: string | number, data: Partial<Client>): Promise<void> => {
     const prevClient = clients.find((c) => String(c.id) === String(id));
-    const docRef = doc(db, "clients", String(id));
+    const targetCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+    const docRef = doc(db, targetCol, String(id));
     await updateDoc(docRef, {
       ...data,
       updatedAt: serverTimestamp(),
@@ -492,7 +495,7 @@ export function useClients() {
         undoDescription: `Cliente "${clientName}" restaurado`,
         redoDescription: `Cliente "${clientName}" modificado`,
         executeUndo: async () => {
-          const ref = doc(db, "clients", String(id));
+          const ref = doc(db, targetCol, String(id));
           await updateDoc(ref, {
             ...prevSnapshot,
             updatedAt: serverTimestamp(),
@@ -500,7 +503,7 @@ export function useClients() {
           });
         },
         executeRedo: async () => {
-          const ref = doc(db, "clients", String(id));
+          const ref = doc(db, targetCol, String(id));
           await updateDoc(ref, {
             ...data,
             updatedAt: serverTimestamp(),
@@ -509,12 +512,13 @@ export function useClients() {
         },
       });
     }
-  }, [clients]);
+  }, [clients, workspaceId, isMaster]);
 
   // Eliminar cliente
   const deleteClient = useCallback(async (id: string | number): Promise<void> => {
     const prevClient = clients.find((c) => String(c.id) === String(id));
-    const docRef = doc(db, "clients", String(id));
+    const targetCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
+    const docRef = doc(db, targetCol, String(id));
     await deleteDoc(docRef);
 
     if (prevClient) {
@@ -527,18 +531,18 @@ export function useClients() {
         undoDescription: `Cliente "${clientName}" restaurado`,
         redoDescription: `Cliente "${clientName}" eliminado`,
         executeUndo: async () => {
-          await setDoc(doc(db, "clients", String(id)), {
+          await setDoc(doc(db, targetCol, String(id)), {
             ...prevClient,
             updatedAt: serverTimestamp(),
             updated_at: serverTimestamp(),
           });
         },
         executeRedo: async () => {
-          await deleteDoc(doc(db, "clients", String(id)));
+          await deleteDoc(doc(db, targetCol, String(id)));
         },
       });
     }
-  }, [clients]);
+  }, [clients, workspaceId, isMaster]);
 
   return {
     clients,
