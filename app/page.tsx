@@ -68,7 +68,18 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       setStatus("error");
-      setError(err.message || "Error al conectar con el servidor");
+      const rawMsg = err?.message || "";
+      let cleanMsg = rawMsg;
+      if (rawMsg.includes('{"ok":false') || rawMsg.includes('"error":')) {
+        try {
+          const jsonMatch = rawMsg.match(/\{.*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.error) cleanMsg = parsed.error;
+          }
+        } catch {}
+      }
+      setError(cleanMsg || "Esta llave no está en la lista de acceso.");
     } finally {
       setLoading(false);
     }

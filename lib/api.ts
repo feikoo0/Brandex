@@ -30,8 +30,18 @@ async function apiFetch<T>(
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${method} ${path} → ${res.status}: ${text}`);
+    let errorMessage = "";
+    try {
+      const parsed = await res.json();
+      if (parsed && parsed.error) {
+        errorMessage = parsed.error;
+      }
+    } catch {
+      try {
+        errorMessage = await res.text();
+      } catch {}
+    }
+    throw new Error(errorMessage || `Error ${res.status}`);
   }
 
   const json = (await res.json()) as T;
