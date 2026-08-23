@@ -7,6 +7,7 @@ import { playSound } from "../utils/audio";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PROJECT_COLOR_PALETTE, cn } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store";
 
 export interface ClientItem {
   id: number;
@@ -55,6 +56,10 @@ export default function CreateClientModal({
   onClientCreated,
   isNightMode = true,
 }: CreateClientModalProps) {
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "159789" || workspaceId === "ws_159789";
+  const clientsColName = isMaster ? "clients" : (workspaceId ? `ws_${workspaceId}_clients` : "clients");
+
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -127,7 +132,7 @@ export default function CreateClientModal({
 
     try {
       if (db) {
-        await setDoc(doc(db, "clients", String(newId)), newClient);
+        await setDoc(doc(db, clientsColName, String(newId)), newClient);
       }
     } catch (err) {
       console.error("Error saving new client to Firestore:", err);

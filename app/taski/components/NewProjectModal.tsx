@@ -42,6 +42,7 @@ import LinearDatePopover from "./LinearDatePopover";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PROJECT_COLOR_PALETTE, getSingleSourceProjectColor, formatProjectCreatedDate } from "@/lib/utils";
+import { useAuthStore } from "@/lib/store";
 
 export interface Task {
   id: number;
@@ -346,11 +347,14 @@ export default function NewProjectModal({
   const [isCreatingTemplateView, setIsCreatingTemplateView] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "159789" || workspaceId === "ws_159789";
+
   // Dynamic Clients, Templates, Project Types & Team Members state
-  const [clientList, setClientList] = useState<string[]>(DEFAULT_CLIENT_NAMES);
-  const [templateList, setTemplateList] = useState<ProjectTemplateItem[]>(DEFAULT_TEMPLATES);
+  const [clientList, setClientList] = useState<string[]>(isMaster ? DEFAULT_CLIENT_NAMES : []);
+  const [templateList, setTemplateList] = useState<ProjectTemplateItem[]>(isMaster ? DEFAULT_TEMPLATES : []);
   const [packageList, setPackageList] = useState<string[]>(PACKAGE_OPTIONS);
-  const [teamMemberList, setTeamMemberList] = useState<TeamMemberItem[]>(DEFAULT_TEAM_MEMBERS);
+  const [teamMemberList, setTeamMemberList] = useState<TeamMemberItem[]>(isMaster ? DEFAULT_TEAM_MEMBERS : []);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
   const [showAllClients, setShowAllClients] = useState(false);
   const [showAllTemplates, setShowAllTemplates] = useState(false);
@@ -367,7 +371,7 @@ export default function NewProjectModal({
   const [title, setTitle] = useState("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [summary, setSummary] = useState("");
-  const [client, setClient] = useState("Brandex");
+  const [client, setClient] = useState(isMaster ? "Brandex" : "");
   const [packageStr, setPackageStr] = useState("Desarrollo Web");
   const [desc, setDesc] = useState("");
   const [status, setStatus] = useState("Planificación");
@@ -536,7 +540,7 @@ export default function NewProjectModal({
       setTitle("");
       setIsEditingTitle(false);
       setSummary("");
-      setClient("Brandex");
+      setClient(isMaster ? "Brandex" : "");
       setPackageStr("Desarrollo Web");
       setDesc("");
       setStatus("Planificación");
@@ -553,77 +557,82 @@ export default function NewProjectModal({
       setShowAllTemplates(false);
     }
 
-    // Cargar plantillas locales de forma inmediata antes de la consulta a la red
-    try {
-      const saved = localStorage.getItem("taski_v3_templates");
-      if (saved) {
-        const localTemplates: ProjectTemplateItem[] = JSON.parse(saved);
-        if (localTemplates.length > 0) {
-          const allTemplatesMap = new Map<string, ProjectTemplateItem>();
-          DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-          localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-          setTemplateList(Array.from(allTemplatesMap.values()));
+    // Cargar plantillas locales de forma inmediata solo para master
+    if (isMaster) {
+      try {
+        const saved = localStorage.getItem("taski_v3_templates");
+        if (saved) {
+          const localTemplates: ProjectTemplateItem[] = JSON.parse(saved);
+          if (localTemplates.length > 0) {
+            const allTemplatesMap = new Map<string, ProjectTemplateItem>();
+            DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+            localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+            setTemplateList(Array.from(allTemplatesMap.values()));
+          }
         }
-      }
-    } catch (e) {}
+      } catch (e) {}
+    }
 
     const loadData = async () => {
       try {
-        if (db) {
-          // 1. Clients (collection clients)
-          const clientSnap = await getDocs(collection(db, "clients"));
+        if (db && workspaceId) {
+          // 1. Clients
+          const clientsColName = isMaster ? "clients" : `ws_${workspaceId}_clients`;
+          const clientSnap = await getDocs(collection(db, clientsColName));
+          let firestoreNames: string[] = [];
           if (!clientSnap.empty) {
-            const firestoreNames = clientSnap.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
-            const combinedClients = Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]));
-            setClientList(combinedClients);
-          } else {
+            firestoreNames = clientSnap.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
+          } else if (isMaster) {
             const v3Fallback = await getDocs(collection(db, "v3_clients"));
             if (!v3Fallback.empty) {
-              const firestoreNames = v3Fallback.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
-              const combinedClients = Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]));
-              setClientList(combinedClients);
+              firestoreNames = v3Fallback.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
             }
           }
+          const finalClients = isMaster
+            ? Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]))
+            : firestoreNames;
+          setClientList(finalClients);
 
           // 2. Project Types
-          const typeSnap = await getDocs(collection(db, "v3_project_types"));
+          const typesColName = isMaster ? "v3_project_types" : `ws_${workspaceId}_project_types`;
+          const typeSnap = await getDocs(collection(db, typesColName));
+          let firestoreTypes: string[] = [];
           if (!typeSnap.empty) {
-            const firestoreTypes = typeSnap.docs.map((d) => d.data().name).filter(Boolean);
-            const combinedTypes = Array.from(new Set([...firestoreTypes, ...PACKAGE_OPTIONS]));
-            setPackageList(combinedTypes);
+            firestoreTypes = typeSnap.docs.map((d) => d.data().name).filter(Boolean);
           }
+          const finalTypes = Array.from(new Set([...firestoreTypes, ...PACKAGE_OPTIONS]));
+          setPackageList(finalTypes);
 
-          // 3. Team Members (v3_team / trabajadores)
-          const teamSnap = await getDocs(collection(db, "v3_team"));
+          // 3. Team Members
+          const teamColName = isMaster ? "v3_team" : `ws_${workspaceId}_members`;
+          const teamSnap = await getDocs(collection(db, teamColName));
+          let firestoreTeam: TeamMemberItem[] = [];
           if (!teamSnap.empty) {
-            const firestoreTeam: TeamMemberItem[] = teamSnap.docs.map((d) => ({
+            firestoreTeam = teamSnap.docs.map((d) => ({
               id: d.id,
               nombre: d.data().nombre || d.data().name,
               rol: d.data().rol || d.data().role || "Miembro",
               color: d.data().color
             })).filter((m) => m.nombre);
-            if (firestoreTeam.length > 0) {
-              setTeamMemberList(firestoreTeam);
-            }
-          } else {
+          } else if (isMaster) {
             const trabSnap = await getDocs(collection(db, "trabajadores"));
             if (!trabSnap.empty) {
-              const firestoreTeam: TeamMemberItem[] = trabSnap.docs.map((d) => ({
+              firestoreTeam = trabSnap.docs.map((d) => ({
                 id: d.id,
                 nombre: d.data().nombre,
                 rol: d.data().rol || "Miembro",
                 color: d.data().color
               })).filter((m) => m.nombre);
-              if (firestoreTeam.length > 0) {
-                setTeamMemberList(firestoreTeam);
-              }
             }
           }
+          const finalTeam = isMaster && firestoreTeam.length === 0 ? DEFAULT_TEAM_MEMBERS : firestoreTeam;
+          setTeamMemberList(finalTeam);
 
-          // 4. Plantillas (v3_templates + localStorage)
+          // 4. Plantillas
+          const tmplColName = isMaster ? "v3_templates" : `ws_${workspaceId}_templates`;
           let firestoreTemplates: ProjectTemplateItem[] = [];
           try {
-            const tmplSnap = await getDocs(collection(db, "v3_templates"));
+            const tmplSnap = await getDocs(collection(db, tmplColName));
             if (!tmplSnap.empty) {
               firestoreTemplates = tmplSnap.docs.map((d) => ({
                 id: d.id,
@@ -635,7 +644,7 @@ export default function NewProjectModal({
                 isCustom: d.data().isCustom,
                 tasks: d.data().tasks
               })).filter((t) => t.name);
-            } else {
+            } else if (isMaster) {
               const fallbackSnap = await getDocs(collection(db, "templates"));
               if (!fallbackSnap.empty) {
                 firestoreTemplates = fallbackSnap.docs.map((d) => ({
@@ -655,17 +664,21 @@ export default function NewProjectModal({
           }
 
           let localTemplates: ProjectTemplateItem[] = [];
-          try {
-            const saved = localStorage.getItem("taski_v3_templates");
-            if (saved) {
-              localTemplates = JSON.parse(saved);
-            }
-          } catch (e) {}
+          if (isMaster) {
+            try {
+              const saved = localStorage.getItem("taski_v3_templates");
+              if (saved) {
+                localTemplates = JSON.parse(saved);
+              }
+            } catch (e) {}
+          }
 
           const allTemplatesMap = new Map<string, ProjectTemplateItem>();
-          DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+          if (isMaster) {
+            DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+            localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+          }
           firestoreTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-          localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
 
           setTemplateList(Array.from(allTemplatesMap.values()));
         }
@@ -675,7 +688,7 @@ export default function NewProjectModal({
     };
 
     loadData();
-  }, [isOpen, editingProject?.id]);
+  }, [isOpen, editingProject?.id, workspaceId, isMaster]);
 
   if (!isOpen) return null;
 
@@ -692,8 +705,9 @@ export default function NewProjectModal({
   // Handle template creation callback
   const handleTemplateCreated = (newTmpl: ProjectTemplateItem) => {
     try {
-      if (db) {
-        setDoc(doc(db, "v3_templates", newTmpl.id), newTmpl).catch((err) =>
+      if (db && workspaceId) {
+        const tmplColName = isMaster ? "v3_templates" : `ws_${workspaceId}_templates`;
+        setDoc(doc(db, tmplColName, newTmpl.id), newTmpl).catch((err) =>
           console.error("Error async saving template to Firestore:", err)
         );
       }
@@ -701,12 +715,14 @@ export default function NewProjectModal({
       console.error("Error saving template to Firestore:", err);
     }
 
-    try {
-      const saved = localStorage.getItem("taski_v3_templates");
-      const existing: ProjectTemplateItem[] = saved ? JSON.parse(saved) : [];
-      const updated = [newTmpl, ...existing.filter((t) => t.id !== newTmpl.id)];
-      localStorage.setItem("taski_v3_templates", JSON.stringify(updated));
-    } catch (e) {}
+    if (isMaster) {
+      try {
+        const saved = localStorage.getItem("taski_v3_templates");
+        const existing: ProjectTemplateItem[] = saved ? JSON.parse(saved) : [];
+        const updated = [newTmpl, ...existing.filter((t) => t.id !== newTmpl.id)];
+        localStorage.setItem("taski_v3_templates", JSON.stringify(updated));
+      } catch (e) {}
+    }
 
     setTemplateList((prev) => [newTmpl, ...prev.filter((t) => t.id !== newTmpl.id)]);
     setSelectedCategory(`plantilla:${newTmpl.name}`);
