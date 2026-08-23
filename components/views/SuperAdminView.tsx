@@ -76,18 +76,73 @@ export function SuperAdminView() {
   // Load surveys and workspaces in real time
   useEffect(() => {
     setIsLoadingSurveys(true);
-    const surveysQuery = query(collection(db, "onboarding_surveys"), orderBy("createdAt", "desc"));
-    const workspacesQuery = query(collection(db, "workspaces"), orderBy("createdAt", "desc"));
+    const surveysCol = collection(db, "onboarding_surveys");
+    const workspacesCol = collection(db, "workspaces");
+
+    let latestSurveys: SurveyDoc[] = [];
+    let latestWorkspaces: WorkspaceDoc[] = [];
+
+    const mergeAndSetData = (surveysList: SurveyDoc[], workspacesList: WorkspaceDoc[]) => {
+      const surveyMap = new Map<string, SurveyDoc>();
+
+      // 1. Agregar encuestas explícitas
+      surveysList.forEach((s) => {
+        const key = s.pin || s.workspaceId || s.id;
+        surveyMap.set(key, s);
+      });
+
+      // 2. Si hay workspaces sin encuesta explícita, agregarlos también
+      workspacesList.forEach((w) => {
+        const key = w.pin || w.id;
+        if (!surveyMap.has(key) && w.id !== "brandex-master" && w.id !== "ws_159789") {
+          surveyMap.set(key, {
+            id: w.id,
+            pin: w.pin,
+            name: (w as any).ownerName || (w as any).name || "Usuario",
+            brand: (w as any).brandName || (w as any).brand || "Personal",
+            email: (w as any).email || "",
+            specialty: (w as any).specialty || "General",
+            goals: (w as any).goals || (w as any).useCases || [],
+            teamSize: (w as any).teamSize || "1 persona",
+            workspaceId: w.id,
+            createdAt: (w as any).created_at || (w as any).createdAt || "",
+          });
+        }
+      });
+
+      const combined = Array.from(surveyMap.values());
+
+      // Ordenar por fecha más reciente
+      combined.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
+      setSurveys(combined);
+      setIsLoadingSurveys(false);
+    };
 
     const unsubSurveys = onSnapshot(
-      surveysQuery,
+      surveysCol,
       (snapshot) => {
-        const list: SurveyDoc[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
-        setSurveys(list);
-        setIsLoadingSurveys(false);
+        latestSurveys = snapshot.docs.map((d) => {
+          const data = d.data();
+          const dateVal = data.created_at || data.submitted_at || (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : "") || (data.submittedAt?.toDate ? data.submittedAt.toDate().toISOString() : "") || "";
+          return {
+            id: d.id,
+            pin: data.pin || "",
+            workspaceId: data.workspaceId || d.id,
+            name: data.name || data.ownerName || "Usuario",
+            brand: data.brand || data.brandName || "Personal",
+            email: data.email || "",
+            specialty: data.specialty || "General",
+            goals: data.goals || data.useCases || [],
+            teamSize: data.teamSize || "1 persona",
+            createdAt: dateVal,
+          };
+        });
+        mergeAndSetData(latestSurveys, latestWorkspaces);
       },
       (err) => {
         console.error("Error al cargar onboarding_surveys:", err);
@@ -96,13 +151,22 @@ export function SuperAdminView() {
     );
 
     const unsubWorkspaces = onSnapshot(
-      workspacesQuery,
+      workspacesCol,
       (snapshot) => {
-        const list: WorkspaceDoc[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
-        setWorkspaces(list);
+        latestWorkspaces = snapshot.docs.map((d) => {
+          const data = d.data();
+          const dateVal = data.created_at || (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : "") || "";
+          return {
+            id: d.id,
+            pin: data.pin || "",
+            name: data.ownerName || data.name || "",
+            createdAt: dateVal,
+            status: data.status || "active",
+            ...data,
+          } as WorkspaceDoc;
+        });
+        setWorkspaces(latestWorkspaces);
+        mergeAndSetData(latestSurveys, latestWorkspaces);
       },
       (err) => {
         console.error("Error al cargar workspaces:", err);
