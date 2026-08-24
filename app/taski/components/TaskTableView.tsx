@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { Project } from "./ProjectDashboard";
+import { Project, Task } from "./ProjectDashboard";
 import { SynthesizedTask } from "./KanbanColumn";
 
 export interface TaskTableViewProps {
@@ -12,6 +12,7 @@ export interface TaskTableViewProps {
   cardBgStyle: string;
   onSelectTab: (tab: string) => void;
   onSelectProject?: (projectId: string | number) => void;
+  onSelectTask?: (task: Task, projectId: string | number) => void;
 }
 
 export const TaskTableView: React.FC<TaskTableViewProps> = ({
@@ -21,6 +22,7 @@ export const TaskTableView: React.FC<TaskTableViewProps> = ({
   cardBgStyle,
   onSelectTab,
   onSelectProject,
+  onSelectTask,
 }) => {
   const [dbSubView, setDbSubView] = useState<"proyectos" | "tareas">("proyectos");
 
@@ -151,7 +153,25 @@ export const TaskTableView: React.FC<TaskTableViewProps> = ({
             return (
               <div
                 key={t.id}
-                className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center text-xs border border-white/5 shrink-0`}
+                onClick={() => {
+                  const proj = projects.find(p => p.id === t.projectId);
+                  const matchedTask = proj?.tasks?.find(tk => String(tk.id) === String(t.id) || `kt-${t.projectId}-${tk.id}` === t.id);
+                  if (matchedTask) {
+                    onSelectTask?.(matchedTask, t.projectId);
+                  } else {
+                    onSelectTask?.({
+                      id: Number(t.id) || Date.now(),
+                      title: t.taskTitle,
+                      desc: t.desc || "",
+                      format: t.format || "Sin formato",
+                      time: t.time || "1 hora",
+                      status: (t.status as any) || "Planificado",
+                      statusColor: "",
+                      subtasks: []
+                    }, t.projectId);
+                  }
+                }}
+                className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center text-xs border border-white/5 shrink-0 cursor-pointer hover:border-white/20 transition-all`}
               >
                 <div className="w-2/5 font-bold text-slate-200 truncate pr-2">
                   {t.taskTitle}

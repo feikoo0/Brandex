@@ -150,222 +150,126 @@ export function TeamDashboard({
 
   return (
     <div className="flex flex-col h-full p-6 overflow-y-auto custom-scrollbar bg-transparent text-[#ffffffd6]">
-      {/* ── 1. KPI SUMMARY BAR (Superficies Sólidas #181818 & Trazos Finos) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Equipo Interno</span>
-            <Users className="w-4 h-4 text-[#ffffff6b]" />
+      
+      {/* 12-Column Grid Container (Idéntico a Work, Proyectos y Clientes) */}
+      <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
+        
+        {/* Left Section (3 Columns): Rectángulo Reservado de Control & Resumen */}
+        <div className="col-span-3 flex flex-col min-h-[900px] rounded-[28px] bg-[#121212] border border-white/[0.08] shadow-sm overflow-hidden">
+          {/* Métricas KPI de Ancho Total (Monocromático, Limpio y Sin Íconos) */}
+          <div className="w-full flex flex-col">
+            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Disponibles</span>
+              <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{availableMembers}</div>
+            </div>
+
+            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Proyectos Asignados</span>
+              <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{activeProjsAssigned}</div>
+            </div>
+
+            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Especialistas</span>
+              <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{totalMembers}</div>
+            </div>
           </div>
-          <div className="text-3xl font-bold text-[#ffffffd6] mt-2">{totalMembers} especialistas</div>
+
+          {/* Filtros Rápidos por Especialidad */}
+          <div className="p-5 flex flex-col gap-2 mt-auto">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff6b] px-1">Filtrar por Especialidad</span>
+            <div className="flex flex-col gap-1">
+              {specialties.map((spec) => {
+                const isSelected = specialtyFilter === spec;
+                const count = spec === "Todos"
+                  ? members.length
+                  : members.filter((m) => (m.specialty && m.specialty.toLowerCase() === spec.toLowerCase()) || (m.rol || m.role || "").toLowerCase().includes(spec.toLowerCase())).length;
+                return (
+                  <button
+                    key={spec}
+                    type="button"
+                    onClick={() => {
+                      setSpecialtyFilter(spec);
+                      playSound('click');
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs transition-all ${
+                      isSelected
+                        ? "bg-white/10 text-white font-semibold"
+                        : "text-white/60 hover:bg-white/5 hover:text-white"
+                    }`}
+                  >
+                    <span>{spec}</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/5 text-white/50">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400/80">Disponibles</span>
-            <Sparkles className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-3xl font-bold text-emerald-400 mt-2">{availableMembers} listos para asignar</div>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-[#181818] border border-white/10 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400/80">Proyectos Asignados</span>
-            <CheckCircle2 className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-3xl font-bold text-blue-400 mt-2">{activeProjsAssigned} en curso</div>
-        </div>
-      </div>
-
-      {/* ── 2. CONTROLS BAR: Search, Filter Tabs & Switchers ── */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-        {/* Left: Filter Tabs & Search */}
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
-          {/* Buscador Integrado */}
-          <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#ffffff6b]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar por nombre o skill..."
-              className="w-full bg-[#181818] border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs font-semibold text-[#ffffffd6] placeholder:text-[#ffffff40] outline-none focus:border-white/30 shadow-sm"
-            />
-          </div>
-
-          {/* Filter Pills */}
-          <div className="flex items-center gap-1.5 p-1 rounded-xl bg-[#181818] border border-white/10 overflow-x-auto custom-scrollbar">
-            {specialties.map((spec) => {
-              const isActive = specialtyFilter === spec;
-              return (
-                <button
-                  key={spec}
-                  type="button"
+        {/* Right Section (9 Columns): Catálogo de Colaboradores */}
+        <div className="col-span-9 flex flex-col">
+          {/* ── MEMBER CARDS GRID ── */}
+          {filteredMembers.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-0">
+              {/* Tarjeta / Botón Registrar Colaborador */}
+              <div className="p-2 h-[220px]">
+                <div
                   onClick={() => {
-                    setSpecialtyFilter(spec);
-                    playSound('click');
+                    playSound("click");
+                    setIsAddMemberOpen(true);
                   }}
-                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                    isActive
-                      ? "bg-white/15 text-white shadow-sm"
-                      : "text-[#ffffff6b] hover:text-white"
-                  }`}
+                  className="w-full h-full relative flex flex-col items-center justify-center p-5 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/40 transition-all cursor-pointer group select-none shadow-sm"
                 >
-                  {spec}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+                  <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-white/20 group-hover:scale-110 transition-all mb-3 text-white">
+                    <Plus className="w-6 h-6 stroke-[2.5]" />
+                  </div>
+                  <div className="text-[14px] font-semibold text-white/90 group-hover:text-white text-center">
+                    Registrar colaborador
+                  </div>
+                  <p className="text-[12px] text-white/40 mt-1 text-center font-normal">Añadir especialista al equipo</p>
+                </div>
+              </div>
 
-        {/* Right: Switcher Portada/Color + Grid/List + Botón Añadir Miembro */}
-        <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-          {/* Switcher Portada / Color */}
-          <div className="flex items-center rounded-xl p-1 bg-[#181818] border border-white/10 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => {
-                setCardVariant("cover");
-                playSound("click");
-              }}
-              className={cn(
-                "px-2.5 py-1 rounded-lg transition-colors text-[11px]",
-                cardVariant === "cover" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
-              )}
-              title="Estilo Portada (Tarjetas con cubierta superior)"
-            >
-              Portada
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setCardVariant("full");
-                playSound("click");
-              }}
-              className={cn(
-                "px-2.5 py-1 rounded-lg transition-colors text-[11px]",
-                cardVariant === "full" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
-              )}
-              title="Estilo Color Completo"
-            >
-              Color
-            </button>
-          </div>
+              {filteredMembers.map((member) => {
+                const memberNameLower = (member.nombre || member.name || "").toLowerCase();
+                const memberProjects = projects.filter((p) => {
+                  const pIdStr = String(p.id);
+                  const matchProjList = (member.proyectos_asignados || []).map(String).includes(pIdStr);
+                  const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
+                  const matchName = memberNameLower && (p as any).asignado ? (p as any).asignado.toLowerCase().includes(memberNameLower) : false;
+                  return matchProjList || matchId || matchName;
+                });
 
-          {/* Switcher Grid / Lista */}
-          <div className="flex items-center rounded-xl p-1 bg-[#181818] border border-white/10">
-            <button
-              type="button"
-              onClick={() => {
-                setDisplayMode("grid");
-                playSound("click");
-              }}
-              className={cn(
-                "p-1.5 rounded-lg text-xs transition-colors",
-                displayMode === "grid" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
-              )}
-              title="Vista de Cuadrícula Bento"
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setDisplayMode("list");
-                playSound("click");
-              }}
-              className={cn(
-                "p-1.5 rounded-lg text-xs transition-colors",
-                displayMode === "list" ? "bg-white/15 text-white" : "text-[#ffffff6b] hover:text-white"
-              )}
-              title="Vista Compacta de Lista"
-            >
-              <Table className="w-4 h-4" />
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsAddMemberOpen(true);
-              playSound('click');
-            }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-white/90 text-black text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Registrar Colaborador</span>
-          </button>
+                return (
+                  <MemberCardItem
+                    key={member.id}
+                    member={member}
+                    cardStyle={cardVariant}
+                    memberProjects={memberProjects}
+                    onOpenDetail={(m) => {
+                      setSelectedMemberId(m.id);
+                      playSound('click');
+                    }}
+                    onDeleteMember={async (m) => {
+                      await deleteMember(m.id);
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-24 flex flex-col items-center justify-center text-center opacity-40">
+              <Users className="w-14 h-14 mb-4 text-[#ffffff6b]" />
+              <h4 className="text-xl font-bold text-[#ffffffd6]">No se encontraron colaboradores</h4>
+              <p className="text-xs text-[#ffffff6b] mt-1 max-w-sm">
+                {searchQuery
+                  ? `No hay miembros que coincidan con "${searchQuery}".`
+                  : "Registra a tu equipo creativo para comenzar a asignar proyectos y calcular rentabilidad."}
+              </p>
+            </div>
+          )}
         </div>
       </div>
-
-      {/* ── 3. MEMBER CARDS VIEW (IDÉNTICO A CLIENTES Y PROYECTOS) ── */}
-      {filteredMembers.length > 0 ? (
-        displayMode === "grid" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-0">
-            {filteredMembers.map((member) => {
-              const memberNameLower = (member.nombre || member.name || "").toLowerCase();
-              const memberProjects = projects.filter((p) => {
-                const pIdStr = String(p.id);
-                const matchProjList = (member.proyectos_asignados || []).map(String).includes(pIdStr);
-                const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
-                const matchName = memberNameLower && (p as any).asignado ? (p as any).asignado.toLowerCase().includes(memberNameLower) : false;
-                return matchProjList || matchId || matchName;
-              });
-
-              return (
-                <MemberCardItem
-                  key={member.id}
-                  member={member}
-                  cardStyle={cardVariant}
-                  memberProjects={memberProjects}
-                  onOpenDetail={(m) => {
-                    setSelectedMemberId(m.id);
-                    playSound('click');
-                  }}
-                  onDeleteMember={async (m) => {
-                    await deleteMember(m.id);
-                  }}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filteredMembers.map((member) => {
-              const memberNameLower = (member.nombre || member.name || "").toLowerCase();
-              const memberProjects = projects.filter((p) => {
-                const pIdStr = String(p.id);
-                const matchProjList = (member.proyectos_asignados || []).map(String).includes(pIdStr);
-                const matchId = ((p as any).asignado_ids || []).map(String).includes(String(member.id));
-                const matchName = memberNameLower && (p as any).asignado ? (p as any).asignado.toLowerCase().includes(memberNameLower) : false;
-                return matchProjList || matchId || matchName;
-              });
-
-              return (
-                <MemberListItem
-                  key={member.id}
-                  member={member}
-                  memberProjects={memberProjects}
-                  onOpenDetail={(m) => {
-                    setSelectedMemberId(m.id);
-                    playSound('click');
-                  }}
-                />
-              );
-            })}
-          </div>
-        )
-      ) : (
-        <div className="py-24 flex flex-col items-center justify-center text-center opacity-40">
-          <Users className="w-14 h-14 mb-4 text-[#ffffff6b]" />
-          <h4 className="text-xl font-bold text-[#ffffffd6]">No se encontraron colaboradores</h4>
-          <p className="text-xs text-[#ffffff6b] mt-1 max-w-sm">
-            {searchQuery
-              ? `No hay miembros que coincidan con "${searchQuery}".`
-              : "Registra a tu equipo creativo para comenzar a asignar proyectos y calcular rentabilidad."}
-          </p>
-        </div>
-      )}
 
       {/* Add Member Modal */}
       <AnimatePresence>

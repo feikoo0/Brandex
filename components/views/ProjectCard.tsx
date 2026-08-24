@@ -14,6 +14,7 @@ import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
 
 export interface ProjectCardItemProps {
   projectId: string;
+  project?: any;
   onOpenFullScreen: (id: string) => void;
   cardStyle?: "cover" | "full";
 }
@@ -42,16 +43,19 @@ function getDeliveryStatusText(fechaFin?: string, fechaInicio?: string): string 
 // ── 1. TARJETA DE PROYECTO (DISEÑO OPTIMIZADO DE ALTO VALOR INFORMATIVO) ───────
 export function ProjectCardItem({ 
   projectId, 
+  project,
   onOpenFullScreen,
   cardStyle = "cover"
 }: ProjectCardItemProps) {
   const summary = useProjectSummary(projectId);
   const { data } = useData();
 
-  if (!summary.project) return null;
+  const p = project || summary.project;
+  if (!p) return null;
 
-  const p = summary.project;
-  const statusColor = STATUS_COLORS[summary.status] || "#ffffffd6";
+  const projTitle = p.nombre || p.title || "Sin título";
+  const clientName = summary.clientName || p.client || p.cliente || "Brandex";
+  const statusColor = STATUS_COLORS[summary.status || p.status || "Planificación"] || "#ffffffd6";
   const projColor = getSingleSourceProjectColor(p).hslCss;
 
   // Resolución de fecha con fallback exhaustivo directo desde el proyecto y summary
@@ -72,33 +76,36 @@ export function ProjectCardItem({
   const deliveryStatusText = getDeliveryStatusText(effectiveDate);
 
   // Tareas pertenecientes a este proyecto formateadas para el mosaico de íconos
-  const projectTasks = summary.tasks.map((t: any) => ({
+  const projectTasks = (summary.tasks && summary.tasks.length > 0 ? summary.tasks : (p.tasks || [])).map((t: any) => ({
     id: t.id,
-    title: t.titulo || "",
+    title: t.titulo || t.title || "",
     format: t.formato || t.format || "",
     formato: t.formato || t.format || "",
-    status: t.estado || "Pendiente",
+    status: t.estado || t.status || "Pendiente",
     ...t,
   }));
 
   // Rescatar avatares del equipo asignado (por IDs o por texto plano)
   let assignedWorkers = (p.asignado_ids || [])
-    .map((id) => data?.trabajadores.find((w) => String(w.id) === String(id)))
+    .map((id: string) => data?.trabajadores.find((w) => String(w.id) === String(id)))
     .filter(Boolean);
 
   if (assignedWorkers.length === 0 && p.asignado) {
-    const names = p.asignado.split(",").map((s) => s.trim().toLowerCase());
+    const names = String(p.asignado).split(",").map((s) => s.trim().toLowerCase());
     assignedWorkers = (data?.trabajadores || []).filter((w) => 
       names.some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
     );
   }
 
-  const totalTasksCount = Math.max(summary.totalTasks, 1);
-  const completedCount = summary.completedTasks;
+  const realTotalTasks = summary.totalTasks > 0 ? summary.totalTasks : projectTasks.length;
+  const totalTasksCount = Math.max(realTotalTasks, 1);
+  const completedCount = summary.completedTasks > 0 
+    ? summary.completedTasks 
+    : projectTasks.filter((t: any) => t.status === "Completado" || t.estado === "Completado").length;
 
   // Texto del contador de tareas de alto valor
-  const taskCountText = summary.totalTasks > 0 
-    ? (completedCount > 0 ? `Tarea ${completedCount} de ${summary.totalTasks}` : `${summary.totalTasks} tareas`)
+  const taskCountText = realTotalTasks > 0 
+    ? (completedCount > 0 ? `Tarea ${completedCount} de ${realTotalTasks}` : `${realTotalTasks} tareas`)
     : "Sin tareas asignadas";
 
   // ── ESTILO 2: TARJETA DE COLOR COMPLETO ──
@@ -112,8 +119,8 @@ export function ProjectCardItem({
         <div>
           {/* Fila Superior: Cliente • Estatus del Proyecto */}
           <div className="flex items-center justify-between mb-2.5 text-[11px] font-semibold text-white/90">
-            <span className="truncate max-w-[170px] bg-black/20 px-2 py-0.5 rounded-full" title={summary.clientName}>
-              {summary.clientName} • {summary.status}
+            <span className="truncate max-w-[170px] bg-black/20 px-2 py-0.5 rounded-full" title={clientName}>
+              {clientName} • {summary.status || p.status || "Planificación"}
             </span>
             <button 
               type="button"
@@ -127,13 +134,13 @@ export function ProjectCardItem({
           {/* Fila Principal: Título + Fechas Conectadas */}
           <div className="flex flex-col min-w-0 mb-3">
             <h3 className="text-base font-medium text-white tracking-tight line-clamp-2 mt-2.5 translate-y-[6px]">
-              {p.nombre}
+              {projTitle}
             </h3>
             <div className="flex items-center gap-1.5 mt-1 text-[14px] text-[#ffffff6b] font-normal">
-              {summary.status && (
+              {(summary.status || p.status) && (
                 <>
-                  <ProjectStatusIcon status={summary.status} className="w-3.5 h-3.5 translate-y-[1.5px]" />
-                  <span className="font-medium text-white">{summary.status}</span>
+                  <ProjectStatusIcon status={summary.status || p.status} className="w-3.5 h-3.5 translate-y-[1.5px]" />
+                  <span className="font-medium text-white">{summary.status || p.status}</span>
                   <span className="text-white/40">•</span>
                 </>
               )}
@@ -197,14 +204,14 @@ export function ProjectCardItem({
           <div className="z-10 mt-auto flex flex-col gap-1.5">
             {/* Título del proyecto (Mantenido igual en text-base) */}
             <h3 className="text-base font-medium text-white tracking-tight line-clamp-1 leading-snug mt-2.5 translate-y-[6px]">
-              {p.nombre}
+              {projTitle}
             </h3>
 
             {/* Subtítulo en texto normal: Cantidad de tareas • Nombre del cliente */}
             <div className="text-[14px] font-medium text-white/90 flex items-center gap-1.5 line-clamp-1">
-              <span>{summary.totalTasks} {summary.totalTasks === 1 ? "Tarea" : "Tareas"}</span>
+              <span>{realTotalTasks} {realTotalTasks === 1 ? "Tarea" : "Tareas"}</span>
               <span className="text-white/60">•</span>
-              <span className="truncate font-normal" title={summary.clientName}>{summary.clientName}</span>
+              <span className="truncate font-normal" title={clientName}>{clientName}</span>
             </div>
 
             {/* Barra de progreso de tareas segmentada */}

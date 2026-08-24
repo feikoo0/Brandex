@@ -32,6 +32,7 @@ import FormatoShape from "./FormatoShape";
 import { FORMATOS_ESTANDAR, getFormato } from "../utils/formatos";
 import { Project } from "./ProjectDashboard";
 import ProjectCoverFormats from "./ProjectCoverFormats";
+import { ProjectCardItem } from "@/components/views/ProjectCard";
 import CreateClientModal, { ClientItem } from "./CreateClientModal";
 import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
 import CreateTemplateModal, { ProjectTemplateItem } from "./CreateTemplateModal";
@@ -105,6 +106,7 @@ interface NewProjectModalProps {
   onDeleteProject?: (projectId: string | number) => void;
   editingProject?: Project | null;
   onSelectProject?: (projectId: string | number) => void;
+  originRect?: { x: number; y: number; width: number; height: number } | null;
   isNightMode?: boolean;
   isNeumorphic?: boolean;
   projects?: Project[];
@@ -338,6 +340,7 @@ export default function NewProjectModal({
   onDeleteProject,
   editingProject,
   onSelectProject,
+  originRect = null,
   isNightMode = true,
   projects = []
 }: NewProjectModalProps) {
@@ -958,34 +961,84 @@ export default function NewProjectModal({
   const clientsToShow = showAllClients ? clientList : clientList.slice(0, 5);
   const templatesToShow = showAllTemplates ? templateList : templateList.slice(0, 5);
 
+  const targetWidth = 1140;
+  const initialScale = originRect ? Math.max(originRect.width / targetWidth, 0.25) : 0.65;
+  const initialX = originRect && typeof window !== 'undefined'
+    ? originRect.x + originRect.width / 2 - window.innerWidth / 2
+    : 0;
+  const initialY = originRect && typeof window !== 'undefined'
+    ? originRect.y + originRect.height / 2 - window.innerHeight / 2
+    : 25;
+
+  const modalVariants = {
+    initial: {
+      opacity: 0,
+      scale: initialScale,
+      x: initialX,
+      y: initialY,
+      filter: "blur(12px)",
+      borderRadius: "16px"
+    },
+    animate: {
+      opacity: 1,
+      scale: 1,
+      x: 0,
+      y: 0,
+      filter: "blur(0px)",
+      borderRadius: "28px",
+      transition: {
+        duration: 0.38,
+        ease: [0.305, 0.206, 0.3, 1] as const, // PrettyModal custom cubic-bezier
+        opacity: { duration: 0.24, ease: [0.56, 0.27, 0, 1] as const },
+        filter: { duration: 0.26, ease: [0.56, 0.27, 0, 1] as const },
+        borderRadius: { duration: 0.35, ease: [0.56, 0.27, 0, 1] as const }
+      }
+    },
+    exit: {
+      opacity: 0,
+      scale: initialScale * 0.85,
+      x: initialX,
+      y: initialY,
+      filter: "blur(24px)",
+      borderRadius: "400px", // PrettyModal closing border-radius morph
+      transition: {
+        duration: 0.32,
+        ease: [0.37, 0.35, 0, 1] as const, // PrettyModal closing curve
+        opacity: { duration: 0.22, ease: [0.56, 0.27, 0, 1] as const },
+        filter: { duration: 0.24, ease: [0.37, 0.35, 0, 1] as const },
+        borderRadius: { duration: 0.28, ease: [0.56, 0.27, 0, 1] as const }
+      }
+    }
+  };
+
   return (
     <>
       <AnimatePresence>
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-hidden">
-          {/* Backdrop overlay */}
+          {/* Backdrop overlay (Clean dark without background blur) */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] as const }}
             onClick={() => {
               playSound("click");
               onClose();
             }}
-            className="absolute inset-0 bg-black/75 transition-opacity"
+            className="fixed inset-0 bg-black/75 z-40 transition-opacity"
           />
 
           {/* Figma Sites Template Modal */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative pointer-events-auto shadow-2xl rounded-[24px] overflow-hidden outline-none"
+            variants={modalVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative z-50 pointer-events-auto shadow-2xl overflow-hidden outline-none w-[1140px] max-w-[95vw] h-[84vh] max-h-[880px] rounded-[28px]"
             data-testid="sites-template-modal"
-            style={{ minWidth: "900px", maxWidth: "900px" }}
           >
-            <div className="cx_overflowHidden---fxjU rounded-[24px]" style={{ height: "600px" }}>
-              <div className={`site_templates_view--container--V7GbF flex flex-col h-full rounded-[24px] ${isNightMode ? "bg-[#1f1f1f] text-white" : "bg-[#fffce2] text-slate-900"}`}>
+            <div className="cx_overflowHidden---fxjU rounded-[28px] h-full flex flex-col overflow-hidden">
+              <div className={`site_templates_view--container--V7GbF flex flex-col h-full rounded-[28px] ${isNightMode ? "bg-[#1f1f1f] text-white" : "bg-[#fffce2] text-slate-900"}`}>
                 
                 {/* Header (Only rendered when exploring templates) */}
                 {viewMode === "templates" && (
@@ -1170,52 +1223,44 @@ export default function NewProjectModal({
                       ) : (
                         /* Project Cards Grid Container */
                         <div
-                          className="site_templates_view--scrollContainer--2h5pL scroll_container--clipContainer--8JS9Y flex-1 overflow-y-auto p-4 custom-scrollbar"
-                        data-fullscreen-no-mod-wheel-event-capture="false"
-                        data-fullscreen-wheel-event-capture="true"
-                        data-non-interactive="true"
-                      >
-                        <div className="scroll_container--scrollContainer--gtaSy scroll_container--full--WLHH3" data-non-interactive="true">
-                          <div className="scroll_container--full--WLHH3" data-non-interactive="true">
-                            <div data-non-interactive="true">
-                              <div
-                                className="sites_template_selection_tile_grid--templatesGrid--nFm-3 grid grid-cols-3 gap-4"
-                                data-testid="community-template-tile-grid"
-                              >
-                                {/* First Tile: Nuevo proyecto */}
-                                <button
-                                  onClick={openCreateForm}
-                                  className="sites_blank_site_tile--blankSiteTileContainer--vKC-I group relative flex flex-col items-center justify-center p-4 rounded-xl border border-solid border-[#ffffff1f] bg-transparent hover:bg-white/[0.03] hover:border-white/25 transition-all h-[210px] cursor-pointer"
+                          className="site_templates_view--scrollContainer--2h5pL scroll_container--clipContainer--8JS9Y flex-1 overflow-y-auto p-5 custom-scrollbar"
+                          data-fullscreen-no-mod-wheel-event-capture="false"
+                          data-fullscreen-wheel-event-capture="true"
+                          data-non-interactive="true"
+                        >
+                          <div className="scroll_container--scrollContainer--gtaSy scroll_container--full--WLHH3" data-non-interactive="true">
+                            <div className="scroll_container--full--WLHH3" data-non-interactive="true">
+                              <div data-non-interactive="true">
+                                <div
+                                  className="sites_template_selection_tile_grid--templatesGrid--nFm-3 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5"
+                                  data-testid="community-template-tile-grid"
                                 >
-                                  <div className="sites_blank_site_tile--blankSiteTile---3-lT flex items-center justify-center w-12 h-12 rounded-full bg-white/5 group-hover:bg-white/10 group-hover:scale-105 transition-all mb-3" data-testid="start-from-scratch">
-                                    <span className="sites_blank_site_tile--blankSiteTileIcon--Y7-7F text-[#ffffffd6] group-hover:text-white">
-                                      <svg width="24" height="24" fill="none" viewBox="0 0 24 24" data-fpl-icon-size="24L" style={{ width: "28px", height: "28px" }}>
-                                        <path
-                                          fill="currentColor"
-                                          fillRule="evenodd"
-                                          d="M11.5 6a.5.5 0 0 1 .5.5V11h4.5a.5.5 0 0 1 0 1H12v4.5a.5.5 0 0 1-1 0V12H6.5a.5.5 0 0 1 0-1H11V6.5a.5.5 0 0 1 .5-.5"
-                                          clipRule="evenodd"
-                                        ></path>
-                                      </svg>
-                                    </span>
+                                  {/* First Tile: Blank / Template New Project */}
+                                  <div
+                                    onClick={openCreateForm}
+                                    className="relative flex flex-col items-center justify-center p-5 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/40 transition-all h-[220px] cursor-pointer group select-none shadow-sm"
+                                  >
+                                    <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-white/10 group-hover:bg-white/20 group-hover:scale-110 transition-all mb-3 text-white">
+                                      <Plus className="w-6 h-6 stroke-[2.5]" />
+                                    </div>
+                                    <div className="text-[14px] font-semibold text-white/90 group-hover:text-white text-center">
+                                      {selectedCategory.startsWith("cliente:")
+                                        ? `Nuevo proyecto (${selectedCategory.replace("cliente:", "").trim()})`
+                                        : selectedCategory.startsWith("plantilla:")
+                                        ? `Usar plantilla ${selectedCategory.replace("plantilla:", "").trim()}`
+                                        : "Nuevo proyecto"}
+                                    </div>
+                                    <p className="text-[12px] text-white/40 mt-1 text-center font-normal">Crear desde plantilla o en blanco</p>
                                   </div>
-                                  <div className="sites_blank_site_tile--blankSiteTileText--VEuZE text-[14px] font-normal text-[#ffffffd6] group-hover:text-white text-center">
-                                    {selectedCategory.startsWith("cliente:")
-                                      ? `Nuevo proyecto (${selectedCategory.replace("cliente:", "").trim()})`
-                                      : selectedCategory.startsWith("plantilla:")
-                                      ? `Usar plantilla ${selectedCategory.replace("plantilla:", "").trim()}`
-                                      : "Nuevo proyecto"}
-                                  </div>
-                                </button>
 
-                                {/* App Real Project Cards */}
-                                {filteredProjects.map((p) => {
-                                  const cardBgColor = resolveProjectBgColor(p);
-
-                                  return (
-                                    <div
+                                  {/* Real Projects using official ProjectCardItem component */}
+                                  {filteredProjects.map((p) => (
+                                    <ProjectCardItem
                                       key={p.id}
-                                      onClick={() => {
+                                      projectId={String(p.id)}
+                                      project={p}
+                                      cardStyle="cover"
+                                      onOpenFullScreen={() => {
                                         playSound("click");
                                         if (onSelectProject) {
                                           onSelectProject(p.id);
@@ -1223,60 +1268,14 @@ export default function NewProjectModal({
                                           openEditForm(p);
                                         }
                                       }}
-                                      className="community_cards--cardLayoutContainer---uHXy sites_template_tile--cardLayout--8zlpT group relative flex flex-col bg-[#262626] border border-white/10 hover:border-white/25 rounded-xl overflow-hidden shadow-lg transition-all h-[210px] cursor-pointer"
-                                      data-testid="sitesTemplateCoverTile"
-                                    >
-                                      {/* Card Background Visual / Solid HSL Color */}
-                                      <div
-                                        className="flex-1 relative overflow-hidden p-3 flex flex-col justify-start"
-                                        style={{ backgroundColor: cardBgColor }}
-                                      >
-                                        {/* Project Cover Formats (Bento Mosaic / Single Shape / Neutral Icon) */}
-                                        <div className="absolute inset-0 flex items-center justify-center p-3 pointer-events-none z-0">
-                                          <ProjectCoverFormats tasks={p.tasks} />
-                                        </div>
-
-                                        {/* Hover Overlay - Edit Project Form */}
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-3 z-20">
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              openEditForm(p);
-                                            }}
-                                            className="bg-white hover:bg-slate-100 text-slate-950 font-semibold px-4 py-1.5 rounded-full text-xs shadow-xl active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-                                          >
-                                            <span>Editar proyecto</span>
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Card Footer Metadata (Título 14px, Cliente 12px + • hace... 12px a la derecha del cliente, Total de tareas 12px abajo) */}
-                                      <div className={`sites_template_tile--templateCoverBottomRow--3TUmT p-3 ${isNightMode ? "bg-[#1f1f1f]" : "bg-[#fffce2]"} border-t border-white/5 shrink-0 flex flex-col justify-center min-h-[64px]`}>
-                                        <div className="text-[14px] font-bold text-white/95 truncate" title={p.title}>
-                                          {p.title}
-                                        </div>
-                                        <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
-                                          <span className="text-[12px] font-medium text-white/50 truncate" title={p.client || "Brandex"}>
-                                            {p.client || "Brandex"}
-                                          </span>
-                                          <span className="text-[12px] text-white/50 shrink-0">
-                                            • {formatTimeAgo(p.fecha_creacion || (p as any).createdAt || (p as any).created_at || p.startDate)}
-                                          </span>
-                                        </div>
-                                        <div className="text-[12px] text-white/60 mt-0.5">
-                                          {p.tasks?.length || 0} {p.tasks?.length === 1 ? "tarea" : "tareas"}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                               })}
+                                    />
+                                  ))}
+                                </div>
                               </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    )
+                      )
                     ) : (
                       /* FAST CREATE MODAL ESTILO LINEAR EXACTO */
                       <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#1f1f1f] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>

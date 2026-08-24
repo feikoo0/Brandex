@@ -11,6 +11,7 @@ import { db } from "@/lib/firebase";
 
 import { ProjectDashboard, Project, Task } from "./components/ProjectDashboard";
 import NewProjectModal, { ProjectData } from "./components/NewProjectModal";
+import NewTaskModal, { TaskData } from "./components/NewTaskModal";
 import { playSound } from "./utils/audio";
 import { INITIAL_PROJECTS, getDynamicProgress, autoEvaluateProjectStatus } from "./utils/data";
 import TimeHeatmap from "./components/TimeHeatmap";
@@ -186,6 +187,11 @@ export default function BrandexV3Page() {
   const lastScrollIndexRef = useRef<number>(0);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [editingProjectModal, setEditingProjectModal] = useState<Project | null>(null);
+  const [projectModalOriginRect, setProjectModalOriginRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [showNewTaskModal, setShowNewTaskModal] = useState(false);
+  const [editingTaskModal, setEditingTaskModal] = useState<(Partial<Task> & { projectId?: string | number; projectName?: string; client?: string }) | null>(null);
+  const [newTaskDefaultProjectId, setNewTaskDefaultProjectId] = useState<string | number | undefined>(undefined);
+  const [taskModalOriginRect, setTaskModalOriginRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollTop = e.currentTarget.scrollTop;
@@ -202,6 +208,8 @@ export default function BrandexV3Page() {
     const interval = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+
 
   // Format date and time
   const dateStr = currentTime ? currentTime.toLocaleDateString("es-ES", { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).replace(/,/g, '') : "";
@@ -1060,16 +1068,19 @@ export default function BrandexV3Page() {
                 animate={{ opacity: 1, scale: 1, width: 232 }}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.96 }}
-                onClick={() => {
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setProjectModalOriginRect({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+                  setEditingProjectModal(null);
                   setShowNewProjectModal(true);
                   playSound('click');
                 }}
-                className="mb-[10px] group relative flex items-center h-10 w-[232px] rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-[#ffffffd6] cursor-pointer select-none overflow-hidden transition-all duration-300 border border-[#ffffff1f] shadow-sm shrink-0"
+                className="mb-[10px] group relative flex items-center h-9 w-[232px] rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-[#ffffffd6] cursor-pointer select-none overflow-hidden transition-all duration-300 border border-[#ffffff1f] shadow-sm shrink-0"
               >
-                <div className="flex items-center justify-center shrink-0 w-8 h-10">
+                <div className="flex items-center justify-center shrink-0 w-8 h-9">
                   <Plus className="w-[13.55px] h-[13.55px] text-[#ffffffd6] stroke-[2.25] shrink-0" />
                 </div>
-                <span className="text-[14px] font-normal whitespace-nowrap select-none pr-3 transition-all duration-200 text-[#ffffffd6] -translate-x-[2px] -translate-y-[1px]">
+                <span className="text-[13px] font-normal whitespace-nowrap select-none pr-3 transition-all duration-200 text-[#ffffffd6] -translate-x-[2px] -translate-y-[1px]">
                   Nuevo proyecto
                 </span>
               </motion.button>
@@ -1793,8 +1804,9 @@ export default function BrandexV3Page() {
       {activeTab === "proyectos" && (
         <div className="absolute top-[75px] left-6 right-6 bottom-4 z-[70] pointer-events-auto">
           <ProjectsView
-            onCreateProject={() => {
+            onCreateProject={(originRect) => {
               setEditingProjectModal(null);
+              setProjectModalOriginRect(originRect || null);
               setShowNewProjectModal(true);
               playSound('click');
             }}
@@ -1829,17 +1841,30 @@ export default function BrandexV3Page() {
             <HomeDashboard
               projects={projects}
               onSelectTab={(tab) => setActiveTab(tab)}
-              onSelectProject={(projectId) => {
+              onSelectProject={(projectId, originRect) => {
                 const targetProject = projects.find((p) => String(p.id) === String(projectId));
                 if (targetProject) {
                   setActiveProject(targetProject.id);
                   setEditingProjectModal(targetProject);
+                  setProjectModalOriginRect(originRect || null);
                   setShowNewProjectModal(true);
                   playSound('click');
                 } else {
                   setActiveProject(projectId);
                   setActiveTab("proyectos");
                 }
+              }}
+              onSelectTask={(task, projectId, originRect) => {
+                const parentProj = projects.find((p) => String(p.id) === String(projectId));
+                setEditingTaskModal({
+                  ...task,
+                  projectId: projectId || (task as any).projectId || parentProj?.id,
+                  projectName: parentProj?.title || (task as any).projectName,
+                  client: parentProj?.client || (task as any).client || "Brandex"
+                });
+                setTaskModalOriginRect(originRect || null);
+                setShowNewTaskModal(true);
+                playSound('click');
               }}
               isNeumorphic={isNeumorphic}
               isNightMode={isNightMode}
@@ -2011,10 +2036,12 @@ export default function BrandexV3Page() {
         onClose={() => {
           setShowNewProjectModal(false);
           setEditingProjectModal(null);
+          setProjectModalOriginRect(null);
         }}
         onCreateProject={addNewProjectFromModal}
         onDeleteProject={deleteProject}
         editingProject={editingProjectModal}
+        originRect={projectModalOriginRect}
         onUpdateProject={(projId, updatedData) => {
           setProjects((prev) =>
             prev.map((p) => {
@@ -2064,6 +2091,124 @@ export default function BrandexV3Page() {
         }}
         isNightMode={isNightMode}
         isNeumorphic={isNeumorphic}
+      />
+
+      <NewTaskModal
+        isOpen={showNewTaskModal}
+        onClose={() => {
+          setShowNewTaskModal(false);
+          setEditingTaskModal(null);
+        }}
+        onCreateTask={(taskData) => {
+          playSound('pop');
+          const targetProjId = taskData.projectId || (projects[0]?.id ? String(projects[0].id) : undefined);
+          if (!targetProjId) return;
+
+          const newTask: Task = {
+            id: typeof taskData.id === "number" ? taskData.id : Date.now(),
+            title: taskData.title,
+            desc: taskData.desc || "",
+            format: taskData.format || "Sin formato",
+            formato: taskData.formato || null,
+            time: taskData.time || "1 hora",
+            status: taskData.status || "Planificado",
+            statusColor: "bg-slate-500/20 border-slate-500/30 text-slate-300",
+            subtasks: taskData.subtasks || [],
+            deadline: taskData.deadline,
+            fecha_limite: taskData.fecha_limite || taskData.deadline,
+            fecha_programada: taskData.fecha_programada || taskData.startDate,
+            fecha_creacion: taskData.fecha_creacion || new Date().toISOString().split("T")[0],
+            color: taskData.color,
+            attachmentUrl: taskData.attachmentUrl || taskData.recursosDrive
+          };
+
+          setProjects(prev =>
+            prev.map(p => {
+              if (String(p.id) !== String(targetProjId)) return p;
+              const updatedTasks = [...(p.tasks || []), newTask];
+              const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
+              persistProjectUpdate(p.id, {
+                tasks: evalProj.tasks,
+                status: evalProj.status,
+                progress: evalProj.progress,
+                percent: evalProj.percent
+              });
+              return evalProj;
+            })
+          );
+
+          setShowNewTaskModal(false);
+          setEditingTaskModal(null);
+        }}
+        onUpdateTask={(taskId, updatedData, pId) => {
+          playSound('pop');
+          setProjects(prev =>
+            prev.map(p => {
+              const hasTask = (p.tasks || []).some(t => String(t.id) === String(taskId));
+              if (!hasTask && String(p.id) !== String(pId)) return p;
+
+              const updatedTasks = (p.tasks || []).map(t => {
+                if (String(t.id) !== String(taskId)) return t;
+                return {
+                  ...t,
+                  title: updatedData.title !== undefined ? updatedData.title : t.title,
+                  desc: updatedData.desc !== undefined ? updatedData.desc : t.desc,
+                  format: updatedData.format !== undefined ? updatedData.format : t.format,
+                  formato: updatedData.formato !== undefined ? updatedData.formato : t.formato,
+                  time: updatedData.time !== undefined ? updatedData.time : t.time,
+                  status: updatedData.status !== undefined ? updatedData.status : t.status,
+                  priority: updatedData.priority !== undefined ? updatedData.priority : (t as any).priority,
+                  deadline: updatedData.deadline !== undefined ? updatedData.deadline : t.deadline,
+                  fecha_limite: updatedData.fecha_limite !== undefined ? updatedData.fecha_limite : t.fecha_limite,
+                  fecha_programada: updatedData.fecha_programada !== undefined ? updatedData.fecha_programada : t.fecha_programada,
+                  color: updatedData.color !== undefined ? updatedData.color : t.color,
+                  subtasks: updatedData.subtasks !== undefined ? updatedData.subtasks : t.subtasks,
+                  attachmentUrl: updatedData.attachmentUrl !== undefined ? updatedData.attachmentUrl : t.attachmentUrl,
+                  recursosDrive: updatedData.recursosDrive !== undefined ? updatedData.recursosDrive : (t as any).recursosDrive
+                };
+              });
+
+              const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
+              persistProjectUpdate(p.id, {
+                tasks: evalProj.tasks,
+                status: evalProj.status,
+                progress: evalProj.progress,
+                percent: evalProj.percent
+              });
+              return evalProj;
+            })
+          );
+
+          setShowNewTaskModal(false);
+          setEditingTaskModal(null);
+        }}
+        onDeleteTask={(taskId, pId) => {
+          playSound('trash');
+          setProjects(prev =>
+            prev.map(p => {
+              const hasTask = (p.tasks || []).some(t => String(t.id) === String(taskId));
+              if (!hasTask && String(p.id) !== String(pId)) return p;
+
+              const updatedTasks = (p.tasks || []).filter(t => String(t.id) !== String(taskId));
+              const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
+              persistProjectUpdate(p.id, {
+                tasks: evalProj.tasks,
+                status: evalProj.status,
+                progress: evalProj.progress,
+                percent: evalProj.percent
+              });
+              return evalProj;
+            })
+          );
+
+          setShowNewTaskModal(false);
+          setEditingTaskModal(null);
+        }}
+        editingTask={editingTaskModal}
+        projects={projects}
+        defaultProjectId={newTaskDefaultProjectId}
+        originRect={taskModalOriginRect}
+        isNightMode={isNightMode}
       />
     </main>
   );

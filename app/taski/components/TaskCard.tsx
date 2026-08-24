@@ -3,7 +3,7 @@
 import React, { useState, useRef } from "react";
 import { useSortable, defaultAnimateLayoutChanges } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { MoreHorizontal, Trash2, Maximize2 } from "lucide-react";
 import { Project, Task } from "./ProjectDashboard";
 import TaskCardPopovers, { TaskCardMenuPopover } from "./TaskCardPopovers";
 import { playSound } from "../utils/audio";
@@ -66,7 +66,8 @@ export interface TaskCardProps {
   setActiveColorSelectorCardId: React.Dispatch<React.SetStateAction<string | null>>;
   activeCardMenuId?: string | null;
   setActiveCardMenuId?: React.Dispatch<React.SetStateAction<string | null>>;
-  onSelectProject?: (projectId: string | number) => void;
+  onSelectProject?: (projectId: string | number, originRect?: { x: number; y: number; width: number; height: number }) => void;
+  onSelectTask?: (task: Task, projectId: string | number, originRect?: { x: number; y: number; width: number; height: number }) => void;
   onAddTaskToProject?: (projectId: string | number) => void;
   onChangeProjectColor?: (projectId: string | number) => void;
   sortBy?: "alfabetico" | "creacion" | "visto";
@@ -121,6 +122,7 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   activeCardMenuId,
   setActiveCardMenuId,
   onSelectProject,
+  onSelectTask,
   onAddTaskToProject,
   onChangeProjectColor,
   sortBy = "visto",
@@ -230,10 +232,33 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
   const currentTheme = getCardColorTheme(taskColor, isNightMode);
   const isExpanded = (expandedCardId === taskId) && !forceCollapsed;
 
+  const handleOpenTaskModal = (e: React.MouseEvent) => {
+    if (!isHomeEditMode && onSelectTask) {
+      e.stopPropagation();
+      playSound('click');
+      const cardEl = (e.currentTarget.closest(".task-card-wrapper") || e.currentTarget) as HTMLElement;
+      const rect = cardEl.getBoundingClientRect();
+      onSelectTask(task, projectId, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
+    }
+  };
+
   return (
     <div 
       onMouseEnter={() => playSound('click')}
-      className={`group/card ${
+      onClick={(e) => {
+        const target = e.target as HTMLElement;
+        if (
+          target.closest("button") ||
+          target.closest("input") ||
+          target.closest("textarea") ||
+          target.closest("[data-dropdown-container]") ||
+          target.closest("[data-no-card-click='true']")
+        ) {
+          return;
+        }
+        handleOpenTaskModal(e);
+      }}
+      className={`group/card cursor-pointer ${
         isNightMode ? "bg-[#121212]" : "bg-white"
       } rounded-2xl pointer-events-auto relative font-sans flex flex-col justify-between h-full w-full p-1.5 overflow-hidden select-none`}
     >
@@ -247,7 +272,20 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
       {/* ── 1. PORTADA / CONTENEDOR RECTANGULAR SÓLIDO CON COLOR DE PROYECTO ── */}
       <div
         style={taskBgColor ? { backgroundColor: taskBgColor } : {}}
-        className={`w-full flex-1 min-h-0 rounded-xl relative z-10 flex flex-col justify-between overflow-hidden border border-white/10 px-3.5 pt-2 pb-2 transition-all duration-300 ${
+        onClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (
+            target.closest("button") ||
+            target.closest("input") ||
+            target.closest("textarea") ||
+            target.closest("[data-dropdown-container]") ||
+            target.closest("[data-no-card-click='true']")
+          ) {
+            return;
+          }
+          handleOpenTaskModal(e);
+        }}
+        className={`w-full flex-1 min-h-0 rounded-xl relative z-10 flex flex-col justify-between overflow-hidden border border-white/10 px-3.5 pt-2 pb-2 transition-all duration-300 cursor-pointer ${
           taskBgColor ? "" : currentTheme.bg
         }`}
       >
@@ -281,8 +319,16 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
               isOpen={activeCardMenuId === taskId}
               onClose={() => setActiveCardMenuId?.(null)}
               triggerRef={threeDotsRef}
+              onOpenTask={() => {
+                const cardEl = threeDotsRef.current?.closest(".task-card-wrapper") || threeDotsRef.current;
+                const rect = cardEl ? cardEl.getBoundingClientRect() : undefined;
+                onSelectTask?.(task, projectId, rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : undefined);
+                setActiveCardMenuId?.(null);
+              }}
               onOpenProject={() => {
-                onSelectProject?.(projectId);
+                const cardEl = threeDotsRef.current?.closest(".task-card-wrapper") || threeDotsRef.current;
+                const rect = cardEl ? cardEl.getBoundingClientRect() : undefined;
+                onSelectProject?.(projectId, rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : undefined);
                 setActiveCardMenuId?.(null);
               }}
               onChangeProjectColor={() => {
@@ -348,36 +394,58 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
             </div>
           ) : (
             <div className="flex flex-col min-w-0 w-full">
-              {/* Top Meta Line: Project Name & 3 dots */}
+              {/* Top Meta Line: Project Name & Action Buttons (Expand + 3 dots) */}
               <div className="flex items-center justify-between w-full leading-none">
-                <span className="text-[12px] font-medium select-none truncate text-white/80 leading-none">
+                <span className="text-[12px] font-medium select-none truncate text-white/80 leading-none mr-2">
                   {projName}
                 </span>
                 {!isHomeEditMode && (
-                  <div className="relative shrink-0" data-dropdown-container>
+                  <div 
+                    className={`flex items-center gap-0.5 shrink-0 -mr-1 -mt-1 transition-opacity duration-200 ${
+                      activeCardMenuId === taskId ? "opacity-100" : "opacity-0 group-hover/card:opacity-100"
+                    }`}
+                    data-no-dnd="true"
+                  >
+                    {/* Botón de expandir para abrir la ventana de tarea */}
                     <button
-                      ref={threeDotsRef}
                       type="button"
                       data-no-dnd="true"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        playSound('click');
-                        setActiveCardMenuId?.((prev) => (prev === taskId ? null : taskId));
-                      }}
-                      className={`p-0.5 -mr-1 -mt-1 rounded-md hover:bg-white/15 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white ${
-                        activeCardMenuId === taskId ? "bg-white/20 text-white" : ""
-                      }`}
-                      title="Opciones de la tarjeta"
+                      onClick={handleOpenTaskModal}
+                      className="p-1 rounded-md hover:bg-white/20 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white"
+                      title="Abrir ventana de la tarea"
                     >
-                      <MoreHorizontal className="w-3.5 h-3.5" />
+                      <Maximize2 className="w-3.5 h-3.5" />
                     </button>
+
+                    {/* Botón de 3 puntos (Menú contextual) */}
+                    <div className="relative shrink-0" data-dropdown-container>
+                      <button
+                        ref={threeDotsRef}
+                        type="button"
+                        data-no-dnd="true"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playSound('click');
+                          setActiveCardMenuId?.((prev) => (prev === taskId ? null : taskId));
+                        }}
+                        className={`p-1 rounded-md hover:bg-white/20 transition-colors cursor-pointer shrink-0 text-white/70 hover:text-white ${
+                          activeCardMenuId === taskId ? "bg-white/25 text-white" : ""
+                        }`}
+                        title="Opciones de la tarjeta"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
 
               {/* Task Title */}
               <h4 
-                className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 transition-all select-none mt-0.5 ${currentTheme.title}`}
+                data-no-dnd="true"
+                onClick={handleOpenTaskModal}
+                className={`task-card-title text-[14px] font-bold tracking-normal leading-tight line-clamp-2 transition-all select-none mt-0.5 cursor-pointer hover:opacity-85 ${currentTheme.title}`}
+                title="Haz clic para editar la tarea"
               >
                 {taskTitle}
               </h4>
@@ -423,20 +491,14 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
               <p 
                 data-no-dnd="true"
                 onClick={(e) => {
-                  e.stopPropagation();
-                  playSound('click');
-                  setEditingTaskField({ taskId, field: "desc" });
-                  setEditingValue(task.desc || desc || "");
-                  setDragDisabledProp?.(true);
-                }}
-                onMouseEnter={() => setDragDisabledProp?.(true)}
-                onMouseLeave={() => {
-                  if (editingTaskField?.taskId !== taskId) {
-                    setDragDisabledProp?.(false);
+                  if (!isHomeEditMode && onSelectTask) {
+                    e.stopPropagation();
+                    playSound('click');
+                    onSelectTask(task, projectId);
                   }
                 }}
-                className={`task-card-desc text-[12px] leading-snug transition-all pointer-events-auto line-clamp-3 cursor-text hover:opacity-80 ${currentTheme.desc}`}
-                title="Haz clic para editar descripción"
+                className={`task-card-desc text-[12px] leading-snug transition-all pointer-events-auto line-clamp-3 cursor-pointer hover:opacity-80 ${currentTheme.desc}`}
+                title="Haz clic para abrir la tarea"
               >
                 {task.desc || desc}
               </p>
@@ -444,20 +506,14 @@ export const TaskCardContent: React.FC<TaskCardProps> = ({
               <p 
                 data-no-dnd="true"
                 onClick={(e) => {
-                  e.stopPropagation();
-                  playSound('click');
-                  setEditingTaskField({ taskId, field: "desc" });
-                  setEditingValue("");
-                  setDragDisabledProp?.(true);
-                }}
-                onMouseEnter={() => setDragDisabledProp?.(true)}
-                onMouseLeave={() => {
-                  if (editingTaskField?.taskId !== taskId) {
-                    setDragDisabledProp?.(false);
+                  if (!isHomeEditMode && onSelectTask) {
+                    e.stopPropagation();
+                    playSound('click');
+                    onSelectTask(task, projectId);
                   }
                 }}
-                className={`task-card-desc text-[12px] italic cursor-text hover:opacity-80 transition-all pointer-events-auto opacity-60 ${currentTheme.desc}`}
-                title="Haz clic para agregar descripción"
+                className={`task-card-desc text-[12px] italic cursor-pointer hover:opacity-80 transition-all pointer-events-auto opacity-60 ${currentTheme.desc}`}
+                title="Haz clic para abrir la tarea"
               >
                 Agregar descripción...
               </p>

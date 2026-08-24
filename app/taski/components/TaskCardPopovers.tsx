@@ -246,7 +246,8 @@ export const TaskCardPopovers: React.FC<TaskCardPopoversProps> = ({
 export interface TaskCardMenuPopoverProps {
   isOpen: boolean;
   onClose: () => void;
-  triggerRef: React.RefObject<HTMLElement | null>;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onOpenTask?: () => void;
   onOpenProject?: () => void;
   onChangeProjectColor?: () => void;
   onAddTaskToProject?: () => void;
@@ -258,6 +259,7 @@ export const TaskCardMenuPopover: React.FC<TaskCardMenuPopoverProps> = ({
   isOpen,
   onClose,
   triggerRef,
+  onOpenTask,
   onOpenProject,
   onChangeProjectColor,
   onAddTaskToProject,
@@ -336,6 +338,27 @@ export const TaskCardMenuPopover: React.FC<TaskCardMenuPopoverProps> = ({
           role="menu"
           aria-orientation="vertical"
         >
+          {/* Task Actions */}
+          <ul data-fpl-component="" role="group" className="menu__group__KwU4I">
+            {/* 0. Abrir / Editar tarea */}
+            <li
+              data-fpl-component=""
+              role="menuitem"
+              tabIndex={-1}
+              onClick={(e) => {
+                e.stopPropagation();
+                playSound("click");
+                onOpenTask?.();
+                onClose();
+              }}
+              className="menu__item__Tl2MO menu__selectItem__I9GzL font-bold"
+            >
+              <span className="menu__itemText__qcxtq menu__selectItemText__m9o3C">
+                <span>Editar tarea</span>
+              </span>
+            </li>
+          </ul>
+
           {/* Project Actions */}
           <ul data-fpl-component="" role="group" className="menu__group__KwU4I">
             {/* 1. Abrir proyecto */}

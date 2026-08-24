@@ -50,7 +50,8 @@ type ViewMode = "buscar" | "kanban" | "tabla" | "timeline";
 interface HomeDashboardProps {
   projects: Project[];
   onSelectTab: (tab: string) => void;
-  onSelectProject?: (projectId: string | number) => void;
+  onSelectProject?: (projectId: string | number, originRect?: { x: number; y: number; width: number; height: number }) => void;
+  onSelectTask?: (task: Task, projectId?: string | number, originRect?: { x: number; y: number; width: number; height: number }) => void;
   isNeumorphic: boolean;
   isNightMode: boolean;
   activeView: ViewMode;
@@ -88,6 +89,7 @@ export function HomeDashboard({
   projects,
   onSelectTab,
   onSelectProject,
+  onSelectTask,
   isNeumorphic,
   isNightMode,
   activeView,
@@ -870,6 +872,7 @@ export function HomeDashboard({
     projects,
     setProjects: onUpdateProjects,
     onSelectProject,
+    onSelectTask,
     onAddTaskToProject: handleAddTaskToProject,
     onChangeProjectColor: handleChangeProjectColor,
     colorConfig,
@@ -980,18 +983,18 @@ export function HomeDashboard({
           transition: none !important;
         }
 
-        /* Delay card hover changes to prevent accidental triggers when passing cursor by */
+        /* Delay card hover changes to prevent accidental triggers when passing cursor by (doubled delay) */
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card-wrapper {
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card {
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .project-title {
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
         .task-list-scroll:has(.task-card-wrapper:hover) .task-card-title {
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
 
 
@@ -1103,7 +1106,7 @@ export function HomeDashboard({
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
           opacity: 0 !important;
           transition: opacity 0.12s ease-out !important;
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
 
         /* Task title (base rules) */
@@ -1114,7 +1117,7 @@ export function HomeDashboard({
         }
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
           transform: translateY(0px) !important;
-          transition-delay: 450ms !important;
+          transition-delay: 900ms !important;
         }
         /* Keep neighbor card titles at normal multi-line display when another card is hovered */
         .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
@@ -1139,7 +1142,7 @@ export function HomeDashboard({
           opacity: 1 !important;
           transform: translateY(0px) !important;
           transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-out !important;
-          transition-delay: 950ms !important;
+          transition-delay: 1400ms !important;
         }
 
         /* =====================================================
@@ -1308,7 +1311,7 @@ export function HomeDashboard({
                     p.client.toLowerCase().includes(searchQuery.toLowerCase())
                 );
 
-                const matchingTasks: { id: string; title: string; projectTitle: string; status?: string }[] = [];
+                const matchingTasks: { id: string; title: string; projectTitle: string; projectId: number | string; status?: string }[] = [];
                 projects.forEach(p => {
                   p.tasks?.forEach(t => {
                     if (
@@ -1319,6 +1322,7 @@ export function HomeDashboard({
                         id: String(t.id),
                         title: t.title,
                         projectTitle: p.title,
+                        projectId: p.id,
                         status: t.status
                       });
                     }
@@ -1361,6 +1365,13 @@ export function HomeDashboard({
                               {matchingTasks.map((t) => (
                                 <div
                                   key={t.id}
+                                  onClick={() => {
+                                    const proj = projects.find(p => p.id === t.projectId);
+                                    const matchedTask = proj?.tasks?.find(tk => String(tk.id) === String(t.id));
+                                    if (matchedTask) {
+                                      onSelectTask?.(matchedTask, t.projectId);
+                                    }
+                                  }}
                                   className={`w-full h-11 rounded-xl ${headerBgStyle} px-4 flex items-center justify-between cursor-pointer hover:bg-white/[0.02] transition-colors`}
                                 >
                                   <div className="flex items-center gap-3">
@@ -1455,6 +1466,7 @@ export function HomeDashboard({
                   cardBgStyle={cardBgStyle}
                   onSelectTab={onSelectTab}
                   onSelectProject={onSelectProject}
+                  onSelectTask={onSelectTask}
                 />
               )}
 
