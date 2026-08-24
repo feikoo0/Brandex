@@ -320,9 +320,10 @@ interface KanbanColumnSectionProps {
   };
   draggingProjId: string | null;
   onOpenProject: (id: string | number) => void;
+  onCreateProject?: () => void;
 }
 
-function KanbanColumnSection({ col, draggingProjId, onOpenProject }: KanbanColumnSectionProps) {
+function KanbanColumnSection({ col, draggingProjId, onOpenProject, onCreateProject }: KanbanColumnSectionProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: col.id,
   });
@@ -343,13 +344,28 @@ function KanbanColumnSection({ col, draggingProjId, onOpenProject }: KanbanColum
       }}
     >
       {/* Cabecera de Columna (Pill Idéntico a Work 1) */}
-      <div className="flex items-center gap-2.5 px-0 pt-1 pb-1 shrink-0 select-none">
-        <span className="text-[13px] font-bold text-white tracking-tight">
-          {col.name}
-        </span>
-        <span className="px-2.5 py-0.5 min-w-[24px] h-[20px] rounded-[13px] text-[11px] font-mono font-bold flex items-center justify-center shrink-0 bg-white/10 text-white">
-          {col.projects.length}
-        </span>
+      <div className="flex items-center justify-between px-0 pt-1 pb-1 shrink-0 select-none">
+        <div className="flex items-center gap-2.5">
+          <span className="text-[13px] font-bold text-white tracking-tight">
+            {col.name}
+          </span>
+          <span className="px-2.5 py-0.5 min-w-[24px] h-[20px] rounded-[13px] text-[11px] font-mono font-bold flex items-center justify-center shrink-0 bg-white/10 text-white">
+            {col.projects.length}
+          </span>
+        </div>
+        {col.id === "Planificación" && onCreateProject && (
+          <button
+            type="button"
+            onClick={() => {
+              playSound("click");
+              onCreateProject();
+            }}
+            className="p-1 rounded-lg text-[#ffffff6b] hover:text-white hover:bg-white/10 transition-colors"
+            title="Crear nuevo proyecto"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Lista de Tarjetas Scrollable con SortableContext */}
@@ -1046,6 +1062,7 @@ export function ClientDetailViewV2({
                   col={col}
                   draggingProjId={draggingProjId}
                   onOpenProject={onOpenProject}
+                  onCreateProject={onCreateProject ? () => onCreateProject(String(client.id)) : undefined}
                 />
               ))}
             </div>

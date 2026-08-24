@@ -354,22 +354,7 @@ export function ClientsDashboard({
       <CreateClientModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onClientCreated={async (newCli) => {
-          await createClient({
-            nombre: newCli.name,
-            industria: newCli.industry,
-            contacto: {
-              persona: newCli.contactPerson,
-              email: newCli.email,
-              telefono: newCli.phone,
-              whatsapp: newCli.phone,
-            },
-            status: newCli.status,
-            color: (newCli as any).color || "",
-            colorName: (newCli as any).colorName || "",
-            notas_internas: newCli.notes,
-            website: newCli.website,
-          });
+        onClientCreated={(newCli) => {
           setIsCreateModalOpen(false);
           playSound('pop');
         }}

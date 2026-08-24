@@ -30,8 +30,12 @@ import { ProjectCardItem, ProjectListItem } from "./ProjectCard";
 import ProjectFullScreenView from "./ProjectFullScreenView";
 
 
+export interface ProjectsViewProps {
+  onCreateProject?: () => void;
+}
+
 // ── 4. COMPONENTE PRINCIPAL PROJECTS VIEW ────────────────────────────────────
-export function ProjectsView() {
+export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
   const { data, isLoading } = useData();
   const openModal = useUIStore((s) => s.openModal);
 
@@ -205,7 +209,14 @@ export function ProjectsView() {
 
           {/* Botón Nuevo Proyecto */}
           <button 
-            onClick={() => openModal({ type: "proyecto", id: "new" })}
+            type="button"
+            onClick={() => {
+              if (onCreateProject) {
+                onCreateProject();
+              } else {
+                openModal({ type: "proyecto", id: "new" });
+              }
+            }}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-white/90 text-black text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -244,8 +255,23 @@ export function ProjectsView() {
           <Briefcase className="w-14 h-14 mb-4 text-[#ffffff6b]" />
           <h4 className="text-xl font-bold text-[#ffffffd6]">No se encontraron proyectos</h4>
           <p className="text-xs text-[#ffffff6b] mt-1 max-w-sm">
-            Prueba ajustando los filtros de búsqueda o crea un nuevo proyecto de marca.
+            {searchQuery
+              ? `No hay proyectos que coincidan con "${searchQuery}".`
+              : "Prueba ajustando los filtros de búsqueda o crea un nuevo proyecto de marca."}
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (onCreateProject) {
+                onCreateProject();
+              } else {
+                openModal({ type: "proyecto", id: "new" });
+              }
+            }}
+            className="mt-4 px-5 py-2.5 rounded-xl bg-white hover:bg-white/90 text-black text-xs font-bold uppercase tracking-wider transition-all"
+          >
+            + Crear Nuevo Proyecto
+          </button>
         </div>
       )}
     </div>

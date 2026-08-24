@@ -229,7 +229,7 @@ export default function BrandexV3Page() {
   const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
   const [isLogoHovered, setIsLogoHovered] = useState(false);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(true);
   const [showAllProjectsList, setShowAllProjectsList] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -1792,7 +1792,13 @@ export default function BrandexV3Page() {
       {/* Render Projects View (Catálogo & Fullscreen) */}
       {activeTab === "proyectos" && (
         <div className="absolute top-[75px] left-6 right-6 bottom-4 z-[70] pointer-events-auto">
-          <ProjectsView />
+          <ProjectsView
+            onCreateProject={() => {
+              setEditingProjectModal(null);
+              setShowNewProjectModal(true);
+              playSound('click');
+            }}
+          />
         </div>
       )}
 

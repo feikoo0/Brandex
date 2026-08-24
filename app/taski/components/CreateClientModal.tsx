@@ -6,7 +6,7 @@ import { X, Building2 } from "lucide-react";
 import { playSound } from "../utils/audio";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { PROJECT_COLOR_PALETTE, cn } from "@/lib/utils";
+import { PROJECT_COLOR_PALETTE, cn, getWorkspaceScopedCol } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
 
 export interface ClientItem {
@@ -58,7 +58,7 @@ export default function CreateClientModal({
 }: CreateClientModalProps) {
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const isMaster = workspaceId === "brandex-master" || workspaceId === "159789" || workspaceId === "ws_159789";
-  const clientsColName = isMaster ? "clients" : (workspaceId ? `ws_${workspaceId}_clients` : "clients");
+  const clientsColName = getWorkspaceScopedCol("clients", workspaceId, isMaster);
 
   const [name, setName] = useState("");
   const [industry, setIndustry] = useState("");
@@ -138,6 +138,13 @@ export default function CreateClientModal({
       console.error("Error saving new client to Firestore:", err);
     } finally {
       setIsSaving(false);
+      setName("");
+      setIndustry("");
+      setContactPerson("");
+      setEmail("");
+      setPhone("");
+      setWebsite("");
+      setNotes("");
       onClientCreated(newClient);
       onClose();
     }
