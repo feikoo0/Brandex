@@ -26,7 +26,7 @@ export function NewTaskCanvas() {
   const [clienteId, setClienteId] = useState("");
   const [error, setError] = useState("");
 
-  const workers = data?.trabajadores.map((w) => w.nombre) ?? [];
+  const workers = data?.miembros.map((w) => w.nombre) ?? [];
   const projects = data?.proyectos ?? [];
   const clients = data?.clientes ?? [];
 

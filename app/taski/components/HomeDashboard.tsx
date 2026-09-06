@@ -4,23 +4,24 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, LayoutGrid, Table, CalendarDays, ExternalLink, MoreHorizontal, ArrowRight, TrendingUp, ArrowUpRight, Wallet, Activity, Layers, Flag, Calendar, ChevronDown, ChevronUp, Plus, Check, Clock, X, AlertTriangle, Settings } from "lucide-react";
 import { Project, Task } from "./ProjectDashboard";
-import TimeHeatmap from "./TimeHeatmap";
 import DailyEffortBar from "./DailyEffortBar";
 import TimelineDiario from "./TimelineDiario";
 import KanbanBoard from "./KanbanBoard";
 import TaskTableView from "./TaskTableView";
+import { TimelineView } from "./Timeline/TimelineView";
 import DeleteConfirmModal from "./DeleteConfirmModal";
-import { MonoActivityHeatmap } from "@/components/ui/mono-activity-heatmap";
-import { GitHubActivity } from "@/components/ui/github-activity";
 import { HomeSessionsColumn } from "@/components/views/HomeSessionsColumn";
+import { ResizableDivider } from "@/components/ui/ResizableDivider";
 import { useRecentSessions, useSessions } from "@/hooks/useSessions";
+import { resolveBucketDate } from "@/lib/timelineUtils";
 import { playSound } from "../utils/audio";
-import { parseTimeToHours, getCardColorTheme, CARD_COLOR_KEYS } from "@/lib/utils";
+import { parseTimeToHours, getCardColorTheme, CARD_COLOR_KEYS, extractCleanTaskId } from "@/lib/utils";
 import { autoEvaluateProjectStatus } from "../utils/data";
 import { persistProjectUpdate } from "../utils/persist";
-import { doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useTaskCardInteractions } from "../hooks/useTaskCardInteractions";
+import { useAuthStore } from "@/lib/store";
 
 interface SynthesizedTask {
   id: string;
@@ -39,6 +40,9 @@ interface SynthesizedTask {
   time?: string;
   desc?: string;
   kanbanOrders?: Record<string, number>;
+  asignado_id?: string;
+  asignado_ids?: string[];
+  asignado?: string;
 }
 
 
@@ -63,27 +67,14 @@ interface HomeDashboardProps {
   onDeleteProject?: (id: number) => void;
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
+  timelineHideCompleted?: boolean;
+  onToggleTimelineHideCompleted?: () => void;
+  timelineSortBy?: "recientes" | "urgentes" | "alfabetico";
+  onSetTimelineSortBy?: (sort: "recientes" | "urgentes" | "alfabetico") => void;
 }
 
 
-const updateVisibleCards = (container: HTMLDivElement) => {
-  const children = container.children;
-  const scrollTop = container.scrollTop;
-  // Card height is 162px, gap is 10px. Total 172px.
-  const topVisibleIndex = Math.round(scrollTop / 172);
-  
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i] as HTMLElement;
-    child.classList.remove("card-pos-0", "card-pos-1", "card-pos-2");
-    if (i === topVisibleIndex) {
-      child.classList.add("card-pos-0");
-    } else if (i === topVisibleIndex + 1) {
-      child.classList.add("card-pos-1");
-    } else if (i === topVisibleIndex + 2) {
-      child.classList.add("card-pos-2");
-    }
-  }
-};
+const updateVisibleCards = () => {};
 
 export function HomeDashboard({
   projects,
@@ -101,6 +92,10 @@ export function HomeDashboard({
   onDeleteProject,
   searchQuery = "",
   onSearchQueryChange,
+  timelineHideCompleted = false,
+  onToggleTimelineHideCompleted,
+  timelineSortBy = "recientes",
+  onSetTimelineSortBy,
 }: HomeDashboardProps) {
   const colorConfig = CARD_COLOR_KEYS.reduce((acc: Record<string, any>, key: string) => {
     acc[key] = getCardColorTheme(key, isNightMode);
@@ -164,6 +159,34 @@ export function HomeDashboard({
   const [sortBy, setSortBy] = useState<"alfabetico" | "creacion" | "visto">("visto");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
+  // Ancho dinámico y redimensionable de la columna de sesiones
+  const [sessionsWidth, setSessionsWidth] = useState<number>(280);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("taski_sessions_column_width");
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 220 && parsed <= 550) {
+          setSessionsWidth(parsed);
+        }
+      }
+    }
+  }, []);
+
+  const handleSessionsResize = React.useCallback((deltaX: number) => {
+    setSessionsWidth((prev) => {
+      const maxW = typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.40) : 480;
+      return Math.min(Math.max(prev + deltaX, 240), maxW);
+    });
+  }, []);
+
+  const handleSessionsResizeEnd = React.useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("taski_sessions_column_width", String(sessionsWidth));
+    }
+  }, [sessionsWidth]);
+
   const registerNativeEdit = React.useCallback((taskId: string, field: "title" | "desc", currentValue: string) => {
     return (node: HTMLElement | null) => {
       if (!node) return;
@@ -195,8 +218,8 @@ export function HomeDashboard({
   };
 
   const handleDropTask = (taskId: string, projectId: string | number, oldColId: string | undefined, newColId: string, orderMap: Record<string, number>) => {
-    const parts = taskId.split("-");
-    const taskIdStr = parts[2];
+    const prefix = `kt-${projectId}-`;
+    const taskIdStr = taskId.startsWith(prefix) ? taskId.slice(prefix.length) : extractCleanTaskId(taskId, projectId);
     if (!taskIdStr) return;
 
     if (groupingMode === "estado") {
@@ -217,6 +240,7 @@ export function HomeDashboard({
             updatedTask = {
               ...updatedTask,
               status: status as any,
+              estado: status as any,
               statusColor: status === "Completado" 
                 ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
                 : status === "En Proceso"
@@ -226,13 +250,21 @@ export function HomeDashboard({
                     : "bg-slate-500/20 border-slate-500/30 text-slate-300",
               fecha_hora_completado: status === "Completado"
                 ? new Date().toISOString()
+                : undefined,
+              fecha_completado_real: status === "Completado"
+                ? new Date().toISOString().split("T")[0]
                 : undefined
             };
 
             // Persistencia en la colección nativa /tasks
             updateDoc(doc(db, "tasks", String(taskIdStr)), {
               estado: status,
-              updatedAt: new Date().toISOString()
+              status: status,
+              fecha_hora_completado: status === "Completado" ? new Date().toISOString() : null,
+              fecha_completado_real: status === "Completado" ? new Date().toISOString().split("T")[0] : null,
+              kanbanOrders: updatedTask.kanbanOrders || {},
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
             }).catch(err => console.error("Error actualizando /tasks:", err));
           }
 
@@ -241,12 +273,11 @@ export function HomeDashboard({
 
         const evalProj = autoEvaluateProjectStatus({
           ...p,
-          status: (String(p.id) === String(projectId) && status === "Revisión") ? "En Revisión Interna" : p.status,
-          statusColor: (String(p.id) === String(projectId) && status === "Revisión") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-500" : p.statusColor,
+          status: (String(p.id) === String(projectId) && (status === "En Revisión" || status === "Revisión")) ? "En Revisión" : p.status,
           tasks: updatedTasks
         });
 
-        // Atomic update for project
+        // Persistencia atómica de proyecto
         persistProjectUpdate(p.id, {
           tasks: evalProj.tasks,
           status: evalProj.status,
@@ -269,30 +300,32 @@ export function HomeDashboard({
               kanbanOrders: { ...(updatedTask.kanbanOrders || {}), [groupingMode]: orderMap[fullTaskId] } 
             };
           }
+          if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
+            updatedTask = {
+              ...updatedTask,
+              prioridad: priority,
+              priority: priority,
+            };
+            updateDoc(doc(db, "tasks", String(taskIdStr)), {
+              prioridad: priority,
+              priority: priority,
+              kanbanOrders: updatedTask.kanbanOrders || {},
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            }).catch(err => console.error("Error actualizando prioridad en /tasks:", err));
+          }
           return updatedTask;
         }) || [];
         
-        const targetPriority = String(p.id) === String(projectId) ? priority : p.priority;
-        const evalProj = autoEvaluateProjectStatus({ ...p, priority: targetPriority, tasks: updatedTasks });
+        const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
 
         persistProjectUpdate(p.id, {
-          tasks: evalProj.tasks,
-          priority: evalProj.priority
+          tasks: evalProj.tasks
         });
 
         return evalProj;
       }));
     } else if (groupingMode === "fecha") {
-      const today = new Date();
-      let targetDate = new Date();
-      if (newColId === "manana") {
-        targetDate.setDate(today.getDate() + 1);
-      } else if (newColId === "semana") {
-        targetDate.setDate(today.getDate() + 4);
-      } else if (newColId === "mes") {
-        targetDate.setDate(today.getDate() + 15);
-      }
-      const dateStr = formatLocalDate(targetDate);
       onUpdateProjects(prev => prev.map(p => {
         const updatedTasks = p.tasks?.map(t => {
           let updatedTask = t;
@@ -306,12 +339,24 @@ export function HomeDashboard({
           }
 
           if (String(p.id) === String(projectId) && String(t.id) === String(taskIdStr)) {
-            updatedTask = { ...updatedTask, fecha_programada: dateStr };
+            const existingDateStr = t.fecha_programada || t.fechaProg || "";
+            const dateStr = resolveBucketDate(newColId, existingDateStr);
+            const targetDate = new Date(dateStr + "T00:00:00");
+
+            updatedTask = { 
+              ...updatedTask, 
+              fecha_programada: dateStr, 
+              fechaProg: dateStr,
+              dueDate: targetDate,
+            };
 
             // Persistencia en la colección nativa /tasks
             updateDoc(doc(db, "tasks", String(taskIdStr)), {
               fechaProg: dateStr,
-              updatedAt: new Date().toISOString()
+              fecha_programada: dateStr,
+              kanbanOrders: updatedTask.kanbanOrders || {},
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
             }).catch(err => console.error("Error actualizando fechaProg en /tasks:", err));
           }
           
@@ -347,7 +392,7 @@ export function HomeDashboard({
             return updatedTask;
           }) || [];
 
-          const clientName = p.id === projectId ? targetClient : p.client;
+          const clientName = String(p.id) === String(projectId) ? targetClient : p.client;
           const evalProj = autoEvaluateProjectStatus({ ...p, client: clientName, tasks: updatedTasks });
 
           persistProjectUpdate(p.id, {
@@ -521,9 +566,9 @@ export function HomeDashboard({
 
           list.push({
             id: `kt-${p.id}-${t.id}`,
-            projectName: p.title,
+            projectName: p.title || (p as any).nombre || "Proyecto",
             projectId: p.id,
-            taskTitle: t.title,
+            taskTitle: t.title || (t as any).titulo || (t as any).nombre || "Tarea sin título",
             completedTasks: completedCount,
             totalTasks: totalCount,
             taskIndex: index,
@@ -531,11 +576,16 @@ export function HomeDashboard({
             fecha_programada: progDateStr,
             fecha_limite: limitDateStr,
             fecha_creacion: createdDateStr,
-            status: t.status,
-            format: t.format,
-            time: t.time,
-            desc: t.desc,
-            kanbanOrders: t.kanbanOrders
+            status: t.status || (t as any).estado || "Planificado",
+            format: t.format || (t as any).formato || "Post",
+            time: t.time || (t as any).esfuerzo || "30 min",
+            desc: t.desc || (t as any).contenido || (t as any).descripcion || "",
+            priority: t.priority || (t as any).prioridad || p.priority || "Media",
+            prioridad: (t as any).prioridad || t.priority || (p as any).prioridad || "Media",
+            kanbanOrders: t.kanbanOrders,
+            asignado_id: t.asignado_id,
+            asignado_ids: t.asignado_ids,
+            asignado: t.asignado,
           });
         });
       }
@@ -543,27 +593,33 @@ export function HomeDashboard({
 
     // Ordenar globalmente por la vista actual (groupingMode) y criterios de ordenación (sortBy, sortOrder)
     list.sort((a, b) => {
-      let cmp = 0;
       if (sortBy === "alfabetico") {
-        cmp = (a.taskTitle || "").localeCompare(b.taskTitle || "", "es", { sensitivity: "base" });
+        const cmp = (a.taskTitle || "").localeCompare(b.taskTitle || "", "es", { sensitivity: "base" });
+        return sortOrder === "asc" ? cmp : -cmp;
       } else if (sortBy === "creacion") {
-        const dateA = new Date((a.fecha_creacion || "") + "T00:00:00").getTime();
-        const dateB = new Date((b.fecha_creacion || "") + "T00:00:00").getTime();
-        cmp = dateA - dateB;
+        const dateA = new Date((a.fecha_creacion || "") + "T00:00:00").getTime() || 0;
+        const dateB = new Date((b.fecha_creacion || "") + "T00:00:00").getTime() || 0;
+        const cmp = dateA - dateB;
+        return sortOrder === "asc" ? cmp : -cmp;
       } else {
-        const orderA = a.kanbanOrders?.[groupingMode] ?? Infinity;
-        const orderB = b.kanbanOrders?.[groupingMode] ?? Infinity;
+        const orderA = a.kanbanOrders?.[groupingMode] !== undefined ? a.kanbanOrders[groupingMode] : Infinity;
+        const orderB = b.kanbanOrders?.[groupingMode] !== undefined ? b.kanbanOrders[groupingMode] : Infinity;
         if (orderA === Infinity && orderB === Infinity) {
           return a.taskIndex - b.taskIndex;
-        } else {
-          return orderA - orderB;
         }
+        return orderA - orderB;
       }
-      return sortOrder === "asc" ? cmp : -cmp;
     });
 
     return list;
   }, [projects, groupingMode, sortBy, sortOrder]);
+
+  const currentUserId = useAuthStore((s) => s.userId);
+  const currentUserName = useAuthStore((s) => s.userName);
+
+  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora y sincronizar el heatmap
+  const { sessions: recentSessions } = useRecentSessions(300);
+  const { activeSession } = useSessions();
 
   const filteredKanbanTasks = React.useMemo(() => {
     let result = kanbanTasks;
@@ -575,16 +631,19 @@ export function HomeDashboard({
 
     if (viewFilterMode === "mio") {
       result = result.filter(t => {
-        const parts = t.id.split("-");
-        const taskIdStr = parts[2] || "0";
-        const charSum = taskIdStr.split("").reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
-        return charSum % 2 === 0;
+        if (!currentUserId && !currentUserName) return true;
+        const matchId = t.asignado_id && String(t.asignado_id) === String(currentUserId);
+        const matchIds = Array.isArray(t.asignado_ids) && t.asignado_ids.map(String).includes(String(currentUserId));
+        const matchName = currentUserName && t.asignado && t.asignado.toLowerCase().includes(currentUserName.toLowerCase());
+        return matchId || matchIds || matchName;
       });
     }
+
     return result;
-  }, [kanbanTasks, viewFilterMode, groupingMode]);
+  }, [kanbanTasks, viewFilterMode, groupingMode, currentUserId, currentUserName]);
 
   const getCalendarDaysDiff = (targetDate: Date) => {
+    if (!targetDate || !(targetDate instanceof Date) || isNaN(targetDate.getTime())) return 999;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const target = new Date(targetDate);
@@ -592,10 +651,6 @@ export function HomeDashboard({
     const diffTime = target.getTime() - today.getTime();
     return Math.round(diffTime / (1000 * 60 * 60 * 24));
   };
-
-  // Obtener sesiones recientes para calcular el avance en tiempo real de cada píldora y sincronizar el heatmap
-  const { sessions: recentSessions } = useRecentSessions(300);
-  const { activeSession } = useSessions();
 
   // Cálculo del esfuerzo diario sincronizado 1:1 con las tarjetas exactas de la columna "Hoy" en el Kanban
   const todayEffort = React.useMemo<{
@@ -631,30 +686,32 @@ export function HomeDashboard({
       return isSameDayAsToday(s.startTime || s.createdAt || s.created_at || s.created);
     });
 
-    let todayExecutedMins = todaySessionsList.reduce((sum, s) => {
+    const todayExecutedSecs = todaySessionsList.reduce((sum, s) => {
       if (s.status === "en_curso") {
         const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
-        const elapsed = isNaN(startMs) ? 0 : Math.max(1, Math.round((Date.now() - startMs) / 60000));
+        const elapsed = isNaN(startMs) ? 0 : Math.max(0, Math.round((Date.now() - startMs) / 1000));
         return sum + elapsed;
       }
-      if (s.durationMins && s.durationMins > 0) {
-        return sum + s.durationMins;
+      if (typeof (s as any).durationSeconds === "number" && (s as any).durationSeconds >= 0) {
+        return sum + (s as any).durationSeconds;
       }
       if (s.startTime && s.endTime) {
         const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
         const endMs = s.endTime?.toMillis ? s.endTime.toMillis() : new Date(s.endTime).getTime();
         if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
-          return sum + Math.max(1, Math.round((endMs - startMs) / 60000));
+          return sum + Math.round((endMs - startMs) / 1000);
         }
       }
-      return sum;
+      return sum + ((s.durationMins || 0) * 60);
     }, 0);
+
+    let todayExecutedMins = Math.round(todayExecutedSecs / 60);
 
     // Si hay una sesión activa de hoy que aún no figura en la lista de recientes
     if (activeSession && isSameDayAsToday(activeSession.startTime) && !todaySessionsList.some(s => s.id === activeSession.id)) {
       const startMs = activeSession.startTime?.toMillis ? activeSession.startTime.toMillis() : new Date(activeSession.startTime).getTime();
-      const elapsed = isNaN(startMs) ? 0 : Math.max(1, Math.round((Date.now() - startMs) / 60000));
-      todayExecutedMins += elapsed;
+      const elapsedSecs = isNaN(startMs) ? 0 : Math.max(0, Math.round((Date.now() - startMs) / 1000));
+      todayExecutedMins = Math.round((todayExecutedSecs + elapsedSecs) / 60);
     }
 
     // Leemos estrictamente las tareas que corresponden a la columna "Hoy" del Kanban
@@ -673,22 +730,35 @@ export function HomeDashboard({
       const title = t.taskTitle || t.title || "Tarea sin título";
 
       const rawId = String(t.id);
-      const cleanId = rawId.includes("kt-") ? rawId.split("-")[2] : rawId;
+      const cleanId = rawId.startsWith("kt-") ? rawId.replace(/^kt-[^-]+-/, "") : rawId;
 
-      // Calcular todos los minutos acumulados en sesiones para esta tarea (mantiene el avance marcado)
+      // Calcular todos los segundos acumulados en sesiones para esta tarea
       const taskSessions = (recentSessions || []).filter(s => {
-        const sTaskId = String(s.task_id || "");
-        return sTaskId === cleanId || sTaskId === rawId;
+        if (s.isDeleted || s.status === "deleted") return false;
+        const sTaskId = String(s.task_id || (s as any).taskId || "");
+        return sTaskId === cleanId || sTaskId === rawId || extractCleanTaskId(sTaskId) === cleanId;
       });
 
-      const executedMins = taskSessions.reduce((sum, s) => {
+      const executedSecs = taskSessions.reduce((sum, s) => {
         if (s.status === "en_curso") {
           const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
-          const elapsed = Math.max(1, Math.round((Date.now() - startMs) / 60000));
+          const elapsed = isNaN(startMs) ? 0 : Math.max(0, Math.round((Date.now() - startMs) / 1000));
           return sum + elapsed;
         }
-        return sum + (s.durationMins || 0);
+        if (typeof (s as any).durationSeconds === "number" && (s as any).durationSeconds >= 0) {
+          return sum + (s as any).durationSeconds;
+        }
+        if (s.startTime && s.endTime) {
+          const startMs = s.startTime?.toMillis ? s.startTime.toMillis() : new Date(s.startTime).getTime();
+          const endMs = s.endTime?.toMillis ? s.endTime.toMillis() : new Date(s.endTime).getTime();
+          if (!isNaN(startMs) && !isNaN(endMs) && endMs > startMs) {
+            return sum + Math.round((endMs - startMs) / 1000);
+          }
+        }
+        return sum + ((s.durationMins || 0) * 60);
       }, 0);
+
+      const executedMins = Math.round(executedSecs / 60);
 
       if (isCompleted) {
         verde += hours;
@@ -721,15 +791,20 @@ export function HomeDashboard({
   const handleUpdateTaskStatus = React.useCallback((projId: string | number, taskId: string | number, status: string) => {
     onUpdateProjects(prev => prev.map(p => {
       if (String(p.id) !== String(projId)) return p;
+      const isComp = status === "Completado";
+      const nowIso = new Date().toISOString();
+      const nowDay = nowIso.split("T")[0];
+
       const updatedTasks = (p.tasks || []).map(t => {
         if (String(t.id) !== String(taskId)) return t;
         return {
           ...t,
           status: status as any,
-          statusColor: status === "Completado" 
+          statusColor: isComp
             ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
             : "bg-slate-500/20 border-slate-500/30 text-slate-300",
-          fecha_hora_completado: status === "Completado" ? new Date().toISOString() : undefined
+          fecha_hora_completado: isComp ? nowIso : undefined,
+          fecha_completado_real: isComp ? nowDay : undefined,
         };
       });
       const evalProj = autoEvaluateProjectStatus({ ...p, tasks: updatedTasks });
@@ -740,6 +815,18 @@ export function HomeDashboard({
         progress: evalProj.progress,
         percent: evalProj.percent
       });
+
+      // Persistencia en colección nativa /tasks
+      const taskIdClean = String(taskId).replace(/^kt-[^-]+-/, "");
+      updateDoc(doc(db, "tasks", taskIdClean), {
+        estado: status,
+        status: status,
+        fecha_hora_completado: isComp ? nowIso : null,
+        fecha_completado_real: isComp ? nowDay : null,
+        updatedAt: serverTimestamp(),
+        updated_at: serverTimestamp(),
+      }).catch(err => console.error("Error actualizando status en /tasks:", err));
+
       return evalProj;
     }));
   }, [onUpdateProjects, autoEvaluateProjectStatus, persistProjectUpdate]);
@@ -908,6 +995,7 @@ export function HomeDashboard({
     setDeleteModalConfig,
     getCalendarDaysDiff,
     formatLocalDate,
+    sessions: recentSessions,
   };
 
   const headerBgStyle = isNightMode ? "bg-white/[0.03]" : "bg-black/[0.03]";
@@ -917,8 +1005,8 @@ export function HomeDashboard({
   const cardBgStyle = isNightMode ? "bg-white/[0.04]" : "bg-black/[0.04]";
 
   return (
-    <div className={`w-full h-full flex flex-col gap-5 hide-scrollbar pb-6 pr-2 pt-1 overflow-x-hidden ${
-      draggingTaskId ? "overflow-visible is-dragging-active" : "overflow-y-auto"
+    <div className={`w-full h-full flex flex-col min-h-0 overflow-hidden ${
+      draggingTaskId ? "is-dragging-active" : ""
     }`}>
       <style>{`
         @keyframes subtle-wiggle {
@@ -934,152 +1022,23 @@ export function HomeDashboard({
         }
 
         .task-list-scroll {
-          scroll-snap-type: y mandatory;
           scroll-behavior: smooth;
         }
-        /* Disable scroll-snap while hovering so the browser does not re-snap
-           during accordion height animations (prevents flickering) */
-        .task-list-scroll:has(.task-card-wrapper:hover),
-        .task-list-scroll.hover-disabled,
-        .task-list-scroll.is-scrolling {
-          scroll-snap-type: none !important;
-        }
 
-
-
-        /* During scrolling or cooldown, force all wrappers to 162px and disable hover scale/pointer events */
-        .task-list-scroll.is-scrolling .task-card-wrapper,
-        .task-list-scroll.hover-disabled .task-card-wrapper {
-          height: 162px !important;
-          pointer-events: none !important;
-        }
-        /* Reset card internals to defaults during scroll/cooldown */
-        .task-list-scroll.is-scrolling .task-card-title,
-        .task-list-scroll.hover-disabled .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .task-list-scroll.is-scrolling .project-title,
-        .task-list-scroll.hover-disabled .project-title {
-          transform: translateY(0) !important;
-          opacity: 1 !important;
-        }
-        .task-list-scroll.is-scrolling .task-card-details,
-        .task-list-scroll.hover-disabled .task-card-details {
-          opacity: 0 !important;
-          transform: translateY(22px) !important;
-        }
-
-        /* Wrapper clips inner card content directionally */
+        /* Task card wrapper standard scalable dimensions */
         .task-card-wrapper {
-          height: 162px;
-          overflow: hidden;
+          height: 10.125rem;
+          overflow: visible;
           opacity: 1;
-          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-          will-change: height, opacity;
-          scroll-snap-align: start;
           touch-action: none;
         }
         .task-card-wrapper.is-dragging-card {
           transition: none !important;
         }
 
-        /* Delay card hover changes to prevent accidental triggers when passing cursor by (doubled delay) */
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-wrapper {
-          transition-delay: 900ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card {
-          transition-delay: 900ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .project-title {
-          transition-delay: 900ms !important;
-        }
-        .task-list-scroll:has(.task-card-wrapper:hover) .task-card-title {
-          transition-delay: 900ms !important;
-        }
-
-
-        /* Hovered card expands to 215px (+53px from 162px baseline) ONLY when NO card is expanded double */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-0:hover,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-1:hover,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .card-pos-2:hover {
-          height: 215px !important;
-        }
-
-        /* Target specific hover states to set precise transform-origins and direction-aware layout alignment */
-        
-        /* 1. When hovering Card 1 (card-pos-0) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-0 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-start !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card {
-          transform: none !important;
-        }
-
-        /* 2. When hovering Card 2 (card-pos-1 - middle card) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-1 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: center !important;
-        }
-        /* Top card contracts bottom-to-top (pulled upwards) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card {
-          transform: none !important;
-        }
-        /* Bottom card contracts top-to-bottom (pushed downwards) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card {
-          transform: none !important;
-        }
-
-        /* 3. When hovering Card 3 (card-pos-2) */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-2 {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-end !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 {
-          height: 135.5px !important;
-          display: flex !important;
-          flex-direction: column !important;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card {
-          transform: none !important;
-        }
-
-        /* Hide details on all unhovered shrunk cards */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card-details,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card-details {
-          display: none !important;
-        }
-
-        /* Inner card transitions */
+        /* Inner card base styles */
         .task-card {
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out, background-color 0.3s ease-out, padding 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-          will-change: transform, opacity, padding;
+          transition: border-color 0.3s ease-out, background-color 0.3s ease-out !important;
         }
 
         /* Keep full opacity on all task cards */
@@ -1087,200 +1046,45 @@ export function HomeDashboard({
           opacity: 1 !important;
         }
 
-        /* Task title for all unhovered shrunk neighbor cards is translated to 0px, ONLY when NO card is expanded double */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-1 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-0:hover) .card-pos-2 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-0 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-1:hover) .card-pos-2 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-0 .task-card-title,
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.card-pos-2:hover) .card-pos-1 .task-card-title {
-          transform: translateY(0px) !important;
-        }
-
-        /* Project title (base rules) */
         .project-title {
           opacity: 1 !important;
-          transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-in-out !important;
           transform: translateY(0) !important;
         }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .project-title {
-          opacity: 0 !important;
-          transition: opacity 0.12s ease-out !important;
-          transition-delay: 900ms !important;
-        }
 
-        /* Task title (base rules) */
         .task-card-title {
           transform: translateY(0px) !important;
-          transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease-out !important;
-          will-change: transform;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-title {
-          transform: translateY(0px) !important;
-          transition-delay: 900ms !important;
-        }
-        /* Keep neighbor card titles at normal multi-line display when another card is hovered */
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)):has(.task-card-wrapper:hover) .task-card-wrapper:not(:hover) .task-card-title {
-          display: -webkit-box !important;
-          -webkit-line-clamp: 2 !important;
-          -webkit-box-orient: vertical !important;
-          overflow: hidden !important;
         }
 
-        /* Details group (base rules) — only reveals once hover accordion expansion has completed */
         .task-card-details {
           max-height: 0 !important;
           opacity: 0 !important;
           overflow: hidden;
-          transform: translateY(14px) !important;
-          transition: max-height 0.2s ease-in, transform 0.2s ease-in, opacity 0.15s ease-in !important;
-          transition-delay: 0ms !important;
-          will-change: max-height, transform, opacity;
-        }
-        .task-list-scroll:not(.is-scrolling):not(.hover-disabled):not(:has(.is-expanded-double)) .task-card-wrapper:hover .task-card-details {
-          max-height: 75px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-          transition: max-height 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-out !important;
-          transition-delay: 1400ms !important;
+          display: none;
         }
 
-        /* =====================================================
-           DOUBLE EXPANSION CLICK STATE STYLES
-           ===================================================== */
-        /* Disable scroll-snap during double expansion to prevent browser fight */
-        .task-list-scroll:has(.is-expanded-double) {
-          scroll-snap-type: none !important;
-          gap: 0 !important;
+        /* Task Card standard styles */
+        .task-card-wrapper {
+          height: 10.125rem;
+          overflow: visible;
+          opacity: 1;
+          touch-action: none;
+        }
+        .task-card-wrapper.is-dragging-card {
+          transition: none !important;
         }
 
-        /* Heights and visibility states for click expansion */
-        .task-card-wrapper.is-expanded-double {
-          height: 361px !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: flex-start !important;
-        }
-        .task-card-wrapper.is-shrunk-sibling {
-          height: 135px !important;
-        }
-        .task-card-wrapper.is-expanded-double:has(+ .is-shrunk-sibling),
-        .task-card-wrapper.is-shrunk-sibling:has(+ .is-expanded-double) {
-          margin-bottom: 10px !important;
-        }
-        
-        /* Hidden siblings must not consume gap space or visual offset inside the fixed-height viewport. */
-        .task-card-wrapper.is-hidden-sibling {
-          height: 0px !important;
-          opacity: 0 !important;
-          pointer-events: none !important;
-          margin-top: 0 !important;
-          margin-bottom: 0 !important;
-          transform: none !important;
-          transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease-out, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
-        }
-
-        /* Inner card transitions under click expansion */
-        .is-expanded-double .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .is-expanded-double .task-card-details {
-          max-height: 260px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-        }
-
-        /* Expanded metadata section (Tiempo, Programada, Entrega) — CSS-animated instead of conditional render */
-        .task-card-expanded-meta {
-          max-height: 0 !important;
-          opacity: 0 !important;
-          overflow: hidden;
-          pointer-events: none;
-          margin-top: 0 !important;
-          padding-top: 0 !important;
-          border-color: transparent !important;
-          transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease-out, margin-top 0.5s cubic-bezier(0.16, 1, 0.3, 1), padding-top 0.5s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.3s ease-out !important;
-          will-change: max-height, opacity;
-        }
-        .is-expanded-double .task-card-expanded-meta {
-          max-height: 120px !important;
-          opacity: 1 !important;
-          pointer-events: auto;
-          margin-top: 10px !important;
-          padding-top: 10px !important;
-          border-color: rgba(255,255,255,0.04) !important;
-          transition-delay: 150ms !important;
-        }
-
-        .is-shrunk-sibling .task-card {
-          padding: 12px 14px !important;
-        }
-        .is-shrunk-sibling .task-card-title {
-          transform: translateY(0px) !important;
-          display: -webkit-box !important;
-          -webkit-line-clamp: 1 !important;
-          -webkit-box-orient: vertical !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          white-space: nowrap !important;
-        }
-        .is-shrunk-sibling .task-card-details {
-          display: none !important;
-        }
-
-        /* Override scale transitions when active selection exists */
-        .task-list-scroll:has(.is-expanded-double) .task-card {
-          transform: none !important;
-        }
-        .task-list-scroll:has(.is-expanded-double) .is-expanded-double .task-card {
-          cursor: pointer !important;
-        }
-
-        /* =====================================================
-           TASK CARD EDITING STATE STYLES
-           ===================================================== */
-        /* Disable scroll-snap during editing to prevent browser snapping fight */
-        .task-list-scroll:has(.is-editing-card) {
-          scroll-snap-type: none !important;
-        }
-
-        /* Heights and visibility states for task editing card (mirroring hover state) */
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) {
-          height: 220px !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .project-title {
-          opacity: 0 !important;
-          transition: opacity 0.12s ease-out !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-title {
-          transform: translateY(0px) !important;
-        }
-        .task-card-wrapper.is-editing-card:not(.is-expanded-double) .task-card-details {
-          max-height: 105px !important;
-          opacity: 1 !important;
-          transform: translateY(0px) !important;
-        }
-
-        /* Keep other cards shrunk in the same list when a card is in edit mode */
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) {
-          height: 115px !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card {
-          transform: scale(0.97) !important;
-          padding: 12px 14px !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-details {
-          display: none !important;
-        }
-        .task-list-scroll:has(.is-editing-card) .task-card-wrapper:not(.is-editing-card):not(.is-expanded-double):not(.is-hidden-sibling):not(.is-shrunk-sibling) .task-card-title {
-          transform: translateY(0px) !important;
+        .task-card {
+          transition: border-color 0.3s ease-out, background-color 0.3s ease-out !important;
         }
       `}</style>
-      {/* 5 Expanded Clean Simple Rectangles Grid */}
-      <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
+      {/* Layout Redimensionable con Divisor Interactivo */}
+      <div className="w-full h-full flex-1 flex gap-3 items-stretch max-w-full min-h-0 min-w-0 overflow-hidden">
         
-        {/* Left Section (3 Columns): Barra de Esfuerzo Diario + Módulo de Sesiones (Encasillado en rectángulo) */}
-        <div className={`col-span-3 flex flex-col gap-5 p-5 h-[900px] rounded-[28px] ${isNightMode ? "bg-[#121212]" : "bg-[#fffce2]"}`}>
+        {/* Left Section: Barra de Esfuerzo Diario + Módulo de Sesiones (Persistente / Inmune a scroll) */}
+        <div 
+          style={{ width: `${sessionsWidth}px` }}
+          className="shrink-0 flex flex-col gap-5 h-full overflow-hidden min-h-0"
+        >
           <DailyEffortBar 
             todayEffort={todayEffort} 
             limiteHorasDia={limiteHorasDia} 
@@ -1288,21 +1092,30 @@ export function HomeDashboard({
             isNightMode={isNightMode} 
           />
 
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden min-h-0 flex flex-col">
             <HomeSessionsColumn 
               todayTasks={filteredKanbanTasks.filter(t => getCalendarDaysDiff(t.dueDate) <= 0)} 
               allTasks={kanbanTasks}
               projects={projects}
               isNightMode={isNightMode}
               onUpdateTaskStatus={handleUpdateTaskStatus}
+              onSelectTask={onSelectTask}
             />
           </div>
         </div>
 
-        {/* Right Section (9 Columns): Kanban / Table / Timeline / Search + Bottom 2 Rectangles */}
-        <div className="col-span-9 flex flex-col gap-5">
+        {/* Divisor redimensionable con píldora azul entre Sesiones y Kanban */}
+        <ResizableDivider 
+          side="right"
+          ariaLabel="Redimensionar columna de sesiones"
+          onResize={handleSessionsResize}
+          onResizeEnd={handleSessionsResizeEnd}
+        />
+
+        {/* Right Section: Kanban / Table / Timeline / Search */}
+        <div className="flex-1 min-w-0 flex flex-col gap-5 h-full overflow-hidden">
           {/* Active View Content (Borderless) */}
-          <div className={`w-full h-[620px] relative ${draggingTaskId ? "overflow-visible" : "overflow-hidden"}`}>
+          <div className={`w-full h-full flex-1 min-h-0 min-w-0 relative ${draggingTaskId ? "overflow-visible" : "overflow-hidden"}`}>
               {/* 0. SEARCH VIEW */}
               {activeView === "buscar" && (() => {
                 const matchingProjects = projects.filter(
@@ -1472,89 +1285,18 @@ export function HomeDashboard({
 
               {/* 3. TIMELINE VIEW */}
               {activeView === "timeline" && (
-                <div className="w-full h-full flex flex-col gap-3 pt-1 animate-fadeIn overflow-hidden">
-                  {/* Timeline Header (Weeks indicator) */}
-                  <div className={`w-full h-8 rounded-xl ${headerBgStyle} px-4 flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider`}>
-                    <div className="w-1/4">Proyecto</div>
-                    <div className="w-3/4 grid grid-cols-4 text-center border-l border-white/5 h-full items-center">
-                      <span className="border-r border-white/5 h-full flex items-center justify-center">Sem 1</span>
-                      <span className="border-r border-white/5 h-full flex items-center justify-center">Sem 2</span>
-                      <span className="border-r border-white/5 h-full flex items-center justify-center">Sem 3</span>
-                      <span className="h-full flex items-center justify-center">Sem 4</span>
-                    </div>
-                  </div>
-
-                  {/* Timeline Project Rows */}
-                  <div className="flex flex-col gap-2.5">
-                    {/* Row 1: Diseño Taski (Semana 1 - Semana 2) */}
-                    <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
-                      <div className="w-1/4 flex items-center gap-2 pr-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-200 truncate">Diseño Taski</span>
-                      </div>
-                      <div className="w-3/4 h-full relative flex items-center border-l border-white/5">
-                        <div className="absolute left-[2%] w-[46%] h-6 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between px-2 cursor-pointer hover:bg-emerald-500/20 transition-colors" onClick={() => onSelectTab("proyectos")}>
-                          <span className="text-[8px] font-bold text-emerald-400 uppercase tracking-wider">100% Listo</span>
-                          <ExternalLink className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Row 2: Web Corporativa (Semana 2 - Semana 4) */}
-                    <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
-                      <div className="w-1/4 flex items-center gap-2 pr-2">
-                        <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-200 truncate">Web Corp</span>
-                      </div>
-                      <div className="w-3/4 h-full relative flex items-center border-l border-white/5">
-                        <div className="absolute left-[27%] w-[71%] h-6 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-between px-2 cursor-pointer hover:bg-amber-500/20 transition-colors" onClick={() => onSelectTab("proyectos")}>
-                          <span className="text-[8px] font-bold text-amber-400 uppercase tracking-wider">33% en desarrollo</span>
-                          <ExternalLink className="w-2.5 h-2.5 text-amber-400 shrink-0" />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Row 3: Campaña Ads (Semana 3 - Semana 4) */}
-                    <div className={`w-full h-12 rounded-xl ${cardBgStyle} px-4 flex items-center border border-white/5`}>
-                      <div className="w-1/4 flex items-center gap-2 pr-2">
-                        <div className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
-                        <span className="text-[10px] font-bold text-slate-200 truncate">Campaña Ads</span>
-                      </div>
-                      <div className="w-3/4 h-full relative flex items-center border-l border-white/5">
-                        <div className="absolute left-[52%] w-[46%] h-6 rounded-lg bg-orange-500/10 border border-orange-500/20 flex items-center justify-between px-2 cursor-pointer hover:bg-orange-500/20 transition-colors" onClick={() => onSelectTab("proyectos")}>
-                          <span className="text-[8px] font-bold text-orange-400 uppercase tracking-wider">Por empezar (0%)</span>
-                          <ExternalLink className="w-2.5 h-2.5 text-orange-400 shrink-0" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom Right Row: 2 Rectángulos Redondeados (Invertidos) */}
-            <div className="grid grid-cols-2 gap-5 -mt-10 relative z-20">
-              <div className="h-[300px]">
-                <GitHubActivity
-                  accent="#3b82f6"
-                  cellSize={13}
-                  months={4}
-                  showMonths={true}
-                  sessions={recentSessions}
-                  tasks={projects.flatMap((p) => p.tasks || [])}
+                <TimelineView
                   projects={projects}
-                  noContainer={true}
-                  className="h-full w-full"
+                  onSelectProject={onSelectProject}
+                  onSelectTask={onSelectTask}
+                  onUpdateProjects={onUpdateProjects}
+                  timelineHideCompleted={timelineHideCompleted}
+                  onToggleTimelineHideCompleted={onToggleTimelineHideCompleted}
+                  timelineSortBy={timelineSortBy}
+                  onSetTimelineSortBy={onSetTimelineSortBy}
+                  isNightMode={isNightMode}
                 />
-              </div>
-              <div className="h-[300px]">
-                <MonoActivityHeatmap
-                  theme={isNightMode ? "dark" : "light"}
-                  accentColor="blue"
-                  sessions={recentSessions}
-                  tasks={projects.flatMap((p) => p.tasks || [])}
-                />
-              </div>
+              )}
             </div>
         </div>
 

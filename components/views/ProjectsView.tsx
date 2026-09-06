@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { 
   ArrowLeft, Briefcase, Calendar, CheckCircle2, Clock, DollarSign, 
   ExternalLink, FolderKanban, LayoutGrid, Loader2, Plus, Search, 
@@ -34,21 +34,31 @@ import ProjectFullScreenView from "./ProjectFullScreenView";
 
 export interface ProjectsViewProps {
   onCreateProject?: (originRect?: { x: number; y: number; width: number; height: number }) => void;
+  selectedProjectId?: string | number | null;
+  onClearSelectedProject?: () => void;
 }
 
 // ── 4. COMPONENTE PRINCIPAL PROJECTS VIEW ────────────────────────────────────
-export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
+export function ProjectsView({ onCreateProject, selectedProjectId, onClearSelectedProject }: ProjectsViewProps = {}) {
   const { data, isLoading } = useData();
   const { templates, createTemplate } = useTemplates();
   const openModal = useUIStore((s) => s.openModal);
 
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    selectedProjectId ? String(selectedProjectId) : null
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
   const [sortBy, setSortBy] = useState<"recientes" | "nombre" | "progreso" | "costo">("recientes");
   const [displayMode, setDisplayMode] = useState<"grid" | "list">("grid");
   const [cardVariant, setCardVariant] = useState<"cover" | "full">("cover");
   const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      setActiveProjectId(String(selectedProjectId));
+    }
+  }, [selectedProjectId]);
 
   const projects = data?.proyectos ?? [];
 
@@ -75,12 +85,15 @@ export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
     return (
       <ProjectFullScreenView 
         projectId={activeProjectId} 
-        onBack={() => setActiveProjectId(null)} 
+        onBack={() => {
+          setActiveProjectId(null);
+          onClearSelectedProject?.();
+        }} 
       />
     );
   }
 
-  if (isLoading) {
+  if (isLoading && projects.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 bg-transparent">
         <Loader2 className="w-8 h-8 animate-spin text-[#ffffff6b]" />
@@ -96,26 +109,26 @@ export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
   const totalBudget = projects.reduce((acc, p) => acc + (p.costo || 0), 0);
 
   return (
-    <div className="p-6 h-full flex flex-col overflow-y-auto custom-scrollbar bg-transparent text-[#ffffffd6]">
+    <div className="flex flex-col w-full h-full min-h-0 overflow-hidden bg-transparent text-[#ffffffd6]">
       
       {/* 12-Column Grid Container (Idéntico a Work / HomeDashboard) */}
-      <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
+      <div className="w-full h-full flex-1 grid grid-cols-12 gap-5 items-stretch max-w-full min-h-0 min-w-0 overflow-hidden">
         
-        {/* Left Section (3 Columns): Rectángulo Reservado de Control & Resumen */}
-        <div className="col-span-3 flex flex-col min-h-[900px] rounded-[28px] bg-[#121212] border border-white/[0.08] shadow-sm overflow-hidden">
+        {/* Left Section (3 Columns): Control & Resumen (Persistente) */}
+        <div className="col-span-3 flex flex-col h-full overflow-hidden min-h-0">
           {/* Métricas KPI de Ancho Total (Monocromático, Limpio y Sin Íconos) */}
           <div className="w-full flex flex-col">
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Activos</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{activeCount}</div>
             </div>
 
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Completados</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{completedCount}</div>
             </div>
 
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Presupuesto Total</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">
                 ${totalBudget.toLocaleString()}
@@ -124,7 +137,7 @@ export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
           </div>
 
           {/* Sección de Plantillas Sincronizadas en Tiempo Real */}
-          <div className="p-5 flex flex-col gap-3 flex-1 overflow-y-auto custom-scrollbar border-t border-white/5">
+          <div className="pt-5 flex flex-col gap-3 flex-1 overflow-y-auto custom-scrollbar border-t border-white/5">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Plantillas</span>
               <button
@@ -179,7 +192,7 @@ export function ProjectsView({ onCreateProject }: ProjectsViewProps = {}) {
         </div>
 
         {/* Right Section (9 Columns): Catálogo de Proyectos */}
-        <div className="col-span-9 flex flex-col">
+        <div className="col-span-9 flex flex-col h-full min-h-0 min-w-0 overflow-y-auto custom-scrollbar pr-1">
           {/* ── CATALOGO DE PROYECTOS (VISTA EN GRID) ── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-0">
           {/* Tarjeta / Botón Nuevo Proyecto */}

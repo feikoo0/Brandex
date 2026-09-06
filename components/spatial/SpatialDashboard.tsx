@@ -46,10 +46,10 @@ export default function SpatialDashboard() {
 
   // Derived cognitive load capacity mapping for designers
   const teamCapacity = useMemo(() => {
-    if (!data?.trabajadores || !data?.tareas) return [];
+    if (!data?.miembros || !data?.tareas) return [];
     
     // Base designers list
-    const designers = data.trabajadores;
+    const designers = data.miembros;
 
     return designers.map((w) => {
       // Calculate cognitive load based on assigned tasks:
@@ -98,9 +98,9 @@ export default function SpatialDashboard() {
         isSaturated,
       };
     }).sort((a, b) => b.capacity - a.capacity);
-  }, [data?.trabajadores, data?.tareas]);
+  }, [data?.miembros, data?.tareas]);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-[#060608] text-white">
         <CosmicBackground />
@@ -130,7 +130,7 @@ export default function SpatialDashboard() {
 
   const clientList = data?.clientes || [];
   const taskList = data?.tareas || [];
-  const workerList = data?.trabajadores || [];
+  const workerList = data?.miembros || [];
 
   return (
     <div className="w-full h-full flex flex-col min-h-0 overflow-hidden bg-transparent relative">

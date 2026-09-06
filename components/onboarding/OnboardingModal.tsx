@@ -88,8 +88,6 @@ export function OnboardingModal({
     }
   }, [initialData]);
 
-  if (!isOpen) return null;
-
   const toggleUseCase = (id: string) => {
     playSound("click");
     setUseCases((prev) =>
@@ -146,24 +144,32 @@ export function OnboardingModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto">
-      {/* Backdrop */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 bg-black/80 backdrop-blur-md"
-        onClick={() => !isSubmitting && !createdResult && onClose()}
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="onboarding-backdrop-wrap"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 overflow-y-auto"
+        >
+          {/* Backdrop */}
+          <motion.div
+            key="onboarding-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md"
+            onClick={() => !isSubmitting && !createdResult && onClose()}
+          />
 
-      {/* Modal Dialog Container */}
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 15 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-full max-w-lg bg-[#181818] border border-white/10 rounded-[28px] shadow-2xl overflow-hidden z-10 my-auto"
-      >
+          {/* Modal Dialog Container */}
+          <motion.div
+            key="onboarding-dialog"
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.25, ease: [0.305, 0.206, 0.3, 1] }}
+            className="relative w-full max-w-lg bg-[#181818] border border-white/10 rounded-[28px] shadow-2xl overflow-hidden z-10 my-auto"
+          >
         {/* If workspace was created, show the PinRevealCard */}
         {createdResult ? (
           <PinRevealCard
@@ -498,7 +504,9 @@ export function OnboardingModal({
             </div>
           </div>
         )}
-      </motion.div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

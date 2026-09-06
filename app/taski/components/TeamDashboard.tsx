@@ -105,7 +105,7 @@ export function TeamDashboard({
     );
   }
 
-  if (isLoading) {
+  if (isLoading && members.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-[#ffffff6b]" />
@@ -149,33 +149,33 @@ export function TeamDashboard({
   };
 
   return (
-    <div className="flex flex-col h-full p-6 overflow-y-auto custom-scrollbar bg-transparent text-[#ffffffd6]">
+    <div className="flex flex-col w-full h-full min-h-0 overflow-hidden bg-transparent text-[#ffffffd6]">
       
       {/* 12-Column Grid Container (Idéntico a Work, Proyectos y Clientes) */}
-      <div className="w-full grid grid-cols-12 gap-5 items-stretch max-w-full">
+      <div className="w-full h-full flex-1 grid grid-cols-12 gap-5 items-stretch max-w-full min-h-0 min-w-0 overflow-hidden">
         
-        {/* Left Section (3 Columns): Rectángulo Reservado de Control & Resumen */}
-        <div className="col-span-3 flex flex-col min-h-[900px] rounded-[28px] bg-[#121212] border border-white/[0.08] shadow-sm overflow-hidden">
+        {/* Left Section (3 Columns): Control & Resumen (Persistente) */}
+        <div className="col-span-3 flex flex-col h-full overflow-hidden min-h-0">
           {/* Métricas KPI de Ancho Total (Monocromático, Limpio y Sin Íconos) */}
           <div className="w-full flex flex-col">
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Disponibles</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{availableMembers}</div>
             </div>
 
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Proyectos Asignados</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{activeProjsAssigned}</div>
             </div>
 
-            <div className="w-full px-5 py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
+            <div className="w-full py-4 border-b border-white/10 flex flex-col justify-between hover:bg-white/[0.02] transition-colors">
               <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">Especialistas</span>
               <div className="text-3xl font-bold text-[#ffffffd6] mt-1">{totalMembers}</div>
             </div>
           </div>
 
           {/* Filtros Rápidos por Especialidad */}
-          <div className="p-5 flex flex-col gap-2 mt-auto">
+          <div className="pt-5 flex flex-col gap-2 mt-auto">
             <span className="text-[10px] font-bold uppercase tracking-wider text-[#ffffff6b] px-1">Filtrar por Especialidad</span>
             <div className="flex flex-col gap-1">
               {specialties.map((spec) => {
@@ -207,7 +207,7 @@ export function TeamDashboard({
         </div>
 
         {/* Right Section (9 Columns): Catálogo de Colaboradores */}
-        <div className="col-span-9 flex flex-col">
+        <div className="col-span-9 flex flex-col h-full min-h-0 min-w-0 overflow-y-auto custom-scrollbar pr-1">
           {/* ── MEMBER CARDS GRID ── */}
           {filteredMembers.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-0">

@@ -13,7 +13,7 @@ export function CalendarView() {
   const [currMonth, setCurrMonth] = useState(new Date());
   const openModal = useUIStore((s) => s.openModal);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -68,50 +68,71 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div className="flex-1 glass rounded-3xl overflow-hidden border-white/5 flex flex-col">
-        {/* Day headers */}
-        <div className="grid grid-cols-7 border-b border-white/5 bg-white/2">
+      <div className="flex-1 rounded-3xl overflow-hidden flex flex-col">
+        {/* Day headers (tal cual en el fondo) */}
+        <div className="grid grid-cols-7 gap-1.5 px-2 pt-2 pb-1 select-none">
           {["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
-            <div key={d} className="py-3 text-center text-[10px] font-black uppercase tracking-widest text-white/30">
+            <div key={d} className="text-center text-xs font-bold tracking-tight text-[#ffffff6b]">
               {d}
             </div>
           ))}
         </div>
 
         {/* Calendar grid */}
-        <div className="flex-1 grid grid-cols-7 auto-rows-fr overflow-y-auto custom-scrollbar">
+        <div className="flex-1 grid grid-cols-7 gap-1.5 px-2 pb-2 pt-0.5 auto-rows-fr overflow-y-auto custom-scrollbar">
           {days.map((day, i) => {
-            const dayTasks = tasks.filter(t => t.fechaEntrega && isSameDay(new Date(t.fechaEntrega), day));
+            const dayTasks = tasks.filter((t) => {
+              const rawDate =
+                (t as any).fecha_programada ||
+                t.fechaProg ||
+                (t.estado === "Completado" ? ((t as any).fecha_completado_real || (t as any).fecha_hora_completado) : null) ||
+                t.fechaEntrega ||
+                t.deadline;
+              if (!rawDate) return false;
+              const d = new Date(rawDate);
+              return !isNaN(d.getTime()) && isSameDay(d, day);
+            });
             const isCurrentMonth = day.getMonth() === currMonth.getMonth();
             
             return (
               <div 
                 key={i} 
-                className={`min-h-[100px] p-2 border-r border-b border-white/5 flex flex-col transition-colors ${
-                  !isCurrentMonth ? "opacity-20" : "opacity-100"
-                } ${isToday(day) ? "bg-blue-500/5" : ""}`}
+                className={`min-h-[120px] p-2.5 rounded-2xl flex flex-col transition-all ${
+                  isToday(day)
+                    ? "bg-[#222222] shadow-sm"
+                    : "bg-[#191919] hover:bg-[#1f1f1f]"
+                } ${
+                  !isCurrentMonth ? "opacity-25 bg-black/40" : "opacity-100"
+                }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <span className={`text-[11px] font-black px-1.5 py-0.5 rounded-md ${
-                    isToday(day) ? "bg-blue-500 text-white" : "text-white/40"
+                <div className="flex items-start justify-end mb-2">
+                  <span className={`leading-none select-none text-sm ${
+                    isToday(day) ? "text-white font-black" : "text-[#ffffffd6] font-bold"
                   }`}>
                     {format(day, "d")}
                   </span>
                 </div>
 
                 <div className="space-y-1 overflow-y-auto custom-scrollbar pr-0.5 max-h-[120px]">
-                  {dayTasks.map((t) => (
-                    <div 
-                      key={t.id}
-                      onClick={() => openModal({ type: "task", id: t.id })}
-                      className="px-2 py-1 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all cursor-pointer truncate"
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[t.estado] || "#333" }} />
-                        <span className="text-[10px] font-bold truncate text-white/70">{t.titulo}</span>
+                  {dayTasks.map((t) => {
+                    const isCompleted = t.estado === "Completado" || t.estado === "Completada";
+                    return (
+                      <div 
+                        key={t.id}
+                        onClick={() => openModal({ type: "task", id: t.id })}
+                        className={`px-2 py-1 rounded-lg bg-white/5 border border-white/5 hover:border-white/20 transition-all cursor-pointer truncate ${
+                          isCompleted ? "opacity-40 hover:opacity-75" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: STATUS_COLORS[t.estado] || "#333" }} />
+                          <span className={`text-xs font-bold truncate ${isCompleted ? "text-white/50" : "text-white/70"}`}>
+                            {t.titulo}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

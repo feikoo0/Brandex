@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Building2 } from "lucide-react";
 import { playSound } from "../utils/audio";
@@ -8,6 +8,7 @@ import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PROJECT_COLOR_PALETTE, cn, getWorkspaceScopedCol } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
+import { Portal } from "@/components/ui/Portal";
 
 export interface ClientItem {
   id: number;
@@ -70,8 +71,6 @@ export default function CreateClientModal({
   const [selectedColorIdx, setSelectedColorIdx] = useState(0);
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-
-  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -150,28 +149,51 @@ export default function CreateClientModal({
     }
   };
 
-  return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-hidden">
-        {/* Backdrop */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={() => {
-            playSound("click");
-            onClose();
-          }}
-          className="absolute inset-0 bg-black/80"
-        />
+  // Escape key handler to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        playSound("click");
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
-        {/* Modal Window */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="relative bg-[#1f1f1f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden z-10 text-white"
-        >
+  return (
+    <Portal>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="create-client-backdrop-wrap"
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 overflow-hidden pointer-events-auto select-none"
+          >
+            {/* Backdrop */}
+            <motion.div
+              key="create-client-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] }}
+              onClick={() => {
+                playSound("click");
+                onClose();
+              }}
+              className="absolute inset-0 bg-black/80 pointer-events-auto cursor-pointer"
+            />
+
+            {/* Modal Window */}
+            <motion.div
+              key="create-client-dialog"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.25, ease: [0.305, 0.206, 0.3, 1] }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative bg-[#1f1f1f] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden z-10 text-white pointer-events-auto"
+            >
           {/* Modal Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-white/[0.02]">
             <div className="flex items-center gap-2">
@@ -347,7 +369,9 @@ export default function CreateClientModal({
             </div>
           </form>
         </motion.div>
-      </div>
-    </AnimatePresence>
-  );
+      </motion.div>
+    )}
+  </AnimatePresence>
+</Portal>
+);
 }

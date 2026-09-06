@@ -14,7 +14,7 @@ export function TeamWorkload() {
   const workersStats = useMemo(() => {
     if (!data) return [];
     
-    const workers = data.trabajadores.filter(w => w.rol !== "Admin");
+    const workers = data.miembros.filter(w => w.rol !== "Admin");
     
     return workers.map(w => {
       const wTasks = data.tareas.filter(t => t.asignado_ids?.includes(w.id) && !DONE_STATES.has(t.estado));

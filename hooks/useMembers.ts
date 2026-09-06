@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   collection, 
   doc, 
@@ -41,6 +41,7 @@ export const INITIAL_MEMBERS: Member[] = [
     bio: "Especialista en interfaces tridimensionales y design systems de alta gama.",
     telefono: "+52 55 1234 5678",
     tarifa_hora: 45,
+    capacidad_semanal: 40,
     rating: "4.9",
     completedTasks: 42,
     totalHoursLogged: 168,
@@ -69,6 +70,7 @@ export const INITIAL_MEMBERS: Member[] = [
     bio: "Directora de animación y shaders 3D para web y experiencias de producto.",
     telefono: "+52 55 8765 4321",
     tarifa_hora: 50,
+    capacidad_semanal: 40,
     rating: "5.0",
     completedTasks: 38,
     totalHoursLogged: 210,
@@ -97,6 +99,7 @@ export const INITIAL_MEMBERS: Member[] = [
     bio: "Edición cinematográfica, etalonaje digital de alta gama y composición sonora.",
     telefono: "+52 55 2468 1357",
     tarifa_hora: 35,
+    capacidad_semanal: 40,
     rating: "4.8",
     completedTasks: 29,
     totalHoursLogged: 135,
@@ -125,6 +128,7 @@ export const INITIAL_MEMBERS: Member[] = [
     bio: "Especialista en estrategia de marcas y adquisición pagada con alto ROAS.",
     telefono: "+52 55 9876 5432",
     tarifa_hora: 40,
+    capacidad_semanal: 40,
     rating: "4.9",
     completedTasks: 51,
     totalHoursLogged: 195,
@@ -153,6 +157,7 @@ export const INITIAL_MEMBERS: Member[] = [
     bio: "Arquitectura frontend, visualizadores interactivos y performance web.",
     telefono: "+52 55 3691 2580",
     tarifa_hora: 55,
+    capacidad_semanal: 40,
     rating: "4.9",
     completedTasks: 47,
     totalHoursLogged: 240,
@@ -160,20 +165,47 @@ export const INITIAL_MEMBERS: Member[] = [
   }
 ];
 
-import { getWorkspaceScopedCol } from "@/lib/utils";
+import { getWorkspaceScopedCol, isTaskActive } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
+import { useData } from "./useData";
+import type { MemberWorkloadTrafficLight } from "@/lib/types";
+
+let cachedMembers: Member[] | null = null;
 
 export function useMembers() {
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
 
-  const [members, setMembers] = useState<Member[]>(isMaster ? INITIAL_MEMBERS : []);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { data: dataStore } = useData();
+  const tasks = dataStore?.tareas || [];
+
+  const getInitialMembers = (): Member[] => {
+    if (cachedMembers && cachedMembers.length > 0) return cachedMembers;
+    if (dataStore?.miembros && dataStore.miembros.length > 0) return dataStore.miembros;
+    return isMaster ? INITIAL_MEMBERS : [];
+  };
+
+  const [rawMembers, setRawMembers] = useState<Member[]>(getInitialMembers);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (cachedMembers && cachedMembers.length > 0) return false;
+    if (dataStore?.miembros && dataStore.miembros.length > 0) return false;
+    return !isMaster;
+  });
+
+  // Sync with dataStore.miembros if rawMembers was initially empty and cache arrives
+  useEffect(() => {
+    if (dataStore?.miembros && dataStore.miembros.length > 0 && (!cachedMembers || cachedMembers.length === 0)) {
+      setRawMembers(dataStore.miembros);
+      cachedMembers = dataStore.miembros;
+      setIsLoading(false);
+    }
+  }, [dataStore?.miembros]);
 
   // Real-time listener for Firestore collection "members" (or workspace collection)
   useEffect(() => {
     if (!workspaceId) {
-      setMembers([]);
+      setRawMembers([]);
+      cachedMembers = [];
       setIsLoading(false);
       return;
     }
@@ -186,7 +218,8 @@ export function useMembers() {
       async (snapshot) => {
         if (snapshot.empty) {
           if (!isMaster) {
-            setMembers([]);
+            setRawMembers([]);
+            cachedMembers = [];
             setIsLoading(false);
             return;
           }
@@ -216,10 +249,12 @@ export function useMembers() {
               );
               await Promise.all(seedPromises);
             }
-            setMembers(INITIAL_MEMBERS);
+            cachedMembers = INITIAL_MEMBERS;
+            setRawMembers(INITIAL_MEMBERS);
           } catch (seedErr) {
             console.error("Error seeding initial members:", seedErr);
-            setMembers(INITIAL_MEMBERS);
+            cachedMembers = INITIAL_MEMBERS;
+            setRawMembers(INITIAL_MEMBERS);
           }
         } else {
           const list: Member[] = [];
@@ -239,25 +274,75 @@ export function useMembers() {
               colorName: data.colorName || "",
               customColor: data.customColor,
               notas_internas: data.notas_internas || "",
+              capacidad_semanal: data.capacidad_semanal || 40,
               createdAt: data.createdAt || data.created_at || null,
               updatedAt: data.updatedAt || data.updated_at || null,
               created_at: data.created_at || data.createdAt || null,
               updated_at: data.updated_at || data.updatedAt || null,
             });
           });
-          setMembers(list);
+          cachedMembers = list;
+          setRawMembers(list);
         }
         setIsLoading(false);
       },
       (err) => {
         console.error("Error subscribing to members in Firestore:", err);
-        setMembers(INITIAL_MEMBERS);
+        const fallback = isMaster ? INITIAL_MEMBERS : [];
+        cachedMembers = fallback;
+        setRawMembers(fallback);
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [workspaceId, isMaster]);
+
+  // Rollups calculados reactivos en vivo (en memoria, sin persistir a Firestore)
+  const members = useMemo(() => {
+    return rawMembers.map((m) => {
+      // Filtrar tareas activas donde el miembro es asignado (canónico: asignado_id, fallback: asignado_ids[0])
+      const memberActiveTasks = tasks.filter((t) => {
+        const isAssignee = t.asignado_id
+          ? String(t.asignado_id) === String(m.id)
+          : (Array.isArray(t.asignado_ids) && t.asignado_ids.length > 0
+              ? String(t.asignado_ids[0]) === String(m.id)
+              : false);
+        return isAssignee && isTaskActive(t.estado);
+      });
+
+      let totalEsfuerzoMins = 0;
+      let tareasSinEstimar = 0;
+
+      memberActiveTasks.forEach((t) => {
+        if (typeof t.esfuerzoMinutos === "number" && !isNaN(t.esfuerzoMinutos) && t.esfuerzoMinutos > 0) {
+          totalEsfuerzoMins += t.esfuerzoMinutos;
+        } else {
+          tareasSinEstimar++;
+        }
+      });
+
+      const carga_horas_actual = Math.round((totalEsfuerzoMins / 60) * 10) / 10;
+      const capacidad_semanal = m.capacidad_semanal || 40;
+      const workloadPercent = Math.round((carga_horas_actual / capacidad_semanal) * 100);
+
+      let semaforo: MemberWorkloadTrafficLight = "disponible";
+      if (workloadPercent > 100) {
+        semaforo = "sobrecargado";
+      } else if (workloadPercent >= 80) {
+        semaforo = "al_limite";
+      }
+
+      return {
+        ...m,
+        capacidad_semanal,
+        carga_horas_actual,
+        workloadPercent,
+        semaforo,
+        tareasSinEstimar,
+      };
+    });
+  }, [rawMembers, tasks]);
 
   const createMember = useCallback(async (data: Partial<Member>): Promise<string> => {
     const newId = "mem-" + Date.now();
@@ -281,6 +366,7 @@ export function useMembers() {
       notas_internas: data.notas_internas || "",
       telefono: data.telefono || "",
       tarifa_hora: data.tarifa_hora || 40,
+      capacidad_semanal: data.capacidad_semanal || 40,
       rating: "5.0",
       completedTasks: 0,
       totalHoursLogged: 0,

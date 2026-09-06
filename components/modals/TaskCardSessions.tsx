@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { useSessions, useTaskSessions } from "@/hooks/useSessions";
-import { Play, Square, Plus, Clock, Bot, User, ShieldCheck, Search, AlertTriangle, ChevronDown, Loader2 } from "lucide-react";
-import type { SessionOrigin } from "@/lib/types";
+import { Play, Square, Plus, Clock, Bot, User, ShieldCheck, Search, AlertTriangle, ChevronDown, Loader2, Pencil } from "lucide-react";
+import type { SessionOrigin, SessionDoc } from "@/lib/types";
 import { formatSessionDurationDisplay } from "@/components/views/HomeSessionsColumn";
+import EditSessionModal from "@/components/modals/EditSessionModal";
+import { playSound } from "@/app/taski/utils/audio";
 
 interface TaskCardSessionsProps {
   taskId: string;
@@ -34,6 +36,7 @@ export function TaskCardSessions({ taskId, projectId, clientId, workerId }: Task
   const isCurrentTaskActive = activeSession?.task_id === String(taskId);
   const [elapsedSecs, setElapsedSecs] = useState<number>(0);
   const [showManualModal, setShowManualModal] = useState<boolean>(false);
+  const [editingSession, setEditingSession] = useState<SessionDoc | null>(null);
   const [isMounted, setIsMounted] = useState<boolean>(false);
 
   useEffect(() => {
@@ -209,24 +212,39 @@ export function TaskCardSessions({ taskId, projectId, clientId, workerId }: Task
               : "Fecha no disponible";
 
             return (
-              <div key={s.id} className="p-2.5 rounded-xl bg-white/[0.015] border border-white/5 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1 ${badge.color}`}>
+              <div 
+                key={s.id} 
+                className="p-2.5 rounded-xl bg-white/[0.015] hover:bg-white/[0.03] border border-white/5 hover:border-white/10 flex items-center justify-between text-xs transition-all group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className={`px-2 py-0.5 rounded-md border text-[10px] font-bold flex items-center gap-1 shrink-0 ${badge.color}`}>
                     {badge.icon}
                     <span>{badge.label}</span>
                   </div>
 
-                  <span className="font-bold text-white/80">{formatSessionDurationDisplay(s.durationMins)}</span>
-                  {s.summary && <span className="text-white/40 truncate max-w-[160px] text-[11px]">- {s.summary}</span>}
+                  <span className="font-bold text-white/80 shrink-0">{formatSessionDurationDisplay(s.durationMins, s.durationSeconds)}</span>
+                  {s.summary && <span className="text-white/40 truncate max-w-[140px] text-[11px]">- {s.summary}</span>}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   {s.status === "completada_forzada" && (
                     <span className="text-[9px] font-bold text-amber-400 flex items-center gap-0.5" title="Auto-cerrada por inactividad (heartbeat timeout)">
                       <AlertTriangle className="w-3 h-3" /> Forzada
                     </span>
                   )}
                   <span className="text-[10px] text-white/30 font-mono">{dateStr}</span>
+
+                  <button
+                    type="button"
+                    title="Editar duración"
+                    onClick={() => {
+                      setEditingSession(s);
+                      playSound('tick');
+                    }}
+                    className="p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-white/10 text-white/40 hover:text-white transition-all cursor-pointer"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             );
@@ -244,6 +262,15 @@ export function TaskCardSessions({ taskId, projectId, clientId, workerId }: Task
           </button>
         )}
       </div>
+
+      {/* Modal de Edición de Sesión */}
+      <EditSessionModal
+        isOpen={!!editingSession}
+        onClose={() => setEditingSession(null)}
+        session={editingSession}
+        onSuccess={() => refetch()}
+        isNightMode={true}
+      />
     </div>
   );
 }

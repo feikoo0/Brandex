@@ -86,8 +86,8 @@ export function EntityModal() {
             <div
               key={`${modal.type}-${modal.id}-${i}`}
               style={{
-                width:           modal.type === "proyecto" ? "80vw" : "600px",
-                maxWidth:        modal.type === "proyecto" ? "1200px" : "100vw",
+                width:           modal.type === "proyecto" ? "min(75rem, 80vw)" : "min(37.5rem, 100vw)",
+                maxWidth:        modal.type === "proyecto" ? "min(75rem, 90vw)" : "min(37.5rem, 100vw)",
                 flexShrink:      0,
                 position:        "absolute",
                 right:           offsetRight,

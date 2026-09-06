@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { X, AlertTriangle, Trash2, Folder, Check } from "lucide-react";
 import { playSound } from "../utils/audio";
+import { Portal } from "@/components/ui/Portal";
 
 export interface DeleteModalConfig {
   isOpen: boolean;
@@ -52,6 +53,17 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
     if (onCancel) onCancel();
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen]);
+
   const isConfigMode = Boolean(config);
   const currentStep = config?.step ?? 2;
   const currentTargetType = config?.targetType ?? (itemType === "proyecto" ? "project" : "task");
@@ -59,25 +71,32 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   const projectTitle = config?.projectTitle || (itemType === "proyecto" ? itemName : "");
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
-          {/* Blur backdrop */}
+    <Portal>
+      <AnimatePresence>
+        {isOpen && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={handleClose}
-            className="absolute inset-0 bg-slate-950/60"
-          />
+            key="delete-confirm-backdrop-wrap"
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 pointer-events-auto select-none"
+          >
+            {/* Blur backdrop */}
+            <motion.div
+              key="delete-confirm-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] }}
+              onClick={handleClose}
+              className="absolute inset-0 bg-slate-950/75 pointer-events-auto cursor-pointer"
+            />
 
-          {/* Modal Box */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: "spring", damping: 25, stiffness: 350 }}
-            className={`relative w-full max-w-md overflow-hidden rounded-[32px] border shadow-2xl p-6 z-10 flex flex-col gap-5 ${
+            {/* Modal Box */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`relative w-full max-w-md overflow-hidden rounded-[32px] border shadow-2xl p-6 z-10 flex flex-col gap-5 pointer-events-auto ${
               isNightMode
                 ? "bg-slate-900/95 border-white/10 text-white shadow-black/80"
                 : "bg-white border-slate-200 text-slate-800 shadow-slate-200/50"
@@ -306,9 +325,10 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
               </>
             )}
           </motion.div>
-        </div>
+        </motion.div>
       )}
     </AnimatePresence>
+    </Portal>
   );
 };
 

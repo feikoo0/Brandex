@@ -52,7 +52,7 @@ export function SmartInsights() {
     }
 
     // 2. Sobrecarga de Equipo (Verde en la imagen)
-    const workers = data.trabajadores.filter(w => w.rol !== "Admin");
+    const workers = data.miembros.filter(w => w.rol !== "Admin");
     let overloadedWorker = null;
     for (const w of workers) {
       const wTasks = data.tareas.filter(t => t.asignado_ids?.includes(w.id) && !DONE_STATES.has(t.estado));

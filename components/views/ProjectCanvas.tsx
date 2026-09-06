@@ -11,6 +11,7 @@ import { useUIStore } from "@/lib/store";
 import { CanvasLayout } from "./CanvasLayout";
 import { useDebouncedSave } from "@/hooks/useDebouncedSave";
 import { SaveIndicator } from "@/components/ui/SaveIndicator";
+import { SmoothInput } from "@/components/ui/SmoothInput";
 
 export function ProjectCanvas({ projectId }: { projectId: string }) {
   const { data } = useData();
@@ -195,13 +196,15 @@ function ProjectCanvasInner({ project }: { project: any }) {
       {/* Quick create task inline */}
       {showNewTask && (
         <div className="mb-4 p-3 rounded-xl border border-green-500/20 bg-green-500/5 flex flex-col gap-2">
-          <input
+          <SmoothInput
             autoFocus
+            unstyled
             value={newTaskTitle}
             onChange={e => setNewTaskTitle(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleCreateTask(); } }}
             placeholder="Nombre de la tarea..."
-            className="w-full bg-white/5 border border-white/10 text-xs font-bold text-white placeholder-white/20 px-3 py-2 rounded-lg focus:outline-none focus:ring-1 focus:ring-green-500/40"
+            wrapperClassName="w-full bg-white/5 border border-white/10 px-3 py-2 rounded-lg focus-within:ring-1 focus-within:ring-green-500/40 transition-colors"
+            className="text-xs font-bold text-white placeholder-white/20"
           />
           <div className="flex gap-2 items-center">
             <select value={newTaskPrio} onChange={e => setNewTaskPrio(e.target.value)} className="bg-white/5 border border-white/5 text-[10px] font-bold px-2 py-1 rounded-lg text-white/70 outline-none flex-1">
@@ -260,7 +263,7 @@ function ProjectCanvasInner({ project }: { project: any }) {
                 )}
                 <div className="flex -space-x-1.5">
                   {t.asignado_ids?.slice(0,2).map(aid => {
-                    const w = data?.trabajadores.find(x => x.id === aid);
+                    const w = data?.miembros.find(x => x.id === aid);
                     return w ? <div key={aid} className="w-5 h-5 rounded-full dark:bg-[#1a1a20] bg-white border-2 dark:border-[#121216] border-white flex items-center justify-center text-[7px] font-black uppercase text-white/30">{avatarOf(w.nombre)}</div> : null;
                   })}
                 </div>

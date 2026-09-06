@@ -40,10 +40,14 @@ import CreateTemplateForm from "./CreateTemplateForm";
 import CreateProjectTypeModal, { ProjectTypeItem } from "./CreateProjectTypeModal";
 import LinearDropdownPopover, { PopoverOption } from "./LinearDropdownPopover";
 import LinearDatePopover from "./LinearDatePopover";
-import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PROJECT_COLOR_PALETTE, getSingleSourceProjectColor, formatProjectCreatedDate } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
+import { Portal } from "@/components/ui/Portal";
+import { useTemplates } from "@/hooks/useTemplates";
+import { useClients } from "@/hooks/useClients";
+import { useMembers } from "@/hooks/useMembers";
 
 export interface Task {
   id: number;
@@ -93,6 +97,8 @@ export interface ProjectData {
   customColor?: { h: number; s: number; l: number };
   customGradientStyle?: string;
   customGlowStyle?: string;
+  color?: string;
+  colorName?: string;
   team?: { name: string; color: string }[];
   asignado_ids?: string[];
   asignado?: string;
@@ -258,7 +264,6 @@ const formatTimeAgo = (dateInput?: string | Date | number): string => {
       const d = new Date(`${str}T00:00:00`);
       if (!isNaN(d.getTime())) date = d;
     } else {
-      // Handle friendly dates like "24 Jun" or "15 May" without year
       const friendlyMatch = str.match(/^(\d{1,2})\s+([A-Za-z]{3,4})$/i);
       if (friendlyMatch) {
         const day = friendlyMatch[1];
@@ -275,7 +280,6 @@ const formatTimeAgo = (dateInput?: string | Date | number): string => {
       if (!date) {
         let d = new Date(str);
         if (!isNaN(d.getTime())) {
-          // JS Date default fallback for short dates without year (e.g. year 2001)
           if (d.getFullYear() < 2015 && !str.includes("20") && !str.includes("19")) {
             d.setFullYear(currentYear);
             if (d.getTime() > now.getTime() + 86400000) {
@@ -345,7 +349,7 @@ export default function NewProjectModal({
   projects = []
 }: NewProjectModalProps) {
   const [activeEditingProject, setActiveEditingProject] = useState<Project | null>(null);
-  const [selectedCategory, setSelectedCategory] = useState<string>("Explorar");
+  const [selectedCategory, setSelectedCategory] = useState<string>("Todos");
   const [viewMode, setViewMode] = useState<"templates" | "create_form">("templates");
   const [isCreatingTemplateView, setIsCreatingTemplateView] = useState(false);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
@@ -353,14 +357,53 @@ export default function NewProjectModal({
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const isMaster = workspaceId === "brandex-master" || workspaceId === "159789" || workspaceId === "ws_159789";
 
-  // Dynamic Clients, Templates, Project Types & Team Members state
-  const [clientList, setClientList] = useState<string[]>(isMaster ? DEFAULT_CLIENT_NAMES : []);
-  const [templateList, setTemplateList] = useState<ProjectTemplateItem[]>(isMaster ? DEFAULT_TEMPLATES : []);
+  // Dynamic real-time synchronized Templates, Clients & Team Members
+  const { templates: templateList, createTemplate } = useTemplates();
+  const { clients: clientsData } = useClients();
+  const { members: membersData } = useMembers();
+
+  const [createdClients, setCreatedClients] = useState<string[]>([]);
+  const clientList: string[] = React.useMemo(() => {
+    const firestoreNames = clientsData
+      .map((c) => c.nombre || c.name)
+      .filter((n): n is string => Boolean(n));
+    const combined = isMaster
+      ? Array.from(new Set([...createdClients, ...firestoreNames, ...DEFAULT_CLIENT_NAMES]))
+      : Array.from(new Set([...createdClients, ...firestoreNames, ...(firestoreNames.length > 0 ? [] : DEFAULT_CLIENT_NAMES)]));
+    return combined;
+  }, [clientsData, isMaster, createdClients]);
+
+  const teamMemberList: TeamMemberItem[] = React.useMemo(() => {
+    if (membersData && membersData.length > 0) {
+      return membersData
+        .filter((m) => Boolean(m.nombre || m.name))
+        .map((m) => ({
+          id: String(m.id),
+          nombre: (m.nombre || m.name) as string,
+          rol: m.rol || m.role || "Miembro",
+          color: m.color
+        }));
+    }
+    return isMaster ? DEFAULT_TEAM_MEMBERS : [];
+  }, [membersData, isMaster]);
+
   const [packageList, setPackageList] = useState<string[]>(PACKAGE_OPTIONS);
-  const [teamMemberList, setTeamMemberList] = useState<TeamMemberItem[]>(isMaster ? DEFAULT_TEAM_MEMBERS : []);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState<string[]>([]);
-  const [showAllClients, setShowAllClients] = useState(false);
-  const [showAllTemplates, setShowAllTemplates] = useState(false);
+
+  // Background real-time sync for project types (never blocks opening modal)
+  useEffect(() => {
+    if (!db || !workspaceId) return;
+    const typesColName = isMaster ? "v3_project_types" : `ws_${workspaceId}_project_types`;
+    const unsubscribe = onSnapshot(collection(db, typesColName), (snapshot) => {
+      if (!snapshot.empty) {
+        const firestoreTypes = snapshot.docs.map((d) => d.data().name).filter(Boolean);
+        setPackageList(Array.from(new Set([...firestoreTypes, ...PACKAGE_OPTIONS])));
+      }
+    }, (err) => {
+      console.error("Error listening to project types:", err);
+    });
+    return () => unsubscribe();
+  }, [workspaceId, isMaster]);
 
   // Creation Sub-Modals & Active Popovers
   const [isCreateClientOpen, setIsCreateClientOpen] = useState(false);
@@ -527,7 +570,20 @@ export default function NewProjectModal({
     populateFromProject(p);
   };
 
-  // Load clients, project types and team members from Firestore if available
+  // Escape key handler to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        playSound("click");
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
+  // Synchronous state initialization / reset on modal open
   useEffect(() => {
     if (!isOpen) return;
 
@@ -539,11 +595,11 @@ export default function NewProjectModal({
       setViewMode("templates");
       setIsCreatingTemplateView(false);
       setIsMoreMenuOpen(false);
-      setSelectedCategory("Explorar");
+      setSelectedCategory("Todos");
       setTitle("");
       setIsEditingTitle(false);
       setSummary("");
-      setClient(isMaster ? "Brandex" : "");
+      setClient(isMaster ? "Brandex" : (clientList[0] || "Brandex"));
       setPackageStr("Desarrollo Web");
       setDesc("");
       setStatus("Planificación");
@@ -556,178 +612,19 @@ export default function NewProjectModal({
       setSelectedWorkerIds([]);
       setTasks([]);
       setIsDetailsCollapsed(false);
-      setShowAllClients(false);
-      setShowAllTemplates(false);
     }
-
-    // Cargar plantillas locales de forma inmediata solo para master
-    if (isMaster) {
-      try {
-        const saved = localStorage.getItem("taski_v3_templates");
-        if (saved) {
-          const localTemplates: ProjectTemplateItem[] = JSON.parse(saved);
-          if (localTemplates.length > 0) {
-            const allTemplatesMap = new Map<string, ProjectTemplateItem>();
-            DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-            localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-            setTemplateList(Array.from(allTemplatesMap.values()));
-          }
-        }
-      } catch (e) {}
-    }
-
-    const loadData = async () => {
-      try {
-        if (db && workspaceId) {
-          // 1. Clients
-          const clientsColName = isMaster ? "clients" : `ws_${workspaceId}_clients`;
-          const clientSnap = await getDocs(collection(db, clientsColName));
-          let firestoreNames: string[] = [];
-          if (!clientSnap.empty) {
-            firestoreNames = clientSnap.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
-          } else if (isMaster) {
-            const v3Fallback = await getDocs(collection(db, "v3_clients"));
-            if (!v3Fallback.empty) {
-              firestoreNames = v3Fallback.docs.map((d) => d.data().nombre || d.data().name).filter(Boolean);
-            }
-          }
-          const finalClients = isMaster
-            ? Array.from(new Set([...firestoreNames, ...DEFAULT_CLIENT_NAMES]))
-            : firestoreNames;
-          setClientList(finalClients);
-
-          // 2. Project Types
-          const typesColName = isMaster ? "v3_project_types" : `ws_${workspaceId}_project_types`;
-          const typeSnap = await getDocs(collection(db, typesColName));
-          let firestoreTypes: string[] = [];
-          if (!typeSnap.empty) {
-            firestoreTypes = typeSnap.docs.map((d) => d.data().name).filter(Boolean);
-          }
-          const finalTypes = Array.from(new Set([...firestoreTypes, ...PACKAGE_OPTIONS]));
-          setPackageList(finalTypes);
-
-          // 3. Team Members
-          const teamColName = isMaster ? "v3_team" : `ws_${workspaceId}_members`;
-          const teamSnap = await getDocs(collection(db, teamColName));
-          let firestoreTeam: TeamMemberItem[] = [];
-          if (!teamSnap.empty) {
-            firestoreTeam = teamSnap.docs.map((d) => ({
-              id: d.id,
-              nombre: d.data().nombre || d.data().name,
-              rol: d.data().rol || d.data().role || "Miembro",
-              color: d.data().color
-            })).filter((m) => m.nombre);
-          } else if (isMaster) {
-            const trabSnap = await getDocs(collection(db, "trabajadores"));
-            if (!trabSnap.empty) {
-              firestoreTeam = trabSnap.docs.map((d) => ({
-                id: d.id,
-                nombre: d.data().nombre,
-                rol: d.data().rol || "Miembro",
-                color: d.data().color
-              })).filter((m) => m.nombre);
-            }
-          }
-          const finalTeam = isMaster && firestoreTeam.length === 0 ? DEFAULT_TEAM_MEMBERS : firestoreTeam;
-          setTeamMemberList(finalTeam);
-
-          // 4. Plantillas
-          const tmplColName = isMaster ? "v3_templates" : `ws_${workspaceId}_templates`;
-          let firestoreTemplates: ProjectTemplateItem[] = [];
-          try {
-            const tmplSnap = await getDocs(collection(db, tmplColName));
-            if (!tmplSnap.empty) {
-              firestoreTemplates = tmplSnap.docs.map((d) => ({
-                id: d.id,
-                name: d.data().name,
-                category: d.data().category || "General",
-                desc: d.data().desc || "",
-                gradient: d.data().gradient,
-                tasksCount: d.data().tasksCount,
-                isCustom: d.data().isCustom,
-                tasks: d.data().tasks
-              })).filter((t) => t.name);
-            } else if (isMaster) {
-              const fallbackSnap = await getDocs(collection(db, "templates"));
-              if (!fallbackSnap.empty) {
-                firestoreTemplates = fallbackSnap.docs.map((d) => ({
-                  id: d.id,
-                  name: d.data().name,
-                  category: d.data().category || "General",
-                  desc: d.data().desc || "",
-                  gradient: d.data().gradient,
-                  tasksCount: d.data().tasksCount,
-                  isCustom: d.data().isCustom,
-                  tasks: d.data().tasks
-                })).filter((t) => t.name);
-              }
-            }
-          } catch (e) {
-            console.error("Failed to load templates from Firestore:", e);
-          }
-
-          let localTemplates: ProjectTemplateItem[] = [];
-          if (isMaster) {
-            try {
-              const saved = localStorage.getItem("taski_v3_templates");
-              if (saved) {
-                localTemplates = JSON.parse(saved);
-              }
-            } catch (e) {}
-          }
-
-          const allTemplatesMap = new Map<string, ProjectTemplateItem>();
-          if (isMaster) {
-            DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-            localTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-          }
-          firestoreTemplates.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
-
-          setTemplateList(Array.from(allTemplatesMap.values()));
-        }
-      } catch (err) {
-        console.error("Failed to load clients, types, templates or team members in NewProjectModal:", err);
-      }
-    };
-
-    loadData();
-  }, [isOpen, editingProject?.id, workspaceId, isMaster]);
-
-  if (!isOpen) return null;
+  }, [isOpen, editingProject?.id, isMaster]);
 
   // Handle client creation callback
   const handleClientCreated = (newClient: ClientItem) => {
-    setClientList((prev) => {
-      if (prev.includes(newClient.name)) return prev;
-      return [newClient.name, ...prev];
-    });
+    setCreatedClients((prev) => (prev.includes(newClient.name) ? prev : [newClient.name, ...prev]));
     setSelectedCategory(`cliente:${newClient.name}`);
     setClient(newClient.name);
   };
 
   // Handle template creation callback
   const handleTemplateCreated = (newTmpl: ProjectTemplateItem) => {
-    try {
-      if (db && workspaceId) {
-        const tmplColName = isMaster ? "v3_templates" : `ws_${workspaceId}_templates`;
-        setDoc(doc(db, tmplColName, newTmpl.id), newTmpl).catch((err) =>
-          console.error("Error async saving template to Firestore:", err)
-        );
-      }
-    } catch (err) {
-      console.error("Error saving template to Firestore:", err);
-    }
-
-    if (isMaster) {
-      try {
-        const saved = localStorage.getItem("taski_v3_templates");
-        const existing: ProjectTemplateItem[] = saved ? JSON.parse(saved) : [];
-        const updated = [newTmpl, ...existing.filter((t) => t.id !== newTmpl.id)];
-        localStorage.setItem("taski_v3_templates", JSON.stringify(updated));
-      } catch (e) {}
-    }
-
-    setTemplateList((prev) => [newTmpl, ...prev.filter((t) => t.id !== newTmpl.id)]);
+    createTemplate(newTmpl);
     setSelectedCategory(`plantilla:${newTmpl.name}`);
     setPackageStr(newTmpl.category || "Desarrollo Web");
   };
@@ -844,7 +741,7 @@ export default function NewProjectModal({
       return idB - idA;
     })
     .filter((p) => {
-      if (selectedCategory === "Explorar") return true;
+      if (selectedCategory === "Todos" || selectedCategory === "Explorar") return true;
 
       if (selectedCategory.startsWith("cliente:")) {
         const clientName = selectedCategory.replace("cliente:", "").trim().toLowerCase();
@@ -935,6 +832,8 @@ export default function NewProjectModal({
       customColor: { h, s, l },
       customGradientStyle: selectedPreset.color,
       customGlowStyle: selectedPreset.color,
+      color: selectedPreset.color,
+      colorName: selectedPreset.name,
       team: teamPayload,
       asignado_ids: selectedWorkerIds,
       asignado: selectedMembers.map((m) => m.nombre).join(", ")
@@ -958,16 +857,19 @@ export default function NewProjectModal({
     }
   };
 
-  const clientsToShow = showAllClients ? clientList : clientList.slice(0, 5);
-  const templatesToShow = showAllTemplates ? templateList : templateList.slice(0, 5);
+  const lastOriginRectRef = useRef(originRect);
+  if (originRect) {
+    lastOriginRectRef.current = originRect;
+  }
+  const effectiveOriginRect = originRect || lastOriginRectRef.current;
 
   const targetWidth = 1140;
-  const initialScale = originRect ? Math.max(originRect.width / targetWidth, 0.25) : 0.65;
-  const initialX = originRect && typeof window !== 'undefined'
-    ? originRect.x + originRect.width / 2 - window.innerWidth / 2
+  const initialScale = effectiveOriginRect ? Math.max(effectiveOriginRect.width / targetWidth, 0.25) : 0.65;
+  const initialX = effectiveOriginRect && typeof window !== 'undefined'
+    ? effectiveOriginRect.x + effectiveOriginRect.width / 2 - window.innerWidth / 2
     : 0;
-  const initialY = originRect && typeof window !== 'undefined'
-    ? originRect.y + originRect.height / 2 - window.innerHeight / 2
+  const initialY = effectiveOriginRect && typeof window !== 'undefined'
+    ? effectiveOriginRect.y + effectiveOriginRect.height / 2 - window.innerHeight / 2
     : 25;
 
   const modalVariants = {
@@ -996,14 +898,14 @@ export default function NewProjectModal({
     },
     exit: {
       opacity: 0,
-      scale: initialScale * 0.85,
+      scale: initialScale,
       x: initialX,
       y: initialY,
-      filter: "blur(24px)",
-      borderRadius: "400px", // PrettyModal closing border-radius morph
+      filter: "blur(12px)",
+      borderRadius: "16px",
       transition: {
         duration: 0.32,
-        ease: [0.37, 0.35, 0, 1] as const, // PrettyModal closing curve
+        ease: [0.305, 0.206, 0.3, 1] as const,
         opacity: { duration: 0.22, ease: [0.56, 0.27, 0, 1] as const },
         filter: { duration: 0.24, ease: [0.37, 0.35, 0, 1] as const },
         borderRadius: { duration: 0.28, ease: [0.56, 0.27, 0, 1] as const }
@@ -1012,33 +914,40 @@ export default function NewProjectModal({
   };
 
   return (
-    <>
+    <Portal>
       <AnimatePresence>
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-hidden">
-          {/* Backdrop overlay (Clean dark without background blur) */}
+        {isOpen && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] as const }}
-            onClick={() => {
-              playSound("click");
-              onClose();
-            }}
-            className="fixed inset-0 bg-black/75 z-40 transition-opacity"
-          />
-
-          {/* Figma Sites Template Modal */}
-          <motion.div
-            variants={modalVariants}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative z-50 pointer-events-auto shadow-2xl overflow-hidden outline-none w-[1140px] max-w-[95vw] h-[84vh] max-h-[880px] rounded-[28px]"
-            data-testid="sites-template-modal"
+            key="new-project-modal-backdrop-wrap"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-hidden pointer-events-auto select-none"
           >
-            <div className="cx_overflowHidden---fxjU rounded-[28px] h-full flex flex-col overflow-hidden">
-              <div className={`site_templates_view--container--V7GbF flex flex-col h-full rounded-[28px] ${isNightMode ? "bg-[#1f1f1f] text-white" : "bg-[#fffce2] text-slate-900"}`}>
+            {/* Backdrop overlay (Clean dark without background blur) */}
+            <motion.div
+              key="new-project-backdrop"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] as const }}
+              onClick={() => {
+                playSound("click");
+                onClose();
+              }}
+              className="fixed inset-0 bg-black/75 z-40 transition-opacity pointer-events-auto cursor-pointer"
+            />
+
+            {/* Figma Sites Template Modal */}
+            <motion.div
+              key="new-project-dialog"
+              variants={modalVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              onClick={(e) => e.stopPropagation()}
+              className="modal--defaultSize--H1LAQ modal--smallSize--q-xsG sites_template_modal--templateModal--QDA0u modal--modal--exm2q modal--modal---V9ch modal--modalBare--lHd21 relative z-50 pointer-events-auto shadow-2xl overflow-hidden outline-none w-[min(71.25rem,95vw)] max-w-[95vw] h-[min(55rem,86vh)] max-h-[88vh] rounded-[1.75rem]"
+              data-testid="sites-template-modal"
+            >
+            <div className="cx_overflowHidden---fxjU rounded-[1.75rem] h-full flex flex-col overflow-hidden">
+              <div className={`site_templates_view--container--V7GbF flex flex-col h-full rounded-[1.75rem] ${isNightMode ? "bg-[#181817] text-white" : "bg-[#fffce2] text-slate-900"}`}>
                 
                 {/* Header (Only rendered when exploring templates) */}
                 {viewMode === "templates" && (
@@ -1072,87 +981,29 @@ export default function NewProjectModal({
                       data-testid="template-picker-sidebar"
                       style={{ width: "210px" }}
                     >
-                      {/* Explorar */}
+                      {/* Todos */}
                       <button
                         onClick={() => {
                           playSound("click");
                           setIsCreatingTemplateView(false);
-                          setSelectedCategory("Explorar");
+                          setSelectedCategory("Todos");
                         }}
                         className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full flex items-center h-10 px-3 rounded-xl text-[14px] transition-all duration-200 select-none ${
-                          selectedCategory === "Explorar"
+                          selectedCategory === "Todos" || selectedCategory === "Explorar"
                             ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/10 text-[#ffffffd6] font-medium"
                             : "text-[#ffffffd6] hover:bg-white/5"
                         }`}
                       >
-                        <div role="option" aria-selected={selectedCategory === "Explorar"}>
-                          Explorar
+                        <div role="option" aria-selected={selectedCategory === "Todos" || selectedCategory === "Explorar"}>
+                          Todos
                         </div>
                       </button>
 
                       <div className="picker_modal_sidebar--itemDivider--7bNdk my-2 border-b border-white/10" data-testid="sidebar-divider"></div>
 
-                      {/* SECTION 1: CLIENTE */}
-                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[14px] font-semibold text-[#ffffff6b] uppercase tracking-wider px-3 py-1">
-                        <span>Cliente</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSound("click");
-                            setIsCreateClientOpen(true);
-                          }}
-                          className="p-0.5 rounded hover:bg-white/10 text-white/60 hover:text-emerald-400 transition-colors"
-                          title="Crear nuevo cliente"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {/* Top 5 Clients list */}
-                      {clientsToShow.map((clientName) => {
-                        const catKey = `cliente:${clientName}`;
-                        const isSelected = selectedCategory === catKey;
-                        return (
-                          <button
-                            key={clientName}
-                            onClick={() => {
-                              playSound("click");
-                              setIsCreatingTemplateView(false);
-                              setSelectedCategory(catKey);
-                            }}
-                            className={`picker_modal_sidebar--sidebarItemBase--8eObg w-full flex items-center h-10 px-3 rounded-xl text-[14px] transition-all duration-200 truncate select-none ${
-                              isSelected
-                                ? "site_templates_sidebar--selectedSidebarItem--VUUI8 bg-white/10 text-[#ffffffd6] font-medium"
-                                : "text-[#ffffffd6] hover:bg-white/5"
-                            }`}
-                          >
-                            <div role="option" aria-selected={isSelected} className="truncate">
-                              {clientName}
-                            </div>
-                          </button>
-                        );
-                      })}
-
-                      {/* Link to show all clients */}
-                      {clientList.length > 5 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSound("click");
-                            setShowAllClients(!showAllClients);
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-[12px] text-white/60 hover:text-white transition-colors font-medium cursor-pointer flex items-center justify-between group"
-                        >
-                          <span>{showAllClients ? "Ver menos" : "Ver todos los clientes"}</span>
-                          <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 text-white/50 group-hover:text-white ${showAllClients ? "rotate-180" : ""}`} />
-                        </button>
-                      )}
-
-                      <div className="picker_modal_sidebar--itemDivider--7bNdk my-2 border-b border-white/10" data-testid="sidebar-divider"></div>
-
-                      {/* SECTION 2: PLANTILLA */}
-                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[14px] font-semibold text-[#ffffff6b] uppercase tracking-wider px-3 py-1">
-                        <span>Plantilla</span>
+                      {/* SECTION: PLANTILLAS */}
+                      <div className="picker_modal_sidebar--sidebarSectionHeader--dd25I flex items-center justify-between text-[14px] font-medium text-[#ffffff6b] px-3 py-1">
+                        <span>Plantillas</span>
                         <button
                           type="button"
                           onClick={() => {
@@ -1167,7 +1018,7 @@ export default function NewProjectModal({
                       </div>
 
                       {/* Templates list */}
-                      {templatesToShow.map((tmpl) => {
+                      {templateList.map((tmpl) => {
                         const catKey = `plantilla:${tmpl.name}`;
                         const isSelected = selectedCategory === catKey;
                         return (
@@ -1190,20 +1041,6 @@ export default function NewProjectModal({
                           </button>
                         );
                       })}
-
-                      {/* Link to show all templates */}
-                      {templateList.length > 5 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playSound("click");
-                            setShowAllTemplates(!showAllTemplates);
-                          }}
-                          className="w-full text-left px-3 py-1.5 text-[12px] text-sky-400/80 hover:text-sky-300 transition-colors font-medium cursor-pointer"
-                        >
-                          {showAllTemplates ? "Ver menos" : "Ver todas las plantillas"}
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -1244,9 +1081,7 @@ export default function NewProjectModal({
                                       <Plus className="w-6 h-6 stroke-[2.5]" />
                                     </div>
                                     <div className="text-[14px] font-semibold text-white/90 group-hover:text-white text-center">
-                                      {selectedCategory.startsWith("cliente:")
-                                        ? `Nuevo proyecto (${selectedCategory.replace("cliente:", "").trim()})`
-                                        : selectedCategory.startsWith("plantilla:")
+                                      {selectedCategory.startsWith("plantilla:")
                                         ? `Usar plantilla ${selectedCategory.replace("plantilla:", "").trim()}`
                                         : "Nuevo proyecto"}
                                     </div>
@@ -1278,7 +1113,7 @@ export default function NewProjectModal({
                       )
                     ) : (
                       /* FAST CREATE MODAL ESTILO LINEAR EXACTO */
-                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#1f1f1f] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
+                      <div className={`flex-1 flex flex-col ${isNightMode ? "bg-[#181817] text-[#f7f7f8]" : "bg-[#fffce2] text-slate-900"} overflow-hidden rounded-[24px] rounded-b-[24px] border-none`}>
                         
                         {/* MAIN FORM */}
                         <form onSubmit={handleFormSubmit} className="flex-1 flex flex-col justify-between overflow-hidden">
@@ -1911,7 +1746,7 @@ export default function NewProjectModal({
                           </div>
 
                           {/* FOOTER BAR */}
-                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#1f1f1f]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
+                          <div className={`flex items-center justify-between px-4 py-2.5 border-none ${isNightMode ? "bg-[#181817]" : "bg-[#fffce2]"} shrink-0 text-xs`}>
                             {/* Left: Paperclip Icon */}
                             <div className="flex items-center gap-1 text-[#71717a]">
                               <button
@@ -1944,8 +1779,9 @@ export default function NewProjectModal({
               </div>
             </div>
           </motion.div>
-        </div>
-      </AnimatePresence>
+        </motion.div>
+      )}
+    </AnimatePresence>
 
       {/* Sub-Modals for Creating Client, Template and Project Type */}
       <CreateClientModal
@@ -1965,6 +1801,6 @@ export default function NewProjectModal({
         onClose={() => setIsCreateTypeOpen(false)}
         onTypeCreated={handleTypeCreated}
       />
-    </>
+    </Portal>
   );
 }

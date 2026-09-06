@@ -4,19 +4,13 @@
 
 // --- TAREAS (Matriz) ---
 export const TASK_ESTADO_OPTS = [
-  "Pendiente",
-  "Aprobado",
-  "En proceso",
-  "Por hacer",
-  "Revision",
-  "Modificar",
-  "Hecho",
-  "Por publicar",
-  "Publicado",
-  "Cancelado",
+  "Planificado",
+  "En Proceso",
+  "En Revisión",
+  "Completado",
 ] as const;
 
-export const TASK_PRIO_OPTS = ["Baja", "Media", "Alta", "Urgente"] as const;
+export const TASK_PRIO_OPTS = ["Urgente", "Alta", "Media", "Baja"] as const;
 
 export const ESFUERZOS = [
   "⚡Flash (15 min)",
@@ -147,6 +141,8 @@ export const ADMIN_NAV = [
   { tab: "clientes",  label: "Clientes" },
   { tab: "equipo",    label: "Equipo" },
   { tab: "accesos",   label: "Accesos" },
+  { sep: "SISTEMA" },
+  { tab: "diagramas", label: "Diagramas" },
 ];
 
 export const WORKER_NAV = [

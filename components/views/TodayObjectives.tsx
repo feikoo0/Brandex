@@ -337,7 +337,7 @@ function TaskRow({ task, onCheck, data }: { task: any, onCheck: (id: string) => 
         
         <div className="flex -space-x-1.5 w-8 justify-end">
           {task.asignado_ids?.slice(0,2).map((aid: string) => {
-            const worker = data.trabajadores.find((w: any) => w.id === aid);
+            const worker = data.miembros.find((w: any) => w.id === aid);
             return worker ? (
               <div key={aid} className="w-5 h-5 rounded-full dark:bg-[#121216] bg-white border border-gray-200 dark:border-[#26262b] flex items-center justify-center text-[7px] font-black dark:text-white text-gray-800 z-10" title={worker.nombre}>
                 {avatarOf(worker.nombre)}

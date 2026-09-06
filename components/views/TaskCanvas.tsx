@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { Loader2, Play, Clock, CheckCircle2, User, AlignLeft, Tag } from "lucide-react";
 import { useData, useUpdateTask } from "@/hooks/useData";
+import { useSessions } from "@/hooks/useSessions";
 import { useUIStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 import { DONE_STATES, STATUS_COLORS, PRIORITY_COLORS, ESFUERZOS } from "@/lib/constants";
@@ -12,13 +13,6 @@ import { SaveIndicator } from "@/components/ui/SaveIndicator";
 
 export function TaskCanvas({ taskId }: { taskId: string }) {
   const { data } = useData();
-  const updateTask = useUpdateTask();
-  const pushView = useUIStore(s => s.pushView);
-  
-  const startTimer = useUIStore(s => s.startTimer);
-  const activeTimer = useUIStore(s => s.activeTimer);
-  const isTimerActive = activeTimer?.taskId === taskId;
-
   const task = data?.tareas.find((t) => t.id === taskId);
   
   if (!task) return <div className="p-6 text-center text-white/50">Cargando tarea...</div>;
@@ -29,10 +23,28 @@ export function TaskCanvas({ taskId }: { taskId: string }) {
 function TaskCanvasInner({ task }: { task: any }) {
   const { data } = useData();
   const updateTask = useUpdateTask();
+  const { activeSession, startSession, endSession } = useSessions();
   const pushView = useUIStore(s => s.pushView);
   const startTimer = useUIStore(s => s.startTimer);
+  const stopTimer = useUIStore(s => s.stopTimer);
   const activeTimer = useUIStore(s => s.activeTimer);
-  const isTimerActive = activeTimer?.taskId === task.id;
+  const isTimerActive = activeSession?.task_id === task.id || activeTimer?.taskId === task.id;
+
+  const handleToggleTimer = async () => {
+    if (isTimerActive) {
+      await endSession();
+      stopTimer();
+    } else {
+      startTimer(task.id);
+      await startSession({
+        taskId: task.id,
+        projectId: task.proyecto_ids?.[0] || task.proyecto_id || "1",
+        clientId: task.cliente_ids?.[0] || task.cliente_id || null,
+        origin: "manual",
+      });
+      setEstado("En proceso");
+    }
+  };
 
   // Debounced saves
   const saveTitle = useCallback(async (v: string) => {
@@ -53,7 +65,7 @@ function TaskCanvasInner({ task }: { task: any }) {
 
   // Derived
   const project = data?.proyectos.find(p => task.proyecto_ids?.includes(p.id));
-  const assigned = task.asignado_ids?.map((aid: string) => data?.trabajadores.find(w => w.id === aid)).filter(Boolean) || [];
+  const assigned = task.asignado_ids?.map((aid: string) => data?.miembros.find(w => w.id === aid)).filter(Boolean) || [];
 
   const handleSelectUpdate = async (field: string, value: string) => {
     setSelectSaving(true);
@@ -102,15 +114,26 @@ function TaskCanvasInner({ task }: { task: any }) {
 
         <div className="flex gap-2 flex-shrink-0">
           {selectSaving && <SaveIndicator status="saving" compact />}
-          {!isTimerActive ? (
-            <button onClick={() => startTimer(task.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-[#0a2417] text-[10px] font-black uppercase tracking-wider rounded-xl hover:scale-105 transition-all">
-              <Play className="w-3 h-3 fill-current" /> Timer
-            </button>
-          ) : (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase tracking-wider rounded-xl animate-pulse">
-              <Loader2 className="w-3 h-3 animate-spin" /> Tracking
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={handleToggleTimer}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer",
+              isTimerActive
+                ? "bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30"
+                : "bg-green-500 text-[#0a2417] hover:scale-105"
+            )}
+          >
+            {isTimerActive ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" /> Detener
+              </>
+            ) : (
+              <>
+                <Play className="w-3 h-3 fill-current" /> Timer
+              </>
+            )}
+          </button>
         </div>
       </div>
       

@@ -194,13 +194,6 @@
   font-display: swap;
 }
 
-/* Global rule: Disable all animations and transitions */
-*, ::before, ::after {
-  animation-duration: 0.001ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
-}
-
 /* ─────────────────────────────────────────────────────────────────────────────
    Braindex OS — Design Tokens
    All CSS variables are mapped to Tailwind in tailwind.config.ts
@@ -248,6 +241,43 @@
   --radius:           0.75rem;
 }
 
+/* ── Calibrated Fluid Typography & Proportional UI Scale ─────────────────────── */
+html {
+  /* Dynamic fluid rem scale calibrated to 1920x1080 baseline (1rem = 16px @ 1920px) */
+  font-size: clamp(13.5px, 0.83333vw, 32px);
+}
+
+/* Specific tier optimizations for crisp render on common display boundaries */
+@media screen and (min-width: 1280px) and (max-width: 1535px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+@media screen and (min-width: 1536px) and (max-width: 1919px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@media screen and (min-width: 1920px) and (max-width: 2559px) {
+  html {
+    font-size: 16px; /* 1080p Baseline (100%) */
+  }
+}
+
+@media screen and (min-width: 2560px) and (max-width: 3839px) {
+  html {
+    font-size: 21.333px; /* 2K / 1440p QHD Scale (133.33%) */
+  }
+}
+
+@media screen and (min-width: 3840px) {
+  html {
+    font-size: 32px; /* 4K / 2160p UHD Scale (200%) */
+  }
+}
+
 /* ── Base reset ─────────────────────────────────────────────────────────────── */
 * {
   box-sizing: border-box;
@@ -256,7 +286,12 @@
 }
 
 html, body {
+  width: 100%;
   height: 100%;
+  height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Bloquea el scroll general de la ventana para comportamiento app nativa */
   background: var(--s0);
   color: var(--txt);
   font-family: 'Aeonik', 'NB International Pro', system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
@@ -264,11 +299,47 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Desbloqueo de Scroll Nativo en Landing Page Brandex ───────────────────────── */
+html:has(.brandex-landing-root),
+body:has(.brandex-landing-root) {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  height: auto !important;
+  min-height: 100vh !important;
+}
+
 /* ── Scrollbar ───────────────────────────────────────────────────────────────── */
 ::-webkit-scrollbar        { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: rgba(255,255,255,.12); border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
+
+/* ── Autohide Scrollbar (Hidden unless hovering / active) ────────────────────────── */
+.autohide-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.autohide-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.autohide-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.autohide-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 4px;
+  transition: background-color 0.2s ease-in-out;
+}
+.autohide-scrollbar:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+.autohide-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+}
+.autohide-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.38);
+}
 
 /* ── Focus visible ───────────────────────────────────────────────────────────── */
 :focus-visible {
@@ -781,6 +852,28 @@ html, body {
 .sites_blank_site_tile--blankSiteTileContainer--vKC-I:hover {
   border-color: rgba(255, 255, 255, 0.25) !important;
   background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Squircle (Superellipse / Continuous Curvature) Styling
+   ───────────────────────────────────────────────────────────────────────────── */
+.squircle {
+  border-radius: 15px;
+  -webkit-corner-smoothing: continuous;
+  corner-smoothing: continuous;
+}
+
+.squircle-project-box {
+  border-radius: 15px;
+  -webkit-corner-smoothing: continuous;
+  corner-smoothing: continuous;
+}
+
+[contenteditable][data-placeholder]:empty:before {
+  content: attr(data-placeholder);
+  color: rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+  display: block;
 }
 
 

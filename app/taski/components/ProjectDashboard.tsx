@@ -24,6 +24,7 @@ export interface Task {
   formato?: string | null;
   time: string;
   status: 'Planificado' | 'En Proceso' | 'En Revisión' | 'Completado';
+  estado?: string;
   statusColor: string;
   attachmentUrl?: string;
   subtasks: { id: number; text: string; done: boolean }[];
@@ -37,9 +38,28 @@ export interface Task {
   dueDate?: any;
   fecha_creacion?: string;
   fecha_hora_completado?: string;
+  fecha_completado_real?: string;
   hora_inicio?: string;
   kanbanOrders?: Record<string, number>;
   color?: string;
+  priority?: string;
+  prioridad?: string;
+  titulo?: string;
+  recursosDrive?: string;
+  asignado_id?: string;
+  asignado_ids?: string[];
+  asignado?: string;
+  copywriting?: {
+    gancho?: string;
+    cuerpo?: string;
+    cta?: string;
+  };
+  copy?: string;
+  fechaPublicacion?: string;
+  precio?: number;
+  costo?: number;
+  utilidad?: number;
+  area?: string;
 }
 
 export interface Project {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { 
   collection, 
   doc, 
@@ -278,23 +278,49 @@ export const INITIAL_CLIENTS: Client[] = [
   }
 ];
 
-import { getWorkspaceScopedCol } from "@/lib/utils";
+import { getWorkspaceScopedCol, isProjectActive } from "@/lib/utils";
 import { useAuthStore } from "@/lib/store";
+import { useData } from "./useData";
 
 // Alias for legacy support
 export const INITIAL_V3_CLIENTS = INITIAL_CLIENTS;
+
+let cachedClients: Client[] | null = null;
 
 export function useClients() {
   const workspaceId = useAuthStore((s) => s.workspaceId);
   const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
 
-  const [clients, setClients] = useState<Client[]>(isMaster ? INITIAL_CLIENTS : []);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const { data: dataStore } = useData();
+  const projects = dataStore?.proyectos || [];
+
+  const getInitialClients = (): Client[] => {
+    if (cachedClients && cachedClients.length > 0) return cachedClients;
+    if (dataStore?.clientes && dataStore.clientes.length > 0) return dataStore.clientes;
+    return isMaster ? INITIAL_CLIENTS : [];
+  };
+
+  const [rawClients, setRawClients] = useState<Client[]>(getInitialClients);
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (cachedClients && cachedClients.length > 0) return false;
+    if (dataStore?.clientes && dataStore.clientes.length > 0) return false;
+    return !isMaster;
+  });
+
+  // Sync with dataStore.clientes if rawClients was initially empty and cache arrives
+  useEffect(() => {
+    if (dataStore?.clientes && dataStore.clientes.length > 0 && (!cachedClients || cachedClients.length === 0)) {
+      setRawClients(dataStore.clientes);
+      cachedClients = dataStore.clientes;
+      setIsLoading(false);
+    }
+  }, [dataStore?.clientes]);
 
   // Real-time listener for Firestore collection "clients" (or workspace collection)
   useEffect(() => {
     if (!workspaceId) {
-      setClients([]);
+      setRawClients([]);
+      cachedClients = [];
       setIsLoading(false);
       return;
     }
@@ -307,7 +333,8 @@ export function useClients() {
       async (snapshot) => {
         if (snapshot.empty) {
           if (!isMaster) {
-            setClients([]);
+            setRawClients([]);
+            cachedClients = [];
             setIsLoading(false);
             return;
           }
@@ -338,10 +365,12 @@ export function useClients() {
               );
               await Promise.all(seedPromises);
             }
-            setClients(INITIAL_CLIENTS);
+            cachedClients = INITIAL_CLIENTS;
+            setRawClients(INITIAL_CLIENTS);
           } catch (seedErr) {
             console.error("Error seeding initial clients:", seedErr);
-            setClients(INITIAL_CLIENTS);
+            cachedClients = INITIAL_CLIENTS;
+            setRawClients(INITIAL_CLIENTS);
           }
         } else {
           const list: Client[] = [];
@@ -383,19 +412,45 @@ export function useClients() {
               updated_at: data.updated_at || data.updatedAt || null,
             });
           });
-          setClients(list);
+          cachedClients = list;
+          setRawClients(list);
         }
         setIsLoading(false);
       },
       (err) => {
         console.error("Error subscribing to clients:", err);
-        setClients(isMaster ? INITIAL_CLIENTS : []);
+        const fallback = isMaster ? INITIAL_CLIENTS : [];
+        cachedClients = fallback;
+        setRawClients(fallback);
         setIsLoading(false);
       }
     );
 
     return () => unsubscribe();
   }, [isMaster, workspaceId]);
+
+  // Rollups calculados reactivos en vivo (en memoria, sin persistir a Firestore)
+  const clients = useMemo(() => {
+    return rawClients.map((c) => {
+      // 1. Proyectos activos vinculados
+      const activeProjects = projects.filter((p) => {
+        const clientIds = p.cliente_ids || ((p as any).cliente_id ? [String((p as any).cliente_id)] : []);
+        return clientIds.map(String).includes(String(c.id)) && isProjectActive(p.estadoProyecto || p.estado);
+      });
+
+      // 2. LTV calculado (solo historial_pagos con estado === 'pagado')
+      const ltv_calculado = (c.finanzas?.historial_pagos || [])
+        .filter((p) => (p.estado || "").toLowerCase() === "pagado")
+        .reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+
+      return {
+        ...c,
+        proyectos_activos: activeProjects,
+        proyectos_activos_count: activeProjects.length,
+        ltv_calculado,
+      };
+    });
+  }, [rawClients, projects]);
 
   // Crear nuevo cliente
   const createClient = useCallback(async (data: Partial<Client>): Promise<string> => {

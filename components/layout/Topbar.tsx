@@ -4,7 +4,7 @@ import {
   RefreshCw, LogOut, LayoutDashboard, Layout, 
   Calendar, Users, LineChart, Folder, 
   CheckSquare, Database, Key, DollarSign, BarChart,
-  UserCircle, Plus, Bell
+  UserCircle, Plus, Bell, Briefcase, User
 } from "lucide-react";
 import { useAuthStore, useUIStore } from "@/lib/store";
 import { useSync, useData } from "@/hooks/useData";
@@ -21,9 +21,9 @@ import GodMakerToggle from "../spatial/GodMakerToggle";
 function getIconForTab(tab: string) {
   switch(tab) {
     case "pulse": return <LayoutDashboard className="w-3.5 h-3.5 flex-shrink-0" />;
-    case "engine": return <Layout className="w-3.5 h-3.5 flex-shrink-0" />;
+    case "engine": return <Briefcase className="w-3.5 h-3.5 flex-shrink-0" />;
     case "timeline": return <Calendar className="w-3.5 h-3.5 flex-shrink-0" />;
-    case "clientes": return <Users className="w-3.5 h-3.5 flex-shrink-0" />;
+    case "clientes": return <User className="w-3.5 h-3.5 flex-shrink-0" />;
     case "pipeline": return <LineChart className="w-3.5 h-3.5 flex-shrink-0" />;
     case "proyectos": return <Folder className="w-3.5 h-3.5 flex-shrink-0" />;
     case "tareas": return <CheckSquare className="w-3.5 h-3.5 flex-shrink-0" />;

@@ -26,14 +26,14 @@ export async function GET(req: NextRequest, { params }: { params: { path: string
       const clientes = clientsSnap.docs.map(d => ({ ...d.data(), id: d.id }));
       const proyectos = projectsSnap.docs.map(d => ({ ...d.data(), id: d.id }));
       const tareas = tasksSnap.docs.map(d => ({ ...d.data(), id: d.id }));
-      const trabajadores = membersSnap.docs.map(d => ({ ...d.data(), id: d.id }));
+      const miembros = membersSnap.docs.map(d => ({ ...d.data(), id: d.id }));
 
       return NextResponse.json({
         ok: true,
         clientes,
         proyectos,
         tareas,
-        trabajadores,
+        miembros,
         recursos: [],
       });
     } catch (err: any) {

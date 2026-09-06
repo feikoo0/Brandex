@@ -1,4 +1,5 @@
 import { Project, Task } from '../components/ProjectDashboard';
+import { evaluateProjectStatusFromTasks } from '@/lib/projectStateEngine';
 
 export const INITIAL_PROJECT_TASKS: Record<number, Task[]> = {
   1: [
@@ -344,41 +345,26 @@ export const autoEvaluateProjectStatus = <T extends { tasks?: any[]; status?: st
     };
   });
 
-  const totalTasks = migratedTasks.length;
-  const completedTasks = migratedTasks.filter(
-    (t: any) => t.status === "Completado" || t.status === "Completada"
-  ).length;
+  const evaluation = evaluateProjectStatusFromTasks(project.status || "Planificación", migratedTasks);
 
-  const isAllTasksCompleted = totalTasks > 0 && completedTasks === totalTasks;
+  const progress = `${evaluation.completedTasks} de ${evaluation.totalTasks} tareas`;
+  const percent = `${evaluation.progressPercent}%`;
 
-  const progress = `${completedTasks} de ${totalTasks} tareas`;
-  const percent = `${Math.round((completedTasks / totalTasks) * 100)}%`;
-
-  if (isAllTasksCompleted) {
-    return {
-      ...project,
-      tasks: migratedTasks,
-      status: "Completado",
-      statusColor: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-      progress,
-      percent: "100%"
-    };
-  } else if (project.status === "Completado") {
-    // Revert project status if a task was changed from completed back to in-process/planned
-    return {
-      ...project,
-      tasks: migratedTasks,
-      status: "Activo",
-      statusColor: "bg-violet-500/10 border-violet-500/30 text-violet-400",
-      progress,
-      percent
-    };
-  }
+  const statusColor =
+    evaluation.newStatus === "Completado"
+      ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
+      : evaluation.newStatus === "En Proceso"
+      ? "bg-blue-500/10 border-blue-500/30 text-blue-400"
+      : evaluation.newStatus === "En Revisión" || evaluation.newStatus === "Revisión"
+      ? "bg-purple-500/10 border-purple-500/30 text-purple-400"
+      : "bg-purple-500/10 border-purple-500/30 text-purple-400";
 
   return {
     ...project,
     tasks: migratedTasks,
+    status: evaluation.newStatus,
+    statusColor,
     progress,
-    percent
+    percent,
   };
 };

@@ -10,6 +10,7 @@ import {
 } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { SessionDoc } from "@/lib/types";
+import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 export type ContributionLevel = 0 | 1 | 2 | 3 | 4;
 
@@ -624,23 +625,57 @@ const GitHubActivity = ({
     exit: { opacity: 0, ...kick },
   };
 
-  const totalHours = React.useMemo(() => {
-    return weeks.reduce(
-      (sum, week) =>
-        sum + week.reduce((wSum, day) => (!day.isFuture ? wSum + (day.hours || 0) : wSum), 0),
-      0
-    );
+  const { hoursLast7Days, hoursPrev7Days, diffHours } = React.useMemo(() => {
+    const today = new Date();
+    const dayKeys7d = new Set<string>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const k = formatDateToLocalKey(d);
+      if (k) dayKeys7d.add(k);
+    }
+
+    const dayKeysPrev7d = new Set<string>();
+    for (let i = 7; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const k = formatDateToLocalKey(d);
+      if (k) dayKeysPrev7d.add(k);
+    }
+
+    let hLast7d = 0;
+    let hPrev7d = 0;
+
+    weeks.forEach((week) => {
+      week.forEach((day) => {
+        if (dayKeys7d.has(day.date)) {
+          hLast7d += day.hours || 0;
+        } else if (dayKeysPrev7d.has(day.date)) {
+          hPrev7d += day.hours || 0;
+        }
+      });
+    });
+
+    const diff = Math.round((hLast7d - hPrev7d) * 10) / 10;
+    return {
+      hoursLast7Days: Math.round(hLast7d * 10) / 10,
+      hoursPrev7Days: Math.round(hPrev7d * 10) / 10,
+      diffHours: diff,
+    };
   }, [weeks]);
 
-  const totalSessions = React.useMemo(() => {
-    return weeks.reduce(
-      (sum, week) =>
-        sum + week.reduce((wSum, day) => (!day.isFuture ? wSum + (day.sessionCount || 0) : wSum), 0),
-      0
-    );
-  }, [weeks]);
+  const formatHoursNumber = (val: number): string => {
+    const rounded = Math.round(val * 10) / 10;
+    if (rounded % 1 === 0) {
+      return `${rounded}`;
+    }
+    return rounded.toFixed(1);
+  };
 
-  const heading = `${Math.round(totalHours)}h registradas (${totalSessions} sesiones)`;
+  const absDiff = Math.abs(diffHours);
+  const formattedDiff = formatHoursNumber(absDiff);
+  const formattedLast7d = formatHoursNumber(hoursLast7Days);
+  const heading = `${formattedLast7d}h los últimos 7 días`;
 
   // Ancho exacto calculado con 16 columnas + holgura simétrica
   const gap = gapFor(cellSize);
@@ -659,17 +694,37 @@ const GitHubActivity = ({
       {...props}
     >
       {/* Header */}
-      <div className="mb-2 flex items-baseline justify-between px-1 shrink-0">
-        <p className="text-[13px] font-medium text-[#ffffffd6]">
-          {heading}
-        </p>
-        <span className="text-[11px] font-normal text-[#ffffff6b]">
+      <div className="mb-2 flex items-start justify-between px-1 shrink-0">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <p className="text-[14px] font-bold text-[#ffffffd6] tracking-tight leading-tight">
+            {formattedLast7d}h los últimos 7 días
+          </p>
+          <div className="flex items-center gap-1.5 text-[12px] pt-0.5">
+            {diffHours > 0.05 ? (
+              <span className="flex items-center gap-1 text-emerald-400 font-medium">
+                <TrendingUp className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                <span>{formattedDiff}h más que la semana anterior</span>
+              </span>
+            ) : diffHours < -0.05 ? (
+              <span className="flex items-center gap-1 text-rose-400 font-medium">
+                <TrendingDown className="w-3.5 h-3.5 shrink-0 stroke-[2.5]" />
+                <span>{formattedDiff}h menos que la semana anterior</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[#ffffff6b] font-medium">
+                <Minus className="w-3.5 h-3.5 shrink-0" />
+                <span>Igual que la semana anterior</span>
+              </span>
+            )}
+          </div>
+        </div>
+        <span className="text-[11px] font-normal text-[#ffffff6b] shrink-0 mt-0.5">
           Últimos {Math.round(months)} meses
         </span>
       </div>
 
       {/* Grid Container with Balanced Symmetric Padding */}
-      <div className="flex-1 flex flex-col justify-center items-center rounded-[22px] bg-[#121212] border border-white/[0.06] px-5 py-4 sm:px-6 sm:py-5 mb-2.5 overflow-visible w-full">
+      <div className={cn("flex-1 flex flex-col justify-center items-center rounded-[22px] bg-[#121212] border border-white/[0.06] mb-2.5 overflow-visible w-full", noContainer ? "px-2 py-3" : "px-5 py-4 sm:px-6 sm:py-5")}>
         <ContributionGrid
           weeks={weeks}
           monthLabels={monthLabels}

@@ -50,7 +50,13 @@ export default function LinearCalendarModal({
     }
   }, [isOpen, startDate, deadline]);
 
-  if (!isOpen) return null;
+  const handleSave = () => {
+    playSound("click");
+    const sStr = selectedStart ? formatISO(selectedStart) : startDate;
+    const eStr = selectedEnd ? formatISO(selectedEnd) : (selectedStart ? formatISO(selectedStart) : deadline);
+    onSaveDates(sStr, eStr);
+    onClose();
+  };
 
   const nextMonthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
 
@@ -79,14 +85,6 @@ export default function LinearCalendarModal({
     }
   };
 
-  const handleSave = () => {
-    playSound("click");
-    const sStr = selectedStart ? formatISO(selectedStart) : startDate;
-    const eStr = selectedEnd ? formatISO(selectedEnd) : (selectedStart ? formatISO(selectedStart) : deadline);
-    onSaveDates(sStr, eStr);
-    onClose();
-  };
-
   const renderMonthGrid = (year: number, month: number, isRightMonth = false) => {
     const monthDate = new Date(year, month, 1);
     const monthName = monthDate.toLocaleDateString("es-MX", { month: "long", year: "numeric" });
@@ -98,81 +96,76 @@ export default function LinearCalendarModal({
     for (let i = 0; i < firstDayIndex; i++) {
       days.push(null);
     }
-    for (let d = 1; d <= daysInMonth; d++) {
-      days.push(d);
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(i);
     }
 
     return (
-      <div className="flex-1 min-w-[240px]">
-        {/* Caption */}
-        <div className="flex items-center justify-between mb-3 px-1">
-          <span className="text-xs font-semibold text-[#f4f4f5] capitalize">{monthName}</span>
-          {!isRightMonth && (
-            <div className="flex items-center gap-1">
+      <div className="flex-1 space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-xs font-semibold capitalize text-[#f4f4f5]">{monthName}</span>
+          <div className="flex items-center gap-1">
+            {!isRightMonth && (
               <button
                 type="button"
                 onClick={handlePrevMonth}
-                className="p-1 rounded hover:bg-[#272730] text-white transition-colors cursor-pointer"
+                className="p-1 rounded text-[#a1a1aa] hover:text-white hover:bg-[#24242c] transition-colors cursor-pointer"
               >
-                <ChevronLeft className="w-4 h-4 text-white" />
+                <ChevronLeft className="w-3.5 h-3.5" />
               </button>
-            </div>
-          )}
-          {isRightMonth && (
-            <div className="flex items-center gap-1">
+            )}
+            {isRightMonth && (
               <button
                 type="button"
                 onClick={handleNextMonth}
-                className="p-1 rounded hover:bg-[#272730] text-white transition-colors cursor-pointer"
+                className="p-1 rounded text-[#a1a1aa] hover:text-white hover:bg-[#24242c] transition-colors cursor-pointer"
               >
-                <ChevronRight className="w-4 h-4 text-white" />
+                <ChevronRight className="w-3.5 h-3.5" />
               </button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
-        {/* Weekday headers */}
-        <div className="grid grid-cols-7 gap-1 text-center mb-1">
-          {["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"].map((wd) => (
-            <span key={wd} className="text-[10px] font-semibold text-[#686873] py-1">
-              {wd}
+        <div className="grid grid-cols-7 gap-1 text-center">
+          {["L", "M", "M", "J", "V", "S", "D"].map((d, idx) => (
+            <span key={idx} className="text-[10px] font-bold text-[#71717a] py-1">
+              {d}
             </span>
           ))}
-        </div>
 
-        {/* Days grid */}
-        <div className="grid grid-cols-7 gap-1 text-center">
-          {days.map((dayNum, idx) => {
-            if (dayNum === null) {
-              return <div key={`empty-${idx}`} className="h-7 w-7" />;
+          {days.map((day, idx) => {
+            if (day === null) {
+              return <div key={`empty-${idx}`} className="h-7" />;
             }
 
-            const thisDate = new Date(year, month, dayNum);
-            const thisTime = thisDate.getTime();
-            const startTime = selectedStart ? new Date(selectedStart.getFullYear(), selectedStart.getMonth(), selectedStart.getDate()).getTime() : null;
-            const endTime = selectedEnd ? new Date(selectedEnd.getFullYear(), selectedEnd.getMonth(), selectedEnd.getDate()).getTime() : null;
+            const dayDate = new Date(year, month, day);
+            const isStart = selectedStart && dayDate.toDateString() === selectedStart.toDateString();
+            const isEnd = selectedEnd && dayDate.toDateString() === selectedEnd.toDateString();
+            const isInRange =
+              selectedStart &&
+              selectedEnd &&
+              dayDate.getTime() > selectedStart.getTime() &&
+              dayDate.getTime() < selectedEnd.getTime();
+            const isToday = dayDate.toDateString() === new Date().toDateString();
 
-            const isStart = startTime !== null && thisTime === startTime;
-            const isEnd = endTime !== null && thisTime === endTime;
-            const inRange = startTime !== null && endTime !== null && thisTime > startTime && thisTime < endTime;
-            const isToday = new Date().toDateString() === thisDate.toDateString();
+            let bgClass = "hover:bg-[#27272a] text-[#f4f4f5]";
+            if (isStart || isEnd) {
+              bgClass = "bg-[#5e6ad2] text-white font-bold shadow-sm shadow-[#5e6ad2]/30";
+            } else if (isInRange) {
+              bgClass = "bg-[#5e6ad2]/20 text-[#a5b4fc]";
+            }
 
             return (
               <button
-                key={dayNum}
+                key={`day-${day}`}
                 type="button"
-                onClick={() => handleDayClick(thisDate)}
-                className={`h-7 w-7 rounded-md text-xs font-medium transition-all flex items-center justify-center cursor-pointer ${
-                  isStart || isEnd
-                    ? "bg-[#5e6ad2] text-white font-bold shadow-md shadow-[#5e6ad2]/30"
-                    : inRange
-                    ? "bg-[#5e6ad2]/20 text-white rounded-none"
-                    : isToday
-                    ? "border border-[#5e6ad2] text-[#5e6ad2] hover:bg-[#252530]"
-                    : "text-[#a1a1aa] hover:bg-[#24242c] hover:text-white"
-                }`}
+                onClick={() => handleDayClick(dayDate)}
+                className={`h-7 text-xs rounded-md flex items-center justify-center transition-colors cursor-pointer relative ${bgClass}`}
               >
-                {dayNum}
+                <span>{day}</span>
+                {isToday && !isStart && !isEnd && (
+                  <span className="absolute bottom-0.5 w-1 h-1 rounded-full bg-[#5e6ad2]" />
+                )}
               </button>
             );
           })}
@@ -183,89 +176,106 @@ export default function LinearCalendarModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[700] flex items-center justify-center p-4 bg-black/60">
+      {isOpen && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          transition={{ duration: 0.15 }}
-          className="w-full max-w-[562px] bg-[#18181c] border border-[#2b2b32] shadow-2xl rounded-2xl overflow-hidden text-[#f4f4f5]"
+          key="linear-calendar-backdrop-wrap"
+          className="fixed inset-0 z-[700] flex items-center justify-center p-4"
         >
-          {/* Header */}
-          <div className="px-5 py-3.5 border-b border-[#24242a] bg-[#141416] flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="w-4 h-4 text-white" />
-              <span className="text-sm font-semibold text-white">Definir fecha de entrega</span>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1 rounded-md text-white hover:bg-[#24242c] transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4 text-white" />
-            </button>
-          </div>
+          {/* Backdrop */}
+          <motion.div
+            key="linear-calendar-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: [0.56, 0.27, 0, 1] }}
+            onClick={onClose}
+            className="absolute inset-0 bg-black/60"
+          />
 
-          {/* Body */}
-          <div className="p-5 space-y-4">
-            {/* Input & Help text */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-medium text-[#f4f4f5]">Rango de fechas de entrega</span>
-                <span className="text-[11px] text-[#71717a]">- El proyecto debe completarse para esta fecha</span>
+          <motion.div
+            key="linear-calendar-dialog"
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            transition={{ duration: 0.25, ease: [0.305, 0.206, 0.3, 1] }}
+            className="relative z-10 w-full max-w-[562px] bg-[#18181c] border border-[#2b2b32] shadow-2xl rounded-2xl overflow-hidden text-[#f4f4f5]"
+          >
+            {/* Header */}
+            <div className="px-5 py-3.5 border-b border-[#24242a] bg-[#141416] flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 text-white" />
+                <span className="text-sm font-semibold text-white">Definir fecha de entrega</span>
               </div>
-              <input
-                type="text"
-                readOnly
-                value={
-                  selectedStart
-                    ? `${formatPretty(selectedStart)} ${selectedEnd ? `→ ${formatPretty(selectedEnd)}` : ""}`
-                    : "Seleccionar fechas"
-                }
-                className="w-full bg-[#141416] border border-[#2b2b32] rounded-lg px-3 py-2 text-xs font-semibold text-[#f4f4f5] outline-none"
-              />
-            </div>
-
-            {/* Dual Calendar Month View */}
-            <div className="flex flex-col sm:flex-row gap-6 pt-2">
-              {renderMonthGrid(currentDate.getFullYear(), currentDate.getMonth(), false)}
-              {renderMonthGrid(nextMonthDate.getFullYear(), nextMonthDate.getMonth(), true)}
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-5 py-3 border-t border-[#24242a] bg-[#141416] flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => {
-                const today = new Date();
-                setSelectedStart(today);
-                setSelectedEnd(new Date(today.getTime() + 14 * 86400000));
-              }}
-              className="text-xs text-white hover:underline font-medium cursor-pointer"
-            >
-              Restablecer a 2 semanas
-            </button>
-
-            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#a1a1aa] hover:text-white hover:bg-[#24242c] transition-colors cursor-pointer"
+                className="p-1 rounded-md text-white hover:bg-[#24242c] transition-colors cursor-pointer"
               >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSave}
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#5e6ad2] hover:bg-[#4b55c4] text-white shadow-md shadow-[#5e6ad2]/20 transition-all cursor-pointer"
-              >
-                Guardar fechas
+                <X className="w-4 h-4 text-white" />
               </button>
             </div>
-          </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4">
+              {/* Input & Help text */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-medium text-[#f4f4f5]">Rango de fechas de entrega</span>
+                  <span className="text-[11px] text-[#71717a]">- El proyecto debe completarse para esta fecha</span>
+                </div>
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    selectedStart
+                      ? `${formatPretty(selectedStart)} ${selectedEnd ? `→ ${formatPretty(selectedEnd)}` : ""}`
+                      : "Seleccionar fechas"
+                  }
+                  className="w-full bg-[#141416] border border-[#2b2b32] rounded-lg px-3 py-2 text-xs font-semibold text-[#f4f4f5] outline-none"
+                />
+              </div>
+
+              {/* Dual Calendar Month View */}
+              <div className="flex flex-col sm:flex-row gap-6 pt-2">
+                {renderMonthGrid(currentDate.getFullYear(), currentDate.getMonth(), false)}
+                {renderMonthGrid(nextMonthDate.getFullYear(), nextMonthDate.getMonth(), true)}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3 border-t border-[#24242a] bg-[#141416] flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => {
+                  const today = new Date();
+                  setSelectedStart(today);
+                  setSelectedEnd(new Date(today.getTime() + 14 * 86400000));
+                }}
+                className="text-xs text-white hover:underline font-medium cursor-pointer"
+              >
+                Restablecer a 2 semanas
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-[#a1a1aa] hover:text-white hover:bg-[#24242c] transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-[#5e6ad2] hover:bg-[#4b55c4] text-white shadow-md shadow-[#5e6ad2]/20 transition-all cursor-pointer"
+                >
+                  Guardar fechas
+                </button>
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
-      </div>
+      )}
     </AnimatePresence>
   );
 }

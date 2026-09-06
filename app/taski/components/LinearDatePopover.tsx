@@ -13,6 +13,7 @@ interface LinearDatePopoverProps {
   startDate: string;
   deadline: string;
   onSelectDates: (startDate: string, deadline: string) => void;
+  align?: "left" | "right";
 }
 
 export default function LinearDatePopover({
@@ -20,7 +21,8 @@ export default function LinearDatePopover({
   onClose,
   startDate,
   deadline,
-  onSelectDates
+  onSelectDates,
+  align = "left",
 }: LinearDatePopoverProps) {
   const [localStart, setLocalStart] = useState(startDate);
   const [localEnd, setLocalEnd] = useState(deadline);
@@ -81,7 +83,9 @@ export default function LinearDatePopover({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -4 }}
             transition={{ duration: 0.12, ease: "easeOut" }}
-            className="absolute z-[600] mt-1.5 min-w-[220px] w-64 bg-[#18181c] border border-[#2b2b32] shadow-2xl rounded-xl overflow-hidden text-xs text-[#f4f4f5] select-none left-0"
+            className={`absolute z-[600] mt-1.5 min-w-[220px] w-64 bg-[#18181c] border border-[#2b2b32] shadow-2xl rounded-xl overflow-hidden text-xs text-[#f4f4f5] select-none ${
+          align === "right" ? "right-0" : "left-0"
+        }`}
           >
             {/* Quick Date Presets */}
             <div className="p-1 space-y-0.5">

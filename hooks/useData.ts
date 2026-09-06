@@ -31,9 +31,29 @@ import type {
 } from "@/lib/types";
 
 import { useAuthStore } from "@/lib/store";
-import { getWorkspaceScopedCol } from "@/lib/utils";
+import { getWorkspaceScopedCol, isTaskActive, isProjectActive, cleanFirestorePayload } from "@/lib/utils";
+import { evaluateProjectStatusFromTasks, syncProjectStatusInFirestore } from "@/lib/projectStateEngine";
 
-const QUERY_KEY = ["taski-firestore-data"];
+export const QUERY_KEY_PREFIX = "taski-firestore-data";
+export const getFirestoreQueryKey = (workspaceId?: string | null) => [QUERY_KEY_PREFIX, workspaceId || "none"];
+
+export function normalizeTaskStatus(rawStatus?: string): string {
+  if (!rawStatus) return "Planificado";
+  const s = rawStatus.trim().toLowerCase();
+  if (s === "completado" || s === "completada" || s === "hecho" || s === "publicado" || s === "aprobado") return "Completado";
+  if (s === "en proceso" || s === "en_curso" || s === "en desarrollo") return "En Proceso";
+  if (s === "en revisión" || s === "en revision" || s === "revisión" || s === "revision" || s === "modificar") return "En Revisión";
+  return "Planificado";
+}
+
+export function normalizeTaskPriority(rawPriority?: string): string {
+  if (!rawPriority) return "Media";
+  const p = rawPriority.trim().toLowerCase();
+  if (p.includes("urgente")) return "Urgente";
+  if (p === "alta") return "Alta";
+  if (p === "baja" || p === "sin prioridad" || p === "no priority") return "Baja";
+  return "Media";
+}
 
 // ── Full data directly from pure Firestore collections ─────────────────────────
 export function useData() {
@@ -41,14 +61,14 @@ export function useData() {
   const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
 
   return useQuery<BraindexData>({
-    queryKey: [QUERY_KEY[0], workspaceId || "none"],
+    queryKey: getFirestoreQueryKey(workspaceId),
     queryFn: async () => {
       if (!workspaceId) {
         return {
           clientes: [],
           proyectos: [],
           tareas: [],
-          trabajadores: [],
+          miembros: [],
           recursos: [],
         };
       }
@@ -110,15 +130,19 @@ export function useData() {
             ? []
             : tasksSnap.docs.map((d: any) => {
                 const data = d.data();
+                const normStatus = normalizeTaskStatus(data.estado || data.status);
+                const normPrio = normalizeTaskPriority(data.prioridad || data.priority);
                 return {
                   id: d.id,
                   titulo: data.titulo || data.title || "Tarea",
-                  estado: data.estado || data.status || "Pendiente",
+                  estado: normStatus,
+                  status: normStatus,
                   area: data.area || "",
                   asignado: data.asignado || "",
                   formato: data.formato || data.format || "",
                   esfuerzo: data.esfuerzo || data.time || "1h",
-                  prioridad: data.prioridad || "Media",
+                  prioridad: normPrio,
+                  priority: normPrio,
                   plataformas: data.plataformas || [],
                   contenido: data.contenido || "",
                   copy: data.copy || "",
@@ -143,7 +167,7 @@ export function useData() {
             clientes: clientsList,
             proyectos: projectsList,
             tareas: tasksList,
-            trabajadores: workersList,
+            miembros: workersList,
             recursos: [],
           };
         } catch (e) {
@@ -152,7 +176,7 @@ export function useData() {
             clientes: [],
             proyectos: [],
             tareas: [],
-            trabajadores: [],
+            miembros: [],
             recursos: [],
           };
         }
@@ -196,74 +220,88 @@ export function useData() {
         workersList = INITIAL_MEMBERS;
       }
 
-      // 3. Proyectos (colección 'projects')
+      // 3. Proyectos (colección 'projects' con fallback / merge de 'v3_projects')
       let projectsList: Project[] = [];
       try {
-        const projSnap = await getDocs(collection(db, "projects"));
-        if (!projSnap.empty) {
-          projectsList = projSnap.docs.map((d) => {
-            const data = d.data();
-            return {
-              id: d.id,
-              nombre: data.nombre || data.name || data.title || "Proyecto",
-              cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : []),
-              asignado_ids: data.asignado_ids || [],
-              asignado: data.asignado || "",
-              estadoProyecto: data.estadoProyecto || data.estado || "Planificación",
-              estado: data.estado || data.estadoProyecto || "Planificación",
-              area: data.area || "",
-              formato: data.formato || "",
-              prioridad: data.prioridad || "Media",
-              ciclo: data.ciclo || "",
-              esfuerzo: data.esfuerzo || "Medio",
-              plataformas: data.plataformas || [],
-              fechaInicio: data.fechaInicio || "",
-              fechaFin: data.fechaFin || "",
-              recursosDrive: data.recursosDrive || "",
-              costo: data.costo !== undefined ? Number(data.costo) : 0,
-              tarea_ids: data.tarea_ids || [],
-              descripcion: data.descripcion || "",
-              url: data.url || "",
-              createdAt: data.createdAt || data.created_at || null,
-              updatedAt: data.updatedAt || data.updated_at || null,
-              created_at: data.created_at || data.createdAt || null,
-              updated_at: data.updated_at || data.updatedAt || null,
-              ...data,
-            } as Project;
-          });
+        const projSnap = await getDocs(collection(db, "projects")).catch(() => ({ empty: true, docs: [] as any[] }));
+        const v3ProjSnap = await getDocs(collection(db, "v3_projects")).catch(() => ({ empty: true, docs: [] as any[] }));
+        
+        const projMap = new Map<string, any>();
+        if (!v3ProjSnap.empty) {
+          v3ProjSnap.docs.forEach((d) => projMap.set(d.id, { ...d.data(), id: d.id }));
         }
+        if (!projSnap.empty) {
+          projSnap.docs.forEach((d) => projMap.set(d.id, { ...d.data(), id: d.id }));
+        }
+
+        projectsList = Array.from(projMap.values()).map((data: any) => ({
+          id: data.id,
+          nombre: data.nombre || data.name || data.title || "Proyecto",
+          cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : []),
+          asignado_ids: data.asignado_ids || [],
+          asignado: data.asignado || "",
+          estadoProyecto: data.estadoProyecto || data.estado || "Planificación",
+          estado: data.estado || data.estadoProyecto || "Planificación",
+          area: data.area || "",
+          formato: data.formato || "",
+          prioridad: data.prioridad || "Media",
+          ciclo: data.ciclo || "",
+          esfuerzo: data.esfuerzo || "Medio",
+          plataformas: data.plataformas || [],
+          fechaInicio: data.fechaInicio || data.startDate || "",
+          fechaFin: data.fechaFin || data.deadline || "",
+          recursosDrive: data.recursosDrive || "",
+          costo: data.costo !== undefined ? Number(data.costo) : 0,
+          tarea_ids: data.tarea_ids || [],
+          descripcion: data.descripcion || data.desc || "",
+          url: data.url || "",
+          tasks: data.tasks || [],
+          createdAt: data.createdAt || data.created_at || null,
+          updatedAt: data.updatedAt || data.updated_at || null,
+          created_at: data.created_at || data.createdAt || null,
+          updated_at: data.updated_at || data.updatedAt || null,
+          ...data,
+        } as Project));
       } catch (e) {
         console.error("Error reading projects from Firestore:", e);
       }
 
-      // 4. Tareas (colección 'tasks')
+      // 4. Tareas (colección 'tasks' + extracción de tareas embebidas)
       let tasksList: Task[] = [];
       try {
-        const tasksSnap = await getDocs(collection(db, "tasks"));
+        const tasksSnap = await getDocs(collection(db, "tasks")).catch(() => ({ empty: true, docs: [] as any[] }));
         if (!tasksSnap.empty) {
           tasksList = tasksSnap.docs.map((d) => {
             const data = d.data();
+            const normStatus = normalizeTaskStatus(data.estado || data.status);
+            const normPrio = normalizeTaskPriority(data.prioridad || data.priority);
             return {
               id: d.id,
               titulo: data.titulo || data.title || "Tarea",
-              estado: data.estado || data.status || "Pendiente",
+              estado: normStatus,
+              status: normStatus,
               area: data.area || "",
               asignado: data.asignado || "",
               formato: data.formato || data.format || "",
-              esfuerzo: data.esfuerzo || "1h",
-              prioridad: data.prioridad || "Media",
+              esfuerzo: data.esfuerzo || data.time || "1h",
+              prioridad: normPrio,
+              priority: normPrio,
               plataformas: data.plataformas || [],
-              contenido: data.contenido || "",
+              contenido: data.contenido || data.desc || "",
               copy: data.copy || "",
               adminNotes: data.adminNotes || "",
               notasCliente: data.notasCliente || "",
-              fechaProg: data.fechaProg || "",
-              fechaEntrega: data.fechaEntrega || "",
-              asignado_ids: data.asignado_ids || [],
-              proyecto_ids: data.proyecto_ids || (data.proyecto_id ? [String(data.proyecto_id)] : []),
-              cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : []),
+              fechaProg: data.fechaProg || data.fecha_programada || "",
+              fechaEntrega: data.fechaEntrega || data.fecha_limite || data.deadline || "",
+              asignado_id: data.asignado_id,
+              asignado_ids: data.asignado_ids || (data.asignado_id ? [data.asignado_id] : []),
+              proyecto_ids: data.proyecto_ids || (data.proyecto_id ? [String(data.proyecto_id)] : (data.project_id ? [String(data.project_id)] : [])),
+              proyecto_id: data.proyecto_id || data.project_id || (data.proyecto_ids?.[0]) || undefined,
+              cliente_ids: data.cliente_ids || (data.cliente_id ? [String(data.cliente_id)] : (data.client ? [String(data.client)] : [])),
+              cliente_id: data.cliente_id || data.client || (data.cliente_ids?.[0]) || undefined,
               created: data.created || new Date().toISOString(),
               url: data.url || "",
+              subtasks: data.subtasks || [],
               createdAt: data.createdAt || data.created_at || null,
               updatedAt: data.updatedAt || data.updated_at || null,
               created_at: data.created_at || data.createdAt || null,
@@ -272,21 +310,111 @@ export function useData() {
             } as Task;
           });
         }
+
+        // Incorporar tareas embebidas en los proyectos si no existen en tasksList
+        const existingTaskIds = new Set(tasksList.map((t) => String(t.id)));
+        projectsList.forEach((p: any) => {
+          if (Array.isArray(p.tasks)) {
+            p.tasks.forEach((t: any) => {
+              if (t && t.id && !existingTaskIds.has(String(t.id))) {
+                existingTaskIds.add(String(t.id));
+                tasksList.push({
+                  id: String(t.id),
+                  titulo: t.title || t.titulo || "Tarea",
+                  estado: t.status || t.estado || "Planificado",
+                  status: t.status || t.estado || "Planificado",
+                  formato: t.formato || t.format || "Post",
+                  esfuerzo: t.time || t.esfuerzo || "30 min",
+                  prioridad: t.priority || t.prioridad || "Media",
+                  proyecto_ids: [String(p.id)],
+                  proyecto_id: String(p.id),
+                  cliente_ids: p.cliente_ids || [],
+                  fechaProg: t.fecha_programada || t.fechaProg || "",
+                  fechaEntrega: t.fecha_limite || t.deadline || t.fechaEntrega || "",
+                  subtasks: t.subtasks || [],
+                  ...t,
+                } as Task);
+              }
+            });
+          }
+        });
       } catch (e) {
         console.error("Error reading tasks from Firestore:", e);
       }
 
+      // ── ROLLUPS DERIVADOS EN VIVO (EN MEMORIA) ──
+      const enrichedMiembros = workersList.map((m) => {
+        const memberActiveTasks = tasksList.filter((t) => {
+          const isAssignee = t.asignado_id
+            ? String(t.asignado_id) === String(m.id)
+            : (Array.isArray(t.asignado_ids) && t.asignado_ids.length > 0
+                ? String(t.asignado_ids[0]) === String(m.id)
+                : false);
+          return isAssignee && isTaskActive(t.estado);
+        });
+
+        let totalEsfuerzoMins = 0;
+        let tareasSinEstimar = 0;
+
+        memberActiveTasks.forEach((t) => {
+          if (typeof t.esfuerzoMinutos === "number" && !isNaN(t.esfuerzoMinutos) && t.esfuerzoMinutos > 0) {
+            totalEsfuerzoMins += t.esfuerzoMinutos;
+          } else {
+            tareasSinEstimar++;
+          }
+        });
+
+        const carga_horas_actual = Math.round((totalEsfuerzoMins / 60) * 10) / 10;
+        const capacidad_semanal = m.capacidad_semanal || 40;
+        const workloadPercent = Math.round((carga_horas_actual / capacidad_semanal) * 100);
+
+        let semaforo: any = "disponible";
+        if (workloadPercent > 100) {
+          semaforo = "sobrecargado";
+        } else if (workloadPercent >= 80) {
+          semaforo = "al_limite";
+        }
+
+        return {
+          ...m,
+          capacidad_semanal,
+          carga_horas_actual,
+          workloadPercent,
+          semaforo,
+          tareasSinEstimar,
+        };
+      });
+
+      const enrichedClientes = clientsList.map((c) => {
+        const activeProjects = projectsList.filter((p) => {
+          const clientIds = p.cliente_ids || ((p as any).cliente_id ? [String((p as any).cliente_id)] : []);
+          return clientIds.map(String).includes(String(c.id)) && isProjectActive(p.estadoProyecto || p.estado);
+        });
+
+        const ltv_calculado = (c.finanzas?.historial_pagos || [])
+          .filter((p) => (p.estado || "").toLowerCase() === "pagado")
+          .reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+
+        return {
+          ...c,
+          proyectos_activos: activeProjects,
+          proyectos_activos_count: activeProjects.length,
+          ltv_calculado,
+        };
+      });
+
       return {
-        clientes:     clientsList,
+        clientes:     enrichedClientes,
         proyectos:    projectsList,
         tareas:       tasksList,
-        trabajadores: workersList,
+        miembros:     enrichedMiembros,
         recursos:     [],
       };
     },
-    staleTime:    10 * 1000,       // 10s freshness
+    staleTime:    2 * 1000,        // 2s freshness
     gcTime:       5 * 60 * 1000,   // 5 min cache
     refetchOnWindowFocus: true,
+    refetchInterval: 3000,         // Auto-sync every 3s
   });
 }
 
@@ -295,13 +423,53 @@ export function useSync() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await qc.invalidateQueries({ queryKey: QUERY_KEY });
+      await qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
       return true;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: QUERY_KEY });
+      qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
     },
   });
+}
+
+// ── Task Project Status Sync Helper ──────────────────────────────────────────
+function getTaskProjectId(task: any): string | null {
+  if (!task) return null;
+  if (Array.isArray(task.proyecto_ids) && task.proyecto_ids.length > 0 && task.proyecto_ids[0]) {
+    return String(task.proyecto_ids[0]);
+  }
+  if (task.proyecto_id) return String(task.proyecto_id);
+  if (task.project_id) return String(task.project_id);
+  return null;
+}
+
+async function checkAndSyncProjectStatus({
+  projectId,
+  tasks,
+  projects,
+  workspaceId,
+  isMaster,
+}: {
+  projectId?: string | null;
+  tasks?: Task[];
+  projects?: Project[];
+  workspaceId?: string | null;
+  isMaster: boolean;
+}) {
+  if (!projectId || !tasks) return;
+  const projectTasks = tasks.filter((t) => getTaskProjectId(t) === String(projectId));
+  const project = projects?.find((p) => String(p.id) === String(projectId));
+  const currentStatus = project?.estadoProyecto || project?.estado || "Planificación";
+
+  const { newStatus, hasChanged } = evaluateProjectStatusFromTasks(currentStatus, projectTasks);
+  if (hasChanged) {
+    await syncProjectStatusInFirestore({
+      projectId: String(projectId),
+      newStatus,
+      workspaceId,
+      isMaster,
+    });
+  }
 }
 
 // ── Task mutations ─────────────────────────────────────────────────────────────
@@ -313,19 +481,67 @@ export function useCreateTask() {
       const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
       const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
+
       const newId = "task-" + Date.now();
-      const taskDoc = {
+      const rawTaskDoc = {
         ...data,
         id: newId,
         titulo: data.titulo.trim(),
-        estado: data.estado || "Pendiente",
+        estado: data.estado || "Planificado",
+        status: data.estado || "Planificado",
         prioridad: data.prioridad || "Media",
+        proyecto_ids: data.proyecto_ids || ((data as any).proyecto_id ? [String((data as any).proyecto_id)] : ((data as any).project_id ? [String((data as any).project_id)] : [])),
+        proyecto_id: (data as any).proyecto_id || (data as any).project_id || (data.proyecto_ids?.[0]) || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
+      const taskDoc = cleanFirestorePayload(rawTaskDoc);
       await setDoc(doc(db, tasksCol, newId), taskDoc);
+
+      // Reevaluar estado del proyecto si la tarea fue vinculada a uno
+      const projId = getTaskProjectId(taskDoc);
+      if (projId && currentCache) {
+        const updatedTasks = [...(currentCache.tareas || []), taskDoc as any];
+        await checkAndSyncProjectStatus({
+          projectId: projId,
+          tasks: updatedTasks,
+          projects: currentCache.proyectos,
+          workspaceId,
+          isMaster,
+        });
+      }
+
+      // Actualización optimista inmediata en caché local
+      if (currentCache) {
+        const optimisticTask = taskDoc as unknown as Task;
+        const updatedTasksList = [...(currentCache.tareas || []), optimisticTask];
+
+        const targetProjId = getTaskProjectId(taskDoc);
+        const updatedProjectsList = (currentCache.proyectos || []).map((p) => {
+          if (String(p.id) === String(targetProjId)) {
+            const currentProjTasks = Array.isArray(p.tasks) ? p.tasks : [];
+            const newTasksForProj = [...currentProjTasks, optimisticTask];
+            const evalResult = evaluateProjectStatusFromTasks(p.estadoProyecto || p.estado || "Planificación", newTasksForProj);
+            return {
+              ...p,
+              tasks: newTasksForProj,
+              estadoProyecto: evalResult.newStatus,
+              estado: evalResult.newStatus,
+            };
+          }
+          return p;
+        });
+
+        qc.setQueryData(queryKey, {
+          ...currentCache,
+          tareas: updatedTasksList,
+          proyectos: updatedProjectsList,
+        });
+      }
 
       recordUndoAction({
         entityType: "task",
@@ -336,18 +552,18 @@ export function useCreateTask() {
         redoDescription: `Tarea "${taskDoc.titulo}" recreada`,
         executeUndo: async () => {
           await deleteDoc(doc(db, tasksCol, newId));
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
         executeRedo: async () => {
           await setDoc(doc(db, tasksCol, newId), taskDoc);
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
       });
 
       return taskDoc;
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: QUERY_KEY });
+      qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
       if (result?.id) {
         window.dispatchEvent(new CustomEvent("item-created", { detail: { type: "task", id: result.id } }));
       }
@@ -364,15 +580,65 @@ export function useUpdateTask() {
       const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
       // Snapshot previo desde caché
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
       const prevTask = currentCache?.tareas?.find((t) => String(t.id) === String(data.id));
 
-      const taskRef = doc(db, tasksCol, String(data.id));
-      await updateDoc(taskRef, {
-        ...data,
+      const { id: taskId, ...restData } = data;
+      const cleanUpdateData = cleanFirestorePayload({
+        ...restData,
         updatedAt: serverTimestamp(),
         updated_at: serverTimestamp(),
       });
+
+      const taskRef = doc(db, tasksCol, String(taskId));
+      await updateDoc(taskRef, cleanUpdateData);
+
+      // Reevaluar y sincronizar automáticamente el estado del proyecto padre
+      const targetProjId = getTaskProjectId(data) || getTaskProjectId(prevTask);
+      if (targetProjId && currentCache) {
+        const updatedTasks = (currentCache.tareas || []).map((t) =>
+          String(t.id) === String(data.id) ? { ...t, ...data } : t
+        );
+        if (!updatedTasks.some((t) => String(t.id) === String(data.id))) {
+          updatedTasks.push({ ...(prevTask || {}), ...data } as any);
+        }
+        await checkAndSyncProjectStatus({
+          projectId: targetProjId,
+          tasks: updatedTasks,
+          projects: currentCache.proyectos,
+          workspaceId,
+          isMaster,
+        });
+      }
+
+      // Actualización optimista inmediata en caché local
+      if (currentCache) {
+        const updatedTasksList = (currentCache.tareas || []).map((t) =>
+          String(t.id) === String(data.id) ? ({ ...t, ...data } as Task) : t
+        );
+        const updatedProjectsList = (currentCache.proyectos || []).map((p) => {
+          if (String(p.id) === String(targetProjId)) {
+            const currentProjTasks = (Array.isArray(p.tasks) ? p.tasks : []).map((t) =>
+              String(t.id) === String(data.id) ? ({ ...t, ...data } as Task) : t
+            );
+            const evalResult = evaluateProjectStatusFromTasks(p.estadoProyecto || p.estado || "Planificación", currentProjTasks);
+            return {
+              ...p,
+              tasks: currentProjTasks,
+              estadoProyecto: evalResult.newStatus,
+              estado: evalResult.newStatus,
+            };
+          }
+          return p;
+        });
+
+        qc.setQueryData(queryKey, {
+          ...currentCache,
+          tareas: updatedTasksList,
+          proyectos: updatedProjectsList,
+        });
+      }
 
       if (prevTask) {
         const isStatusChange = data.estado && data.estado !== prevTask.estado;
@@ -407,7 +673,7 @@ export function useUpdateTask() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             const ref = doc(db, tasksCol, String(data.id));
@@ -416,14 +682,14 @@ export function useUpdateTask() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: data.id };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -435,10 +701,50 @@ export function useDeleteTask() {
       const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
       const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
       const prevTask = currentCache?.tareas?.find((t) => String(t.id) === String(taskId));
 
       await deleteDoc(doc(db, tasksCol, String(taskId)));
+
+      // Reevaluar y sincronizar el estado del proyecto con las tareas restantes
+      const targetProjId = getTaskProjectId(prevTask);
+      if (targetProjId && currentCache) {
+        const remainingTasks = (currentCache.tareas || []).filter(
+          (t) => String(t.id) !== String(taskId)
+        );
+        await checkAndSyncProjectStatus({
+          projectId: targetProjId,
+          tasks: remainingTasks,
+          projects: currentCache.proyectos,
+          workspaceId,
+          isMaster,
+        });
+      }
+
+      // Actualización optimista inmediata en caché local
+      if (currentCache) {
+        const remainingTasksList = (currentCache.tareas || []).filter((t) => String(t.id) !== String(taskId));
+        const updatedProjectsList = (currentCache.proyectos || []).map((p) => {
+          if (String(p.id) === String(targetProjId)) {
+            const remainingProjTasks = (Array.isArray(p.tasks) ? p.tasks : []).filter((t) => String(t.id) !== String(taskId));
+            const evalResult = evaluateProjectStatusFromTasks(p.estadoProyecto || p.estado || "Planificación", remainingProjTasks);
+            return {
+              ...p,
+              tasks: remainingProjTasks,
+              estadoProyecto: evalResult.newStatus,
+              estado: evalResult.newStatus,
+            };
+          }
+          return p;
+        });
+
+        qc.setQueryData(queryKey, {
+          ...currentCache,
+          tareas: remainingTasksList,
+          proyectos: updatedProjectsList,
+        });
+      }
 
       if (prevTask) {
         const taskTitle = prevTask.titulo || "Tarea";
@@ -455,18 +761,18 @@ export function useDeleteTask() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             await deleteDoc(doc(db, tasksCol, String(taskId)));
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: taskId };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -480,7 +786,7 @@ export function useCreateProject() {
       const projectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
 
       const newId = "proj-" + Date.now();
-      const projectDoc = {
+      const rawProjectDoc = {
         ...data,
         id: newId,
         nombre: data.nombre.trim(),
@@ -491,6 +797,7 @@ export function useCreateProject() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
+      const projectDoc = cleanFirestorePayload(rawProjectDoc);
       await setDoc(doc(db, projectsCol, newId), projectDoc);
 
       recordUndoAction({
@@ -502,18 +809,18 @@ export function useCreateProject() {
         redoDescription: `Proyecto "${projectDoc.nombre}" recreado`,
         executeUndo: async () => {
           await deleteDoc(doc(db, projectsCol, newId));
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
         executeRedo: async () => {
           await setDoc(doc(db, projectsCol, newId), projectDoc);
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
       });
 
       return projectDoc;
     },
     onSuccess: (result) => {
-      qc.invalidateQueries({ queryKey: QUERY_KEY });
+      qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
       if (result?.id) {
         window.dispatchEvent(new CustomEvent("item-created", { detail: { type: "project", id: result.id } }));
       }
@@ -525,7 +832,9 @@ export function useUpdateProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (data: Partial<Project> & { id: string }) => {
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
+      const { workspaceId } = useAuthStore.getState();
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
       const prevProject = currentCache?.proyectos?.find((p) => String(p.id) === String(data.id));
 
       await persistProjectUpdate(data.id, data as any);
@@ -553,18 +862,18 @@ export function useUpdateProject() {
           redoDescription: desc,
           executeUndo: async () => {
             await persistProjectUpdate(data.id, prevSnapshot as any);
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             await persistProjectUpdate(data.id, data as any);
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: data.id };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -577,7 +886,8 @@ export function useDeleteProject() {
       const projectsCol = getWorkspaceScopedCol("projects", workspaceId, isMaster);
       const v3Col = getWorkspaceScopedCol("v3_projects", workspaceId, isMaster);
 
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
       const prevProject = currentCache?.proyectos?.find((p) => String(p.id) === String(projectId));
 
       await deleteDoc(doc(db, projectsCol, String(projectId)));
@@ -603,19 +913,19 @@ export function useDeleteProject() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             }).catch(() => {});
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             await deleteDoc(doc(db, projectsCol, String(projectId)));
             await deleteDoc(doc(db, v3Col, String(projectId))).catch(() => {});
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: projectId };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -629,7 +939,7 @@ export function useCreateClient() {
       const clientsCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
 
       const newId = "cli-" + Date.now();
-      const clientDoc = {
+      const rawClientDoc = {
         ...data,
         id: newId,
         nombre: data.nombre.trim(),
@@ -638,6 +948,7 @@ export function useCreateClient() {
         created_at: serverTimestamp(),
         updated_at: serverTimestamp(),
       };
+      const clientDoc = cleanFirestorePayload(rawClientDoc);
       await setDoc(doc(db, clientsCol, newId), clientDoc);
 
       recordUndoAction({
@@ -649,17 +960,17 @@ export function useCreateClient() {
         redoDescription: `Cliente "${clientDoc.nombre}" recreado`,
         executeUndo: async () => {
           await deleteDoc(doc(db, clientsCol, newId));
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
         executeRedo: async () => {
           await setDoc(doc(db, clientsCol, newId), clientDoc);
-          qc.invalidateQueries({ queryKey: QUERY_KEY });
+          qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
         },
       });
 
       return clientDoc;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -671,15 +982,19 @@ export function useUpdateClient() {
       const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
       const clientsCol = getWorkspaceScopedCol("clients", workspaceId, isMaster);
 
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
       const prevClient = currentCache?.clientes?.find((c) => String(c.id) === String(data.id));
 
-      const clientRef = doc(db, clientsCol, String(data.id));
-      await updateDoc(clientRef, {
-        ...data,
+      const { id: clientId, ...restData } = data;
+      const cleanUpdateData = cleanFirestorePayload({
+        ...restData,
         updatedAt: serverTimestamp(),
         updated_at: serverTimestamp(),
       });
+
+      const clientRef = doc(db, clientsCol, String(clientId));
+      await updateDoc(clientRef, cleanUpdateData);
 
       if (prevClient) {
         const clientName = prevClient.nombre || "Cliente";
@@ -698,28 +1013,28 @@ export function useUpdateClient() {
           redoDescription: `Cliente "${clientName}" modificado`,
           executeUndo: async () => {
             const ref = doc(db, clientsCol, String(data.id));
-            await updateDoc(ref, {
+            await updateDoc(ref, cleanFirestorePayload({
               ...prevSnapshot,
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
-            });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            }));
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             const ref = doc(db, clientsCol, String(data.id));
-            await updateDoc(ref, {
-              ...data,
+            await updateDoc(ref, cleanFirestorePayload({
+              ...restData,
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
-            });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            }));
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: data.id };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 
@@ -732,15 +1047,55 @@ export function useUpdateWorker() {
       const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
       const membersCol = getWorkspaceScopedCol("members", workspaceId, isMaster);
 
-      const currentCache = qc.getQueryData<BraindexData>(QUERY_KEY);
-      const prevWorker = currentCache?.trabajadores?.find((w) => String(w.id) === String(data.id));
+      const queryKey = getFirestoreQueryKey(workspaceId);
+      const currentCache = qc.getQueryData<BraindexData>(queryKey);
+      const prevWorker = currentCache?.miembros?.find((w) => String(w.id) === String(data.id));
 
-      const memberRef = doc(db, membersCol, String(data.id));
-      await updateDoc(memberRef, {
-        ...data,
+      const { id: workerId, ...restData } = data;
+      const cleanUpdateData = cleanFirestorePayload({
+        ...restData,
         updatedAt: serverTimestamp(),
         updated_at: serverTimestamp(),
       });
+
+      const memberRef = doc(db, membersCol, String(workerId));
+      await updateDoc(memberRef, cleanUpdateData);
+
+      if (prevWorker) {
+        const workerName = prevWorker.nombre || "Miembro";
+        const prevSnapshot: any = {};
+        for (const key of Object.keys(data)) {
+          if (key === "id") continue;
+          prevSnapshot[key] = (prevWorker as any)[key] !== undefined ? (prevWorker as any)[key] : null;
+        }
+
+        recordUndoAction({
+          entityType: "member",
+          entityId: String(data.id),
+          actionType: "update",
+          description: `Modificar miembro: "${workerName}"`,
+          undoDescription: `Miembro "${workerName}" restaurado`,
+          redoDescription: `Miembro "${workerName}" modificado`,
+          executeUndo: async () => {
+            const ref = doc(db, membersCol, String(data.id));
+            await updateDoc(ref, cleanFirestorePayload({
+              ...prevSnapshot,
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            }));
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
+          },
+          executeRedo: async () => {
+            const ref = doc(db, membersCol, String(data.id));
+            await updateDoc(ref, cleanFirestorePayload({
+              ...restData,
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            }));
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
+          },
+        });
+      }
 
       if (prevWorker) {
         const workerName = prevWorker.nombre || "Miembro";
@@ -764,7 +1119,7 @@ export function useUpdateWorker() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
           executeRedo: async () => {
             const ref = doc(db, membersCol, String(data.id));
@@ -773,14 +1128,14 @@ export function useUpdateWorker() {
               updatedAt: serverTimestamp(),
               updated_at: serverTimestamp(),
             });
-            qc.invalidateQueries({ queryKey: QUERY_KEY });
+            qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] });
           },
         });
       }
 
       return { ok: true, id: data.id };
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: [QUERY_KEY_PREFIX] }),
   });
 }
 

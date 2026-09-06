@@ -87,12 +87,12 @@ export function ProjectCardItem({
 
   // Rescatar avatares del equipo asignado (por IDs o por texto plano)
   let assignedWorkers = (p.asignado_ids || [])
-    .map((id: string) => data?.trabajadores.find((w) => String(w.id) === String(id)))
+    .map((id: string) => data?.miembros.find((w) => String(w.id) === String(id)))
     .filter(Boolean);
 
   if (assignedWorkers.length === 0 && p.asignado) {
     const names = String(p.asignado).split(",").map((s) => s.trim().toLowerCase());
-    assignedWorkers = (data?.trabajadores || []).filter((w) => 
+    assignedWorkers = (data?.miembros || []).filter((w) => 
       names.some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
     );
   }
@@ -298,12 +298,12 @@ export function ProjectListItem({
   const deliveryStatusText = getDeliveryStatusText(effectiveDate);
 
   let assignedWorkers = (p.asignado_ids || [])
-    .map((id) => data?.trabajadores.find((w) => String(w.id) === String(id)))
+    .map((id) => data?.miembros.find((w) => String(w.id) === String(id)))
     .filter(Boolean);
 
   if (assignedWorkers.length === 0 && p.asignado) {
     const names = p.asignado.split(",").map((s) => s.trim().toLowerCase());
-    assignedWorkers = (data?.trabajadores || []).filter((w) => 
+    assignedWorkers = (data?.miembros || []).filter((w) => 
       names.some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
     );
   }

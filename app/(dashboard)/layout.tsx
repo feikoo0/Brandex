@@ -17,16 +17,26 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const role = useAuthStore((s) => s.role);
+  const token = useAuthStore((s) => s.token);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const router = useRouter();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
-    if (role === null) router.replace("/");
-  }, [role, router]);
+    if (hasHydrated && !token) {
+      router.replace("/");
+    }
+  }, [hasHydrated, token, router]);
 
-  // Si no hay rol todavía, mostramos un cargador básico en lugar de null para evitar pantalla negra total
-  if (!role) return <div className="h-screen bg-[#0a0a0c] flex items-center justify-center text-blue-500">Cargando acceso...</div>;
+  // Si no ha terminado de hidratar o no hay rol todavía, mostramos el cargador en lugar de redirigir erróneamente
+  if (!hasHydrated || !role) {
+    return (
+      <div className="h-screen bg-[#181817] flex items-center justify-center text-white/50 text-xs">
+        Cargando acceso...
+      </div>
+    );
+  }
 
   return (
     <DndContext

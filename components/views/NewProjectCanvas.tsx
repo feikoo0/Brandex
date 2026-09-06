@@ -46,8 +46,9 @@ export function NewProjectCanvas() {
     setError("");
     setSaving(true);
     try {
-      const workers = data?.trabajadores ?? [];
+      const workers = data?.miembros ?? [];
       const selectedWorkers = workers.filter((w) => asignadoIds.includes(w.id));
+      const numCosto = costo ? Number(costo) : 0;
       const res = await createProject.mutateAsync({
         nombre: nombre.trim(),
         cliente_ids: clienteId ? [clienteId] : [],
@@ -55,7 +56,8 @@ export function NewProjectCanvas() {
         prioridad,
         fechaInicio: fechaInicio || undefined,
         fechaFin: fechaFin || undefined,
-        costo: costo ? Number(costo) : undefined,
+        presupuesto: numCosto,
+        costo: numCosto,
         asignado_ids: asignadoIds,
         asignado: selectedWorkers.map((w) => w.nombre).join(", ") || undefined,
         descripcion: descripcion || undefined,
@@ -70,7 +72,7 @@ export function NewProjectCanvas() {
     }
   }
 
-  const workers = data?.trabajadores ?? [];
+  const workers = data?.miembros ?? [];
 
   return (
     <div className="w-full h-full flex flex-col pt-6 px-10">

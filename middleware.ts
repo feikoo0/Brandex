@@ -3,8 +3,29 @@ import type { NextRequest } from "next/server";
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const sessionCookie = req.cookies.get("taski_session")?.value;
 
-  // Rutas protegidas que requieren llave de acceso verificada
+  let isValidSession = false;
+  if (sessionCookie) {
+    try {
+      const decoded = decodeURIComponent(sessionCookie);
+      const session = JSON.parse(decoded);
+      if (session && session.token && session.workspaceId) {
+        isValidSession = true;
+      }
+    } catch {}
+  }
+
+  // 1. Si el usuario visita la raíz (login) pero ya tiene sesión activa -> Auto-redirección instantánea a /taski
+  if (pathname === "/") {
+    if (isValidSession) {
+      const taskiUrl = new URL("/taski", req.url);
+      return NextResponse.redirect(taskiUrl);
+    }
+    return NextResponse.next();
+  }
+
+  // 2. Rutas protegidas que requieren llave de acceso verificada
   const isProtectedPath =
     pathname.startsWith("/taski") ||
     pathname.startsWith("/admin") ||
@@ -12,21 +33,7 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/cliente");
 
   if (isProtectedPath) {
-    const sessionCookie = req.cookies.get("taski_session")?.value;
-
-    if (!sessionCookie) {
-      const loginUrl = new URL("/", req.url);
-      return NextResponse.redirect(loginUrl);
-    }
-
-    try {
-      const decoded = decodeURIComponent(sessionCookie);
-      const session = JSON.parse(decoded);
-      if (!session || !session.token || !session.workspaceId) {
-        const loginUrl = new URL("/", req.url);
-        return NextResponse.redirect(loginUrl);
-      }
-    } catch {
+    if (!isValidSession) {
       const loginUrl = new URL("/", req.url);
       return NextResponse.redirect(loginUrl);
     }
@@ -37,9 +44,11 @@ export function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/taski/:path*",
     "/admin/:path*",
     "/equipo/:path*",
     "/cliente/:path*",
   ],
 };
+

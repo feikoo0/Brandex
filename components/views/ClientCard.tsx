@@ -93,7 +93,7 @@ export function ClientCardItem({
     });
 
     let workers = Array.from(workerIds)
-      .map((id) => data?.trabajadores.find((w) => String(w.id) === String(id)))
+      .map((id) => data?.miembros.find((w) => String(w.id) === String(id)))
       .filter(Boolean);
 
     if (workers.length === 0) {
@@ -103,12 +103,12 @@ export function ClientCardItem({
           p.asignado.split(",").forEach((n: string) => names.add(n.trim().toLowerCase()));
         }
       });
-      workers = (data?.trabajadores || []).filter((w) =>
+      workers = (data?.miembros || []).filter((w) =>
         Array.from(names).some((n) => n && (w.nombre || (w as any).name || "").toLowerCase().includes(n))
       );
     }
     return workers;
-  }, [projects, data?.trabajadores]);
+  }, [projects, data?.miembros]);
 
   // Resumen financiero
   const monto =
@@ -529,9 +529,9 @@ export function ClientListItem({
     });
 
     return Array.from(workerIds)
-      .map((id) => data?.trabajadores.find((w) => String(w.id) === String(id)))
+      .map((id) => data?.miembros.find((w) => String(w.id) === String(id)))
       .filter(Boolean);
-  }, [projects, data?.trabajadores]);
+  }, [projects, data?.miembros]);
 
   return (
     <div

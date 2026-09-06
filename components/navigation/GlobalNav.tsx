@@ -21,6 +21,7 @@ import {
   Layers
 } from "lucide-react";
 import { playSound } from "@/app/taski/utils/audio";
+import { SmoothInput } from "@/components/ui/SmoothInput";
 
 export interface NavItem {
   id: string;
@@ -107,9 +108,9 @@ export function GlobalNav({
 
     switch (id) {
       case "inicio": return <Home className={iconClass} strokeWidth={strokeWidth} />;
-      case "home": return <Kanban className={iconClass} strokeWidth={strokeWidth} />;
+      case "home": return <Briefcase className={iconClass} strokeWidth={strokeWidth} />;
       case "proyectos": return <Folder className={iconClass} strokeWidth={strokeWidth} />;
-      case "clientes": return <Briefcase className={iconClass} strokeWidth={strokeWidth} />;
+      case "clientes": return <User className={iconClass} strokeWidth={strokeWidth} />;
       case "equipo": return <Users className={iconClass} strokeWidth={strokeWidth} />;
       case "finanzas": return <DollarSign className={iconClass} strokeWidth={strokeWidth} />;
       case "recursos": return <Database className={iconClass} strokeWidth={strokeWidth} />;
@@ -122,7 +123,7 @@ export function GlobalNav({
   const resolvedTitle = title || (
     activeTab === "inicio" ? "Inicio" :
     activeTab === "home" ? "Work" :
-    activeTab === "proyectos" ? "Panel de Proyectos" :
+    activeTab === "proyectos" ? "Proyectos" :
     activeTab === "clientes" ? "Directorio de Clientes" :
     activeTab === "equipo" ? "Espacio de Equipo" :
     activeTab === "finanzas" ? "Métricas Financieras" :
@@ -132,7 +133,7 @@ export function GlobalNav({
 
   const resolvedSubtitle = subtitle || (
     activeTab === "home" ? "flujo y entregables activos" :
-    activeTab === "proyectos" ? "catálogo general de entregas" :
+    activeTab === "proyectos" ? "" :
     activeTab === "clientes" ? "marcas asociadas y contratos" :
     activeTab === "equipo" ? "colaboradores y carga de trabajo" :
     activeTab === "finanzas" ? "facturación y margen operativo" :
@@ -207,13 +208,15 @@ export function GlobalNav({
           >
             <Search className="w-3.5 h-3.5 shrink-0 text-[#ffffff6b]" />
             {isSearchActive ? (
-              <input
+              <SmoothInput
                 ref={searchInputRef}
                 type="text"
+                unstyled
                 value={searchQuery}
                 onChange={(e) => onSearchQueryChange && onSearchQueryChange(e.target.value)}
                 placeholder="Buscar tareas, proyectos, marcas..."
-                className="ml-2 w-full bg-transparent text-xs text-[#ffffffd6] placeholder:text-[#ffffff40] outline-none"
+                wrapperClassName="ml-2 w-full flex-1"
+                className="text-xs text-[#ffffffd6] placeholder:text-[#ffffff40]"
               />
             ) : (
               <span className="text-xs font-medium ml-1.5 hidden md:inline">Buscar</span>

@@ -8,13 +8,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { X, Calendar, Loader2, ExternalLink, Play } from "lucide-react";
+import { X, Calendar, Loader2, ExternalLink, Play, UserCheck, PenTool, Send } from "lucide-react";
 import { useData, useCreateTask, useUpdateTask } from "@/hooks/useData";
 import { useClients } from "@/hooks/useClients";
+import { useSessions } from "@/hooks/useSessions";
 import { useUIStore } from "@/lib/store";
 import { fmtDate, statusColor } from "@/lib/utils";
 import { TASK_ESTADO_OPTS, TASK_PRIO_OPTS, ESFUERZOS, FORMATOS, AREAS, STATUS_COLORS, PRIORITY_COLORS } from "@/lib/constants";
-import type { ModalEntry, Client } from "@/lib/types";
+import type { ModalEntry, Client, Task } from "@/lib/types";
+import { SmoothInput, SmoothTextarea } from "@/components/ui/SmoothInput";
 
 interface Props {
   taskId:   string;           // "new" = create mode, else = edit
@@ -46,29 +48,53 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
     return Array.from(map.values());
   }, [firestoreClients, data?.clientes]);
 
+  const { activeSession, startSession, endSession } = useSessions();
   const startTimer  = useUIStore(s => s.startTimer);
+  const stopTimer   = useUIStore(s => s.stopTimer);
   const activeTimer = useUIStore(s => s.activeTimer);
-  const isTimerActive = activeTimer?.taskId === taskId;
+  const isTimerActive = activeSession?.task_id === taskId || activeTimer?.taskId === taskId;
+
+  const handleToggleTimer = async () => {
+    if (isTimerActive) {
+      await endSession();
+      stopTimer();
+    } else {
+      startTimer(taskId);
+      await startSession({
+        taskId,
+        projectId: proyectoId || (task?.proyecto_ids?.[0] ?? "1"),
+        clientId: clienteId || (task?.cliente_ids?.[0] ?? null),
+        origin: "manual",
+      });
+      setEstado("En proceso");
+    }
+  };
 
   // ── Form state ──────────────────────────────────────────────────────────────
-  const [titulo,       setTitulo]       = useState(task?.titulo       ?? "");
-  const [contenido,    setContenido]    = useState(task?.contenido    ?? "");
-  const [estado,       setEstado]       = useState(task?.estado       ?? "Por hacer");
-  const [prioridad,    setPrioridad]    = useState(task?.prioridad    ?? "Media");
-  const [formato,      setFormato]      = useState(task?.formato      ?? "");
-  const [area,         setArea]         = useState(task?.area         ?? "");
-  const [esfuerzo,     setEsfuerzo]     = useState(task?.esfuerzo     ?? "");
-  const [asignado,     setAsignado]     = useState(task?.asignado     ?? "");
-  const [fechaProg,    setFechaProg]    = useState(task?.fechaProg    ?? "");
-  const [fechaEntrega, setFechaEntrega] = useState(task?.fechaEntrega ?? "");
-  const [proyectoId,   setProyectoId]   = useState(task?.proyecto_ids?.[0] ?? parentId ?? "");
-  const [clienteId,    setClienteId]    = useState(task?.cliente_ids?.[0]  ?? "");
-  const [saving,       setSaving]       = useState(false);
-  const [error,        setError]        = useState("");
+  const [titulo,           setTitulo]           = useState(task?.titulo           ?? "");
+  const [contenido,        setContenido]        = useState(task?.contenido        ?? "");
+  const [estado,           setEstado]           = useState(task?.estado           ?? "Planificado");
+  const [prioridad,        setPrioridad]        = useState(task?.prioridad        ?? "Media");
+  const [formato,          setFormato]          = useState(task?.formato          ?? "");
+  const [area,             setArea]             = useState(task?.area             ?? "");
+  const [esfuerzo,         setEsfuerzo]         = useState(task?.esfuerzo         ?? "");
+  const [asignado,         setAsignado]         = useState(task?.asignado         ?? "");
+  const [asignadoId,       setAsignadoId]       = useState(task?.asignado_id       ?? "");
+  const [fechaProg,        setFechaProg]        = useState(task?.fechaProg        ?? "");
+  const [fechaEntrega,     setFechaEntrega]     = useState(task?.fechaEntrega     ?? "");
+  const [fechaPublicacion, setFechaPublicacion] = useState(task?.fechaPublicacion ?? "");
+  const [copyGancho,       setCopyGancho]       = useState(task?.copywriting?.gancho ?? "");
+  const [copyCuerpo,       setCopyCuerpo]       = useState(task?.copywriting?.cuerpo ?? task?.copy ?? "");
+  const [copyCta,          setCopyCta]          = useState(task?.copywriting?.cta ?? "");
+  const [proyectoId,       setProyectoId]       = useState(task?.proyecto_ids?.[0] ?? parentId ?? "");
+  const [clienteId,        setClienteId]        = useState(task?.cliente_ids?.[0]  ?? "");
+  const [saving,           setSaving]           = useState(false);
+  const [error,            setError]            = useState("");
 
   const titleRef        = useRef<HTMLTextAreaElement>(null);
   const dateFechaProg   = useRef<HTMLInputElement>(null);
   const dateFechaEnt    = useRef<HTMLInputElement>(null);
+  const dateFechaPub    = useRef<HTMLInputElement>(null);
 
   // Auto-focus title on open
   useEffect(() => {
@@ -81,7 +107,7 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
     el.style.height = el.scrollHeight + "px";
   }
 
-  const workers  = data?.trabajadores.map((w) => w.nombre)  ?? [];
+  const workers  = data?.miembros.map((w) => w.nombre)  ?? [];
   const projects = data?.proyectos  ?? [];
 
   const selectedProj = projects.find((p) => p.id === proyectoId);
@@ -102,32 +128,56 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
     setSaving(true);
     try {
       if (isCreate) {
-        const p: Record<string, string> = { titulo: titulo.trim() };
-        if (contenido)    p.contenido    = contenido;
-        if (estado)       p.estado       = estado;
-        if (prioridad)    p.prioridad    = prioridad;
-        if (formato)      p.formato      = formato;
-        if (area)         p.area         = area;
-        if (esfuerzo)     p.esfuerzo     = esfuerzo;
-        if (asignado)     p.asignado     = asignado;
-        if (fechaProg)    p.fechaProg    = fechaProg;
-        if (fechaEntrega) p.fechaEntrega = fechaEntrega;
-        if (proyectoId)   p.proyecto_id  = proyectoId;
-        if (clienteId)    p.cliente_id   = clienteId;
+        const p: Record<string, any> = { titulo: titulo.trim(), title: titulo.trim() };
+        if (contenido) { p.contenido = contenido; p.descripcion = contenido; p.desc = contenido; }
+        if (estado) { p.estado = estado; p.status = estado; }
+        if (prioridad) { p.prioridad = prioridad; p.priority = prioridad; }
+        if (formato) { p.formato = formato; p.format = formato; }
+        if (area) p.area = area;
+        if (esfuerzo) { p.esfuerzo = esfuerzo; p.time = esfuerzo; }
+        if (asignado) p.asignado = asignado;
+        if (asignadoId) p.asignado_id = asignadoId;
+        if (fechaProg) { p.fechaProg = fechaProg; p.fecha_programada = fechaProg; }
+        if (fechaEntrega) { p.fechaEntrega = fechaEntrega; p.fecha_limite = fechaEntrega; p.deadline = fechaEntrega; }
+        if (fechaPublicacion) p.fechaPublicacion = fechaPublicacion;
+        if (copyGancho || copyCuerpo || copyCta) {
+          p.copywriting = {
+            gancho: copyGancho.trim() || "",
+            cuerpo: copyCuerpo.trim() || "",
+            cta: copyCta.trim() || "",
+          };
+          if (copyCuerpo) p.copy = copyCuerpo.trim();
+        }
+        if (proyectoId) { p.proyecto_id = proyectoId; p.proyecto_ids = [proyectoId]; }
+        if (clienteId) { p.cliente_id = clienteId; p.cliente_ids = [clienteId]; }
         await createTask.mutateAsync(p as never);
       } else {
-        const u: Record<string, string> = { id: taskId };
-        if (titulo       !== task?.titulo)       u.titulo       = titulo;
-        if (contenido    !== task?.contenido)    u.contenido    = contenido;
-        if (estado       !== task?.estado)       u.estado       = estado;
-        if (prioridad    !== task?.prioridad)    u.prioridad    = prioridad;
-        if (formato      !== task?.formato)      u.formato      = formato;
-        if (area         !== task?.area)         u.area         = area;
-        if (esfuerzo     !== task?.esfuerzo)     u.esfuerzo     = esfuerzo;
-        if (asignado     !== task?.asignado)     u.asignado     = asignado;
-        if (fechaProg    !== task?.fechaProg)    u.fechaProg    = fechaProg;
-        if (fechaEntrega !== task?.fechaEntrega) u.fechaEntrega = fechaEntrega;
-        if (proyectoId   !== task?.proyecto_ids?.[0]) u.proyecto_id = proyectoId;
+        const u: Record<string, any> = { id: taskId };
+        if (titulo !== task?.titulo) { u.titulo = titulo; u.title = titulo; }
+        if (contenido !== task?.contenido) { u.contenido = contenido; u.descripcion = contenido; u.desc = contenido; }
+        if (estado !== task?.estado) { u.estado = estado; u.status = estado; }
+        if (prioridad !== task?.prioridad) { u.prioridad = prioridad; u.priority = prioridad; }
+        if (formato !== task?.formato) { u.formato = formato; u.format = formato; }
+        if (area !== task?.area) u.area = area;
+        if (esfuerzo !== task?.esfuerzo) { u.esfuerzo = esfuerzo; u.time = esfuerzo; }
+        if (asignado !== task?.asignado) u.asignado = asignado;
+        if (asignadoId !== (task?.asignado_id ?? "")) u.asignado_id = asignadoId;
+        if (fechaProg !== task?.fechaProg) { u.fechaProg = fechaProg; u.fecha_programada = fechaProg; }
+        if (fechaEntrega !== task?.fechaEntrega) { u.fechaEntrega = fechaEntrega; u.fecha_limite = fechaEntrega; u.deadline = fechaEntrega; }
+        if (fechaPublicacion !== (task?.fechaPublicacion ?? "")) u.fechaPublicacion = fechaPublicacion;
+        if (
+          copyGancho !== (task?.copywriting?.gancho ?? "") ||
+          copyCuerpo !== (task?.copywriting?.cuerpo ?? task?.copy ?? "") ||
+          copyCta !== (task?.copywriting?.cta ?? "")
+        ) {
+          u.copywriting = {
+            gancho: copyGancho.trim() || "",
+            cuerpo: copyCuerpo.trim() || "",
+            cta: copyCta.trim() || "",
+          };
+          u.copy = copyCuerpo.trim() || "";
+        }
+        if (proyectoId !== task?.proyecto_ids?.[0]) { u.proyecto_id = proyectoId; u.proyecto_ids = [proyectoId]; }
         if (Object.keys(u).length > 1)
           await updateTask.mutateAsync(u as never);
       }
@@ -244,11 +294,11 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
           {!isCreate && (
             <button 
-              onClick={() => startTimer(taskId)}
-              disabled={isTimerActive}
-              style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 12px", borderRadius:8, background: isTimerActive ? "rgba(16, 185, 129, 0.15)" : "rgba(255,255,255,.06)", color: isTimerActive ? "#10b981" : "var(--txt2)", fontSize:11, fontWeight:700, border:"none", cursor: isTimerActive ? "default" : "pointer" }}
+              type="button"
+              onClick={handleToggleTimer}
+              style={{ display:"flex", alignItems:"center", gap:4, padding:"6px 12px", borderRadius:8, background: isTimerActive ? "rgba(16, 185, 129, 0.15)" : "rgba(255,255,255,.06)", color: isTimerActive ? "#10b981" : "var(--txt2)", fontSize:11, fontWeight:700, border:"none", cursor: "pointer" }}
             >
-              <Play style={{ width:11, height:11 }} /> {isTimerActive ? "Timer Activo" : "Iniciar Timer"}
+              <Play style={{ width:11, height:11 }} /> {isTimerActive ? "Detener Timer" : "Iniciar Timer"}
             </button>
           )}
           {!isCreate && task?.url && (
@@ -279,14 +329,16 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
             </button>
           )}
-          <textarea
+          <SmoothTextarea
             ref={titleRef}
             value={titulo}
+            unstyled
             onChange={(e) => { setTitulo(e.target.value); autoResize(e.target); }}
-            onInput={(e) => autoResize(e.target as HTMLTextAreaElement)}
             placeholder="Nueva tarea"
             readOnly={!isAdmin}
             rows={1}
+            wrapperClassName="w-full"
+            caretClassName="bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)]"
             style={{
               width:       "100%",
               boxSizing:   "border-box",
@@ -307,12 +359,15 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
         </div>
 
         {/* Description */}
-        <textarea
+        <SmoothTextarea
           value={contenido}
+          unstyled
           onChange={(e) => setContenido(e.target.value)}
           placeholder="Agregar descripción o brief del contenido..."
           readOnly={!isAdmin}
           rows={3}
+          wrapperClassName="w-full mb-5"
+          caretClassName="bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]"
           style={{
             width:       "100%",
             boxSizing:   "border-box",
@@ -323,8 +378,6 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
             border:      "none",
             outline:     "none",
             resize:      "none",
-            marginBottom: 20,
-            padding:     0,
           }}
         />
 
@@ -395,14 +448,14 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
         </div>
 
         {/* Dates */}
-        <div style={{ display: "flex", gap: 12, marginBottom: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24 }}>
           {/* Fecha programada */}
           <div style={s.dateRow} onClick={() => isAdmin && dateFechaProg.current?.showPicker()}>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <Calendar style={{ width:12, height:12, color:"var(--txt3)" }} />
-              <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"var(--txt3)" }}>Programada</span>
+              <span style={{ fontSize:10, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color:"var(--txt3)" }}>Programada</span>
             </div>
-            <span style={{ fontSize:13, color: fechaProg ? "var(--txt)" : "var(--txt3)", fontWeight: fechaProg ? 700 : 500 }}>
+            <span style={{ fontSize:12, color: fechaProg ? "var(--txt)" : "var(--txt3)", fontWeight: fechaProg ? 700 : 500 }}>
               {fechaProg ? fmtDate(fechaProg) : "Asignar"}
             </span>
             <input ref={dateFechaProg} type="date" value={fechaProg}
@@ -422,11 +475,11 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
           >
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               <Calendar style={{ width:12, height:12, color: fechaEntrega ? "#ff9f0a" : "var(--txt3)" }} />
-              <span style={{ fontSize:11, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color: fechaEntrega ? "#ff9f0a" : "var(--txt3)" }}>
+              <span style={{ fontSize:10, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color: fechaEntrega ? "#ff9f0a" : "var(--txt3)" }}>
                 Entrega {(isAdmin && task?.fechaEntrega && !isCreate) && "(Bloqueado)"}
               </span>
             </div>
-            <span style={{ fontSize:13, color: fechaEntrega ? "#ff9f0a" : "var(--txt3)", fontWeight: fechaEntrega ? 700 : 500 }}>
+            <span style={{ fontSize:12, color: fechaEntrega ? "#ff9f0a" : "var(--txt3)", fontWeight: fechaEntrega ? 700 : 500 }}>
               {fechaEntrega ? fmtDate(fechaEntrega) : "Asignar"}
             </span>
             <input 
@@ -435,6 +488,33 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
               value={fechaEntrega}
               disabled={isAdmin && !!task?.fechaEntrega && !isCreate}
               onChange={(e) => setFechaEntrega(e.target.value)}
+              style={{ position:"absolute", opacity:0, pointerEvents:"none", width:0, height:0 }} 
+            />
+          </div>
+
+          {/* Fecha de publicación */}
+          <div 
+            style={{ 
+              ...s.dateRow, 
+              background: fechaPublicacion ? "rgba(58, 123, 213, 0.12)" : s.dateRow.background,
+              cursor: isAdmin ? "pointer" : "default" 
+            }} 
+            onClick={() => isAdmin && dateFechaPub.current?.showPicker()}
+          >
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <Send style={{ width:12, height:12, color: fechaPublicacion ? "#6aafff" : "var(--txt3)" }} />
+              <span style={{ fontSize:10, fontWeight:600, textTransform:"uppercase", letterSpacing:".08em", color: fechaPublicacion ? "#6aafff" : "var(--txt3)" }}>
+                Publicación
+              </span>
+            </div>
+            <span style={{ fontSize:12, color: fechaPublicacion ? "#6aafff" : "var(--txt3)", fontWeight: fechaPublicacion ? 700 : 500 }}>
+              {fechaPublicacion ? fmtDate(fechaPublicacion) : "Asignar"}
+            </span>
+            <input 
+              ref={dateFechaPub} 
+              type="date" 
+              value={fechaPublicacion}
+              onChange={(e) => setFechaPublicacion(e.target.value)}
               style={{ position:"absolute", opacity:0, pointerEvents:"none", width:0, height:0 }} 
             />
           </div>
@@ -448,6 +528,28 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
 
           {[
             {
+              label: "Asignado Primario",
+              el: isAdmin
+                ? <select value={asignadoId} onChange={(e) => setAsignadoId(e.target.value)} style={{ ...s.select(), color: "#bf5af2", fontWeight: 700 }}>
+                    <option value="">— Sin asignar —</option>
+                    {(data?.miembros || []).map((m) => (
+                      <option key={m.id} value={m.id}>👤 {m.nombre} ({m.rol || "Miembro"})</option>
+                    ))}
+                  </select>
+                : <span style={{ fontSize:12, color:"#bf5af2", fontWeight:700 }}>
+                    {(data?.miembros || []).find((m) => String(m.id) === String(asignadoId))?.nombre || "—"}
+                  </span>,
+            },
+            {
+              label: "Colaboradores",
+              el: isAdmin
+                ? <select value={asignado} onChange={(e) => setAsignado(e.target.value)} style={s.select()}>
+                    <option value="">—</option>
+                    {workers.map((w) => <option key={w} value={w}>{w}</option>)}
+                  </select>
+                : <span style={{ fontSize:12, color:"var(--txt)", fontWeight:600 }}>{asignado || "—"}</span>,
+            },
+            {
               label: "Prioridad",
               el: isAdmin
                 ? <select value={prioridad} onChange={(e) => setPrioridad(e.target.value)} style={s.select()}>
@@ -455,15 +557,6 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
                     {TASK_PRIO_OPTS.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 : <span style={{ fontSize:12, color:"var(--txt)", fontWeight:600 }}>{prioridad || "—"}</span>,
-            },
-            {
-              label: "Asignado",
-              el: isAdmin
-                ? <select value={asignado} onChange={(e) => setAsignado(e.target.value)} style={s.select()}>
-                    <option value="">—</option>
-                    {workers.map((w) => <option key={w} value={w}>{w}</option>)}
-                  </select>
-                : <span style={{ fontSize:12, color:"var(--txt)", fontWeight:600 }}>{asignado || "—"}</span>,
             },
             {
               label: "Formato",
@@ -498,6 +591,64 @@ export function TaskModal({ taskId, parentId, isAdmin, onClose, openRelated }: P
               {row.el}
             </div>
           ))}
+        </div>
+
+        {/* Copywriting Section */}
+        <div style={{ marginTop: 20, padding: "14px 16px", borderRadius: 16, background: "rgba(255,255,255,.03)", border: "1px solid rgba(255,255,255,.06)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em", color: "var(--txt2)", marginBottom: 12 }}>
+            <PenTool style={{ width: 13, height: 13, color: "#bf5af2" }} />
+            Estructura de Copywriting
+          </div>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--txt3)", marginBottom: 4 }}>
+                Gancho (Primeros 3 segundos / Hook)
+              </label>
+              <SmoothInput
+                type="text"
+                unstyled
+                disabled={!isAdmin}
+                value={copyGancho}
+                onChange={(e) => setCopyGancho(e.target.value)}
+                placeholder="Primeros 3 segundos / Hook..."
+                wrapperClassName="w-full bg-white/[0.04] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 focus-within:border-white/20 transition-colors"
+                style={{ fontSize: 12, color: "var(--txt)" }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--txt3)", marginBottom: 4 }}>
+                Cuerpo (Desarrollo del mensaje)
+              </label>
+              <SmoothTextarea
+                rows={3}
+                unstyled
+                disabled={!isAdmin}
+                value={copyCuerpo}
+                onChange={(e) => setCopyCuerpo(e.target.value)}
+                placeholder="Desarrollo principal del copy o guión..."
+                wrapperClassName="w-full bg-white/[0.04] border border-white/[0.08] rounded-[10px] p-2 focus-within:border-white/20 transition-colors"
+                style={{ fontSize: 12, color: "var(--txt)", lineHeight: 1.5 }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", color: "var(--txt3)", marginBottom: 4 }}>
+                CTA (Llamado a la acción)
+              </label>
+              <SmoothInput
+                type="text"
+                unstyled
+                disabled={!isAdmin}
+                value={copyCta}
+                onChange={(e) => setCopyCta(e.target.value)}
+                placeholder="Llamado a la acción..."
+                wrapperClassName="w-full bg-white/[0.04] border border-white/[0.08] rounded-[10px] px-2.5 py-1.5 focus-within:border-white/20 transition-colors"
+                style={{ fontSize: 12, color: "var(--txt)" }}
+              />
+            </div>
+          </div>
         </div>
 
         {error && <p style={{ color:"#ff453a", fontSize:12, marginTop:12 }}>{error}</p>}

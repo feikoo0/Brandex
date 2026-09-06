@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuthStore } from "@/lib/store";
@@ -87,28 +88,16 @@ const AVAILABLE_MODELS: ModelOption[] = [
   },
 ];
 
-const TOKEN_LIMIT_OPTIONS = [500, 1000, 1500, 2000];
-
 const DEFAULT_SUGGESTIONS = [
   {
-    title: "Proponer Proyecto con Tareas",
+    title: "Crear proyecto",
     prompt:
-      "Arma una propuesta de proyecto para Nike llamada 'Campaña Primavera' con fecha de entrega el 30 de agosto y 3 entregables: Guión de Reels, Grabación y Edición.",
+      "Quiero crear un nuevo proyecto. Ayúdame a estructurar la propuesta con sus entregables, fechas y presupuesto.",
   },
   {
-    title: "Crear Plantilla de Proyecto",
+    title: "Crear tarea",
     prompt:
-      "Crea una plantilla para Rediseño Web Ecommerce con 4 fases de entregables y tiempos estimados.",
-  },
-  {
-    title: "Registrar Cliente",
-    prompt:
-      "Registra un nuevo cliente llamado 'Tesla' en la industria de Automotriz & Energía con presupuesto de $45,000.",
-  },
-  {
-    title: "Consultar Estado General",
-    prompt:
-      "¿Cuáles son todos los proyectos y tareas que tenemos registrados actualmente en Taski?",
+      "Quiero crear una nueva tarea. Ayúdame a definirla con su formato, fecha de entrega y colaborador asignado.",
   },
 ];
 
@@ -116,15 +105,13 @@ export function InicioDashboard() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
-  const tokenLimitRef = useRef<HTMLDivElement>(null);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [confirmingProposalId, setConfirmingProposalId] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
-  const [isTokenDropdownOpen, setIsTokenDropdownOpen] = useState(false);
-  const [tokenLimit, setTokenLimit] = useState<number>(1000);
+  const [tokenLimit] = useState<number>(1000);
   const [selectedModel, setSelectedModel] = useState<ModelOption>(AVAILABLE_MODELS[0]);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -147,9 +134,6 @@ export function InicioDashboard() {
       } else {
         setMessages([]);
       }
-
-      const savedTokenLimit = localStorage.getItem("taski_token_limit");
-      if (savedTokenLimit) setTokenLimit(Number(savedTokenLimit));
 
       const savedModelId = localStorage.getItem("taski_selected_model");
       const found = AVAILABLE_MODELS.find((m) => m.id === savedModelId);
@@ -184,20 +168,14 @@ export function InicioDashboard() {
       ) {
         setIsModelDropdownOpen(false);
       }
-      if (
-        tokenLimitRef.current &&
-        !tokenLimitRef.current.contains(e.target as Node)
-      ) {
-        setIsTokenDropdownOpen(false);
-      }
     };
-    if (isModelDropdownOpen || isTokenDropdownOpen) {
+    if (isModelDropdownOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isModelDropdownOpen, isTokenDropdownOpen]);
+  }, [isModelDropdownOpen]);
 
   // Handle message sending (Sliding window: sends only last 6 messages)
   const handleSendMessage = async (textToSend?: string) => {
@@ -326,15 +304,6 @@ export function InicioDashboard() {
     setIsModelDropdownOpen(false);
     if (typeof window !== "undefined") {
       localStorage.setItem("taski_selected_model", modelOpt.id);
-    }
-  };
-
-  const handleSelectTokenLimit = (limit: number) => {
-    playSound("click");
-    setTokenLimit(limit);
-    setIsTokenDropdownOpen(false);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("taski_token_limit", String(limit));
     }
   };
 
@@ -614,71 +583,192 @@ export function InicioDashboard() {
     });
   };
 
-  return (
-    <div className="w-full max-w-3xl h-full flex flex-col justify-between mx-auto select-none py-2 gap-4">
-      {/* ── Top Bar: Active Chat Controls (Nuevo Chat & Stats) ── */}
-      {messages.length > 0 && (
-        <div className="flex items-center justify-between px-1 shrink-0">
-          <div className="text-[11px] text-[#ffffff40]">
-            {lastUsage && <span>Último uso: {lastUsage.totalTokens} tokens</span>}
-          </div>
+  const renderChatBox = () => (
+    <div
+      id="chat-box"
+      className="w-full bg-[#1e1e1e] border border-white/10 focus-within:border-white/20 rounded-[24px] p-3.5 flex flex-col gap-3 shadow-2xl transition-all"
+    >
+      {/* Editor Input Area */}
+      <div className="chat-editor-content w-full">
+        <textarea
+          ref={textareaRef}
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          rows={2}
+          placeholder="Pregunta lo que quieras o pide un proyecto/plantilla…"
+          disabled={isLoading}
+          className="w-full min-h-[44px] bg-transparent text-[14px] text-[#ffffffd6] placeholder:text-[#ffffff40] resize-none focus:outline-none custom-scrollbar px-1 leading-relaxed"
+        />
+      </div>
+
+      {/* Action Bar (Left: Model Selection Pill without border & Right: Send Button) */}
+      <div className="chat-editor-action flex items-center justify-between pt-1">
+        {/* Left Area: Model Selection Pill without border */}
+        <div className="left-area relative flex items-center" ref={modelDropdownRef}>
+          {/* Popover Dropdown for Model Selection */}
+          {isModelDropdownOpen && (
+            <div className="absolute left-0 bottom-full mb-2 w-72 bg-[#181818] border border-white/10 rounded-2xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
+              <div className="px-3 py-1.5 border-b border-white/5 text-[12px] text-[#ffffff6b]">
+                Modos de Taski
+              </div>
+
+              {AVAILABLE_MODELS.map((item) => {
+                const isSelected = selectedModel.id === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSelectModel(item)}
+                    className={`w-full flex flex-col items-start text-left px-3 py-2 rounded-xl transition-all ${
+                      isSelected
+                        ? "bg-white/10 border border-white/15 text-white"
+                        : "hover:bg-white/5 text-white/70 hover:text-white border border-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full mb-0.5">
+                      <span className="text-[14px] font-medium text-[#ffffffd6]">
+                        {item.name}
+                      </span>
+                      {isSelected && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      )}
+                    </div>
+                    <p className="text-[12px] text-[#ffffff6b] leading-normal">
+                      {item.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Model Pill Trigger Button without border */}
           <button
-            onClick={handleNewChat}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#ffffff6b] hover:text-[#ffffffd6] bg-white/[0.03] hover:bg-white/5 border border-white/10 rounded-lg transition-all active:scale-95 cursor-pointer"
-            title="Iniciar un nuevo chat limpio"
+            type="button"
+            onClick={() => setIsModelDropdownOpen((prev) => !prev)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-[12px] text-[#ffffffd6] hover:text-white transition-all active:scale-95 cursor-pointer"
+            title="Cambiar modo de Taski"
+          >
+            <span className="font-medium text-[#ffffffd6]">
+              {selectedModel.name}
+            </span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="11"
+              height="11"
+              viewBox="0 0 1024 1024"
+              fill="currentColor"
+              className={`opacity-60 transition-transform duration-200 ${
+                isModelDropdownOpen ? "rotate-180" : ""
+              }`}
+            >
+              <path d="M482.95936 717.33248a36.864 36.864 0 0 0 52.0192-0.08192l285.696-285.696a36.864 36.864 0 1 0-52.10112-52.10112l-259.72736 259.6864-261.69344-259.80928a36.864 36.864 0 1 0-51.93728 52.34688l287.744 285.65504z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Right Area: Send Button */}
+        <div className="right-area flex items-center">
+          <button
+            onClick={() => handleSendMessage()}
+            disabled={!inputText.trim() || isLoading}
+            className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+              !inputText.trim() || isLoading
+                ? "bg-white/10 text-white/20 cursor-not-allowed"
+                : "bg-white text-black hover:bg-white/90 shadow-md active:scale-95 cursor-pointer"
+            }`}
+            title="Enviar mensaje"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="opacity-70"
+              width="15"
+              height="15"
+              viewBox="0 0 1024 1024"
+              fill="currentColor"
             >
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <path d="M705.536 433.664a38.4 38.4 0 1 1-54.272 54.272L550.4 387.114667V729.6a38.4 38.4 0 0 1-76.8 0V387.114667l-100.864 100.821333a38.4 38.4 0 1 1-54.272-54.272l166.4-166.4a38.4 38.4 0 0 1 54.272 0l166.4 166.4z" />
             </svg>
-            <span>Nuevo chat</span>
           </button>
         </div>
-      )}
+      </div>
+    </div>
+  );
 
-      {/* ── Chat Messages / Options Stream ── */}
-      <div className="flex-1 overflow-y-auto px-1 space-y-4 custom-scrollbar flex flex-col">
-        {messages.length === 0 ? (
-          <div className="my-auto flex flex-col items-center justify-center text-center py-4">
-            <h3 className="text-2xl md:text-3xl font-medium tracking-tight text-white">
+  return (
+    <div className="w-full max-w-3xl h-full flex flex-col justify-between mx-auto select-none py-2 gap-4">
+      {messages.length === 0 ? (
+        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col justify-center px-1">
+          <div className="my-auto flex flex-col items-center justify-center text-center w-full py-4">
+            {/* Logo de Brandex */}
+            <div className="mb-4 flex items-center justify-center select-none">
+              <Image
+                src="/brandex-logo.svg"
+                alt="Brandex"
+                width={140}
+                height={32}
+                priority
+                className="object-contain h-7 md:h-8 w-auto opacity-95 hover:opacity-100 transition-opacity"
+              />
+            </div>
+
+            <h3 className="text-2xl md:text-3xl font-medium tracking-tight bg-gradient-to-r from-white via-white/90 to-cyan-400 bg-clip-text text-transparent select-none inline-block text-center">
               ¿En qué puedo ayudarte hoy?
             </h3>
-            <p className="text-[12px] md:text-[14px] text-[#ffffff6b] max-w-md mt-2 mb-8 leading-relaxed">
+            <p className="text-[12px] md:text-[14px] text-[#ffffff6b] max-w-md mt-2 mb-6 leading-relaxed text-center">
               Crea proyectos, organiza tareas, registra clientes o consulta el
               estado general de tu equipo.
             </p>
 
-            {/* Options Cards for Creation */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
+            {/* Chat Box Editor directamente debajo del texto */}
+            {renderChatBox()}
+
+            {/* Opciones rápidas debajo del Chat */}
+            <div className="flex flex-wrap items-center justify-center gap-2.5 mt-4 w-full">
               {DEFAULT_SUGGESTIONS.map((item, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSendMessage(item.prompt)}
-                  className="flex flex-col items-start text-left p-4 rounded-2xl bg-[#181818] hover:bg-[#1f1f1f] border border-white/10 hover:border-white/20 transition-all group active:scale-[0.99] shadow-sm"
+                  className="px-4 py-2 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-[13px] font-medium text-[#ffffffd6] hover:text-white transition-all active:scale-95 shadow-sm cursor-pointer"
                 >
-                  <span className="text-[14px] font-medium text-[#ffffffd6] group-hover:text-white transition-colors mb-1">
-                    {item.title}
-                  </span>
-                  <p className="text-[12px] text-[#ffffff6b] line-clamp-2 leading-relaxed">
-                    {item.prompt}
-                  </p>
+                  {item.title}
                 </button>
               ))}
             </div>
           </div>
-        ) : (
-          <>
+        </div>
+      ) : (
+        <>
+          {/* ── Top Bar: Active Chat Controls (Nuevo Chat & Stats) ── */}
+          <div className="flex items-center justify-between px-1 shrink-0">
+            <div className="text-[11px] text-[#ffffff40]">
+              {lastUsage && <span>Último uso: {lastUsage.totalTokens} tokens</span>}
+            </div>
+            <button
+              onClick={handleNewChat}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-[12px] text-[#ffffff6b] hover:text-[#ffffffd6] bg-white/[0.03] hover:bg-white/5 border border-white/10 rounded-lg transition-all active:scale-95 cursor-pointer"
+              title="Iniciar un nuevo chat limpio"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="opacity-70"
+              >
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              <span>Nuevo chat</span>
+            </button>
+          </div>
+
+          {/* ── Chat Messages Stream ── */}
+          <div className="flex-1 overflow-y-auto px-1 space-y-4 custom-scrollbar flex flex-col">
             {messages.map((msg) =>
               msg.role === "user" ? (
                 <div
@@ -1112,184 +1202,15 @@ export function InicioDashboard() {
                 </div>
               </div>
             )}
-          </>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* ── Chat Box Editor ── */}
-      <div
-        id="chat-box"
-        className="w-full bg-[#1e1e1e] border border-white/10 focus-within:border-white/20 rounded-[24px] p-3.5 flex flex-col gap-3 shadow-2xl transition-all"
-      >
-        {/* Editor Input Area */}
-        <div className="chat-editor-content w-full">
-          <textarea
-            ref={textareaRef}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            rows={2}
-            placeholder="Pregunta lo que quieras o pide un proyecto/plantilla…"
-            disabled={isLoading}
-            className="w-full min-h-[44px] bg-transparent text-[14px] text-[#ffffffd6] placeholder:text-[#ffffff40] resize-none focus:outline-none custom-scrollbar px-1 leading-relaxed"
-          />
-        </div>
-
-        {/* Action Bar (Left Action + Right Model Pill & Upward Send Button) */}
-        <div className="chat-editor-action flex items-center justify-between pt-1">
-          {/* Left Action Area: Add button + Token Limit Selector */}
-          <div className="left-area relative flex items-center gap-2" ref={tokenLimitRef}>
-            <button
-              type="button"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white/50 hover:text-white/90 hover:bg-white/10 border border-white/10 transition-all active:scale-95"
-              title="Añadir opción o contexto"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 1024 1024"
-                fill="currentColor"
-              >
-                <path d="M512.08192 133.44768c19.41504 0 35.14368 15.72864 35.14368 35.18464v320.47104h320.34816a35.18464 35.18464 0 0 1 0 70.36928h-320.3072v320.47104c0 17.94048-13.43488 32.768-30.80192 34.89792l-4.38272 0.28672a35.18464 35.18464 0 0 1-35.2256-35.18464V559.5136H156.30336a35.18464 35.18464 0 0 1 0-70.36928h320.63488V168.63232c0-17.94048 13.39392-32.768 30.72-34.93888l4.46464-0.24576z" />
-              </svg>
-            </button>
-
-            {/* Token Limit Selector Button */}
-            <button
-              type="button"
-              onClick={() => setIsTokenDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1 text-[12px] text-[#ffffffd6] hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-all active:scale-95 cursor-pointer"
-              title="Ajustar límite de tokens por respuesta"
-            >
-              <span>{tokenLimit} tokens</span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="10"
-                height="10"
-                viewBox="0 0 1024 1024"
-                fill="currentColor"
-                className={`opacity-60 transition-transform duration-200 ${
-                  isTokenDropdownOpen ? "rotate-180" : ""
-                }`}
-              >
-                <path d="M482.95936 717.33248a36.864 36.864 0 0 0 52.0192-0.08192l285.696-285.696a36.864 36.864 0 1 0-52.10112-52.10112l-259.72736 259.6864-261.69344-259.80928a36.864 36.864 0 1 0-51.93728 52.34688l287.744 285.65504z" />
-              </svg>
-            </button>
-
-            {/* Token Limit Dropdown */}
-            {isTokenDropdownOpen && (
-              <div className="absolute left-10 bottom-full mb-3 w-48 bg-[#181818] border border-white/10 rounded-xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
-                <div className="px-2.5 py-1 text-[11px] text-[#ffffff6b] border-b border-white/5">
-                  Límite por respuesta
-                </div>
-                {TOKEN_LIMIT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt}
-                    onClick={() => handleSelectTokenLimit(opt)}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[12px] transition-all ${
-                      tokenLimit === opt
-                        ? "bg-white/10 text-white font-medium"
-                        : "text-white/70 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    <span>{opt} tokens</span>
-                    {tokenLimit === opt && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div ref={messagesEndRef} />
           </div>
 
-          {/* Right Area: Interactive Model selection pill + Circular Upward Send button */}
-          <div className="right-area relative flex items-center gap-2.5" ref={modelDropdownRef}>
-            {/* Popover Dropdown for Model Selection */}
-            {isModelDropdownOpen && (
-              <div className="absolute right-10 bottom-full mb-3 w-72 bg-[#181818] border border-white/10 rounded-2xl shadow-2xl p-1.5 z-50 flex flex-col gap-1 backdrop-blur-xl animate-in fade-in slide-in-from-bottom-2 duration-150">
-                <div className="px-3 py-1.5 border-b border-white/5 text-[12px] text-[#ffffff6b]">
-                  Modos de Taski
-                </div>
-
-                {AVAILABLE_MODELS.map((item) => {
-                  const isSelected = selectedModel.id === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleSelectModel(item)}
-                      className={`w-full flex flex-col items-start text-left px-3 py-2 rounded-xl transition-all ${
-                        isSelected
-                          ? "bg-white/10 border border-white/15 text-white"
-                          : "hover:bg-white/5 text-white/70 hover:text-white border border-transparent"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between w-full mb-0.5">
-                        <span className="text-[14px] font-medium text-[#ffffffd6]">
-                          {item.name}
-                        </span>
-                        {isSelected && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                        )}
-                      </div>
-                      <p className="text-[12px] text-[#ffffff6b] leading-normal">
-                        {item.description}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Model Pill Trigger Button */}
-            <button
-              type="button"
-              onClick={() => setIsModelDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-[12px] text-[#ffffffd6] hover:text-white transition-all active:scale-95 cursor-pointer"
-              title="Cambiar modo de Taski"
-            >
-              <span className="font-medium text-[#ffffffd6]">
-                {selectedModel.name}
-              </span>
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="11"
-                height="11"
-                viewBox="0 0 1024 1024"
-                fill="currentColor"
-                className={`opacity-60 transition-transform duration-200 ${
-                  isModelDropdownOpen ? "rotate-180" : ""
-                }`}
-              >
-                <path d="M482.95936 717.33248a36.864 36.864 0 0 0 52.0192-0.08192l285.696-285.696a36.864 36.864 0 1 0-52.10112-52.10112l-259.72736 259.6864-261.69344-259.80928a36.864 36.864 0 1 0-51.93728 52.34688l287.744 285.65504z" />
-              </svg>
-            </button>
-
-            {/* Send Button Container */}
-            <button
-              onClick={() => handleSendMessage()}
-              disabled={!inputText.trim() || isLoading}
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                !inputText.trim() || isLoading
-                  ? "bg-white/10 text-white/20 cursor-not-allowed"
-                  : "bg-white text-black hover:bg-white/90 shadow-md active:scale-95 cursor-pointer"
-              }`}
-              title="Enviar mensaje"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="15"
-                height="15"
-                viewBox="0 0 1024 1024"
-                fill="currentColor"
-              >
-                <path d="M705.536 433.664a38.4 38.4 0 1 1-54.272 54.272L550.4 387.114667V729.6a38.4 38.4 0 0 1-76.8 0V387.114667l-100.864 100.821333a38.4 38.4 0 1 1-54.272-54.272l166.4-166.4a38.4 38.4 0 0 1 54.272 0l166.4 166.4z" />
-              </svg>
-            </button>
+          {/* ── Chat Box at bottom of conversation ── */}
+          <div className="shrink-0">
+            {renderChatBox()}
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

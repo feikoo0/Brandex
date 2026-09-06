@@ -9,6 +9,7 @@ import { useClients } from "@/hooks/useClients";
 import { cn, parseEsfuerzoMins, avatarOf } from "@/lib/utils";
 import { DONE_STATES, PROJ_PRIO_OPTS, PROJ_STATUS_OPTS } from "@/lib/constants";
 import type { ModalEntry } from "@/lib/types";
+import { SmoothInput, SmoothTextarea } from "@/components/ui/SmoothInput";
 
 interface Props {
   projectId: string;
@@ -63,8 +64,9 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
     setError("");
     setSaving(true);
     try {
-      const workers = data?.trabajadores ?? [];
+      const workers = data?.miembros ?? [];
       const selectedWorkers = workers.filter((w) => asignadoIds.includes(w.id));
+      const numCosto = costo ? Number(costo) : 0;
       await createProject.mutateAsync({
         nombre: nombre.trim(),
         cliente_ids: clienteId ? [clienteId] : [],
@@ -72,7 +74,8 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
         prioridad,
         fechaInicio: fechaInicio || undefined,
         fechaFin: fechaFin || undefined,
-        costo: costo ? Number(costo) : undefined,
+        presupuesto: numCosto,
+        costo: numCosto,
         asignado_ids: asignadoIds,
         asignado: selectedWorkers.map((w) => w.nombre).join(", ") || undefined,
         descripcion: descripcion || undefined,
@@ -103,23 +106,27 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
             <div className="flex flex-col gap-5">
               <label className="flex flex-col gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Nombre *</span>
-                <input
+                <SmoothInput
                   autoFocus
+                  unstyled
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   placeholder="Ej: Campaña de lanzamiento..."
-                  className="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-2xl px-4 py-3 text-sm font-bold dark:text-white text-gray-900 outline-none focus:border-green-500/60"
+                  wrapperClassName="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-2xl px-4 py-3 focus-within:border-green-500/60 transition-colors"
+                  className="text-sm font-bold dark:text-white text-gray-900"
                 />
               </label>
 
               <label className="flex flex-col gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Descripción</span>
-                <textarea
+                <SmoothTextarea
+                  unstyled
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   rows={8}
                   placeholder="Contexto, objetivos, entregables clave..."
-                  className="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-2xl px-4 py-3 text-sm font-medium dark:text-white text-gray-900 outline-none focus:border-green-500/60 resize-none"
+                  wrapperClassName="w-full dark:bg-white/5 bg-black/5 border dark:border-white/10 border-black/10 rounded-2xl px-4 py-3 focus-within:border-green-500/60 transition-colors"
+                  className="text-sm font-medium dark:text-white text-gray-900 resize-none"
                 />
               </label>
             </div>
@@ -172,7 +179,7 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
               <div className="flex flex-col gap-2">
                 <span className="text-[10px] font-black uppercase tracking-widest dark:text-white/40 text-gray-500">Asignado (Miembros del equipo)</span>
                 <div className="flex flex-wrap gap-1.5">
-                  {(data?.trabajadores ?? []).map((w) => {
+                  {(data?.miembros ?? []).map((w) => {
                     const isSelected = asignadoIds.includes(w.id);
                     return (
                       <button
@@ -195,7 +202,7 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
                       </button>
                     );
                   })}
-                  {(data?.trabajadores ?? []).length === 0 && (
+                  {(data?.miembros ?? []).length === 0 && (
                     <span className="text-xs text-gray-500 dark:text-white/30">Sin miembros registrados</span>
                   )}
                 </div>
@@ -261,7 +268,7 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
 
   const wIds = new Set<string>();
   tasks.forEach(t => t.asignado_ids?.forEach(id => wIds.add(id)));
-  const workers = Array.from(wIds).map(id => data?.trabajadores.find(w => w.id === id)).filter(Boolean);
+  const workers = Array.from(wIds).map(id => data?.miembros.find(w => w.id === id)).filter(Boolean);
 
   return (
     <div className="w-full h-full flex flex-col dark:bg-[#0a0a0c] bg-white overflow-hidden relative">
@@ -382,7 +389,7 @@ export function ProjectModal({ projectId, isAdmin, onClose, openRelated }: Props
                         )}
                         <div className="flex -space-x-2">
                           {t.asignado_ids?.slice(0,3).map(aid => {
-                            const w = data?.trabajadores.find(x => x.id === aid);
+                            const w = data?.miembros.find(x => x.id === aid);
                             return w ? <div key={aid} className="w-6 h-6 rounded-full dark:bg-[#121216] bg-white border dark:border-white/10 border-black/10 flex items-center justify-center text-[8px] font-black">{avatarOf(w.nombre)}</div> : null;
                           })}
                         </div>

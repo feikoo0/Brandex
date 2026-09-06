@@ -55,17 +55,32 @@ To maintain complete visual harmony across all views, components, and future imp
 * Dividers: `border-white/5` or `border-white/10` (`h-px bg-white/10`).
 * Shadows: Subtle and soft (`shadow-sm` or `shadow-2xl shadow-black/50` for floating modals/cards), avoiding neon glowing drop-shadows.
 
-### 4. Typography & Text Contrast Palette
-* **Primary / Header Text:** MUST use `text-[#ffffffd6]` (`rgba(255, 255, 255, 0.84)`), NEVER pure `#ffffff`.
-* **Muted Subtext & Secondary Labels:** `text-[#ffffff6b]` (`rgba(255, 255, 255, 0.42)`) or `text-white/40`.
-* **Action Accent Color:** `var(--blue)` (`#3a7bd5`) or solid `#1c1c24` with fine stroke.
-* **Semantic Status Pills:**
-  - Urgente = `bg-rose-500/20 text-rose-400 border-rose-500/40`
-  - Alta = `bg-orange-500/20 text-orange-400 border-orange-500/40`
-  - Media = `bg-yellow-500/20 text-yellow-400 border-yellow-500/40`
-  - Baja / Completado = `bg-emerald-500/20 text-emerald-400 border-emerald-500/40`
+### 4. Sistema Tipográfico y Paleta Monocromática Oficial
+* **Identidad Monocromática:** Taski se construye sobre una paleta monocromática neutra para todos los elementos de control, navegación, fondo y estados temporales (fondos `#121212`, `#181818`, `#222222`, con contrastes en blanco neutro `text-white`, `bg-white/10`, `border-white/10`).
+* **Color Funcional Exclusivo:** El color está reservado exclusivamente para dos propósitos funcionales:
+  1. Identidad dinámica de marcas y clientes (`client.color`).
+  2. Etiquetas de prioridad y urgencia (`Urgente`, `Alta`, `Media`, `Baja/Completado`).
+* **Escala Tipográfica Oficial:**
+  - Base mínima del sistema: `12px` (`text-xs`) para microetiquetas, fechas secundarias y metadatos.
+  - Progresión estándar en intervalos pares de 2px:
+    - `12px` (`text-xs`) — Metadatos, micro-etiquetas y badges.
+    - `14px` (`text-sm`) — Cuerpo de texto, botones, inputs y etiquetas de columna.
+    - `16px` (`text-base`) — Elementos destacados, tabs principales y subtítulos.
+    - `18px` (`text-lg`) — Encabezados de tarjetas y módulos.
+    - `20px` (`text-xl`) — Títulos de sección.
+    - `24px` (`text-2xl`) — Títulos de pantallas principales.
+* **Jerarquía de Contraste de Texto:**
+  - Texto principal / Encabezados: `text-[#ffffffd6]` (`rgba(255, 255, 255, 0.84)`) o `text-white` para números destacados.
+  - Texto secundario / Muted: `text-[#ffffff6b]` (`rgba(255, 255, 255, 0.42)`) o `text-white/40`.
 
-### 5. Project Card Architecture
+### 5. Arquitectura de Controles y Calendario Minimalista
+* **Formato Píldora (`rounded-full`):** Los selectores segmentados de vistas/zoom (3 Días / Semana / Mes), botones de filtro y acciones flotantes ("Ir a hoy", "Filtrar") se diseñan en formato píldora redondeada completa, tanto en su perímetro exterior como en sus botones activos interiores.
+* **Tipografía Directa sobre el Canvas ("Tal cual en el fondo"):** Selectores temporales (mes, año) y cabeceras de columnas se disponen de forma fluida directamente sobre el fondo del canvas, prescindiendo de cajas o cápsulas contenedoras innecesarias.
+* **Cuadrículas de Calendario y Días:**
+  - Las casillas de días se estructuran como superficies sólidas redondeadas (`rounded-2xl`, `#191919` / `#151515`) con espaciado estrecho (`gap-1.5`) y sin trazo perimetral.
+  - El número del día se posiciona en la esquina superior derecha en blanco limpio, integrado naturalmente sobre la superficie de la tarjeta.
+
+### 6. Project Card Architecture
 * **Style 1 (Portada):** Top banner in solid project color (`projColor`) containing white stroke outline task format shapes (`ProjectCoverFormats`), bottom dark body `#1a1a1a` with title in `text-[#ffffffd6]`, client name + date in `text-[#ffffff6b]`, and bottom segmented progress bar (`Tarea X de Y` + flex segments).
 * **Style 2 (Color Completo):** Full vibrant project color background, top meta `Cliente • Entrega X`, white stroke format icon box, title + subtitle, and bottom segmented progress bar.
 

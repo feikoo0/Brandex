@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   collection,
   doc,
@@ -22,8 +22,9 @@ import { db } from "@/lib/firebase";
 import { recordUndoAction } from "@/lib/undoManager";
 import { useAuthStore } from "@/lib/store";
 import type { SessionDoc, SessionOrigin } from "@/lib/types";
-
 import { getWorkspaceScopedCol } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
+import { shouldPromoteTaskOnSessionStart, syncProjectStatusInFirestore } from "@/lib/projectStateEngine";
 
 const HEARTBEAT_INTERVAL_MS = 2 * 60 * 1000; // 2 minutos
 const TIMEOUT_ORPHAN_MS = 15 * 60 * 1000;    // 15 minutos
@@ -96,7 +97,7 @@ async function autoPruneOldTrashSessions(sessions: SessionDoc[], colName: string
 /**
  * Hook para obtener sesiones de una tarea específica con límite y paginación ("cargar más")
  */
-export function useTaskSessions(taskId: string | null, initialLimit: number = 10) {
+export function useTaskSessions(taskId: string | number | null, initialLimit: number = 20) {
   const workspaceId = useAuthStore((s) => s.workspaceId) || "brandex-master";
   const colName = getSessionsColName(workspaceId);
 
@@ -105,26 +106,40 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
   const [hasMore, setHasMore] = useState<boolean>(false);
   const [lastDocSnap, setLastDocSnap] = useState<any>(null);
 
+  const candidateIds = useMemo(() => {
+    if (!taskId) return [];
+    const rawId = String(taskId).trim();
+    const cleanId = rawId.replace(/^kt-/, "");
+    return Array.from(new Set([rawId, cleanId, `kt-${cleanId}`].filter(Boolean)));
+  }, [taskId]);
+
   const fetchSessions = useCallback(async () => {
-    if (!taskId) {
+    if (!candidateIds.length) {
       setSessions([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
     try {
-      const q = query(
-        collection(db, colName),
-        where("task_id", "==", String(taskId)),
-        orderBy("startTime", "desc"),
-        fsLimit(initialLimit)
-      );
+      const q = candidateIds.length > 1
+        ? query(
+            collection(db, colName),
+            where("task_id", "in", candidateIds.slice(0, 10))
+          )
+        : query(
+            collection(db, colName),
+            where("task_id", "==", candidateIds[0]),
+            orderBy("startTime", "desc"),
+            fsLimit(initialLimit)
+          );
       const snap = await getDocs(q);
       const list: SessionDoc[] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SessionDoc));
       await checkAndAutoCloseOrphans(list, colName);
       await autoPruneOldTrashSessions(list, colName);
 
-      const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
+      const activeList = list
+        .filter((s) => !s.isDeleted && s.status !== "deleted")
+        .sort((a, b) => getMillis(b.startTime) - getMillis(a.startTime));
       setSessions(activeList);
       setLastDocSnap(snap.docs[snap.docs.length - 1] || null);
       setHasMore(snap.docs.length >= initialLimit);
@@ -133,14 +148,14 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     } finally {
       setIsLoading(false);
     }
-  }, [taskId, initialLimit, colName]);
+  }, [candidateIds, initialLimit, colName]);
 
   const loadMore = async () => {
-    if (!taskId || !lastDocSnap || !hasMore) return;
+    if (!candidateIds.length || !lastDocSnap || !hasMore) return;
     try {
       const q = query(
         collection(db, colName),
-        where("task_id", "==", String(taskId)),
+        where("task_id", "==", candidateIds[0]),
         orderBy("startTime", "desc"),
         startAfter(lastDocSnap),
         fsLimit(initialLimit)
@@ -160,18 +175,23 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
   };
 
   useEffect(() => {
-    if (!taskId) {
+    if (!candidateIds.length) {
       setSessions([]);
       setIsLoading(false);
       return;
     }
     setIsLoading(true);
-    const q = query(
-      collection(db, colName),
-      where("task_id", "==", String(taskId)),
-      orderBy("startTime", "desc"),
-      fsLimit(initialLimit)
-    );
+    const q = candidateIds.length > 1
+      ? query(
+          collection(db, colName),
+          where("task_id", "in", candidateIds.slice(0, 10))
+        )
+      : query(
+          collection(db, colName),
+          where("task_id", "==", candidateIds[0]),
+          orderBy("startTime", "desc"),
+          fsLimit(initialLimit)
+        );
 
     const unsubscribe = onSnapshot(
       q,
@@ -180,7 +200,9 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
         await checkAndAutoCloseOrphans(list, colName);
         await autoPruneOldTrashSessions(list, colName);
 
-        const activeList = list.filter((s) => !s.isDeleted && s.status !== "deleted");
+        const activeList = list
+          .filter((s) => !s.isDeleted && s.status !== "deleted")
+          .sort((a, b) => getMillis(b.startTime) - getMillis(a.startTime));
         setSessions(activeList);
         setLastDocSnap(snap.docs[snap.docs.length - 1] || null);
         setHasMore(snap.docs.length >= initialLimit);
@@ -193,7 +215,7 @@ export function useTaskSessions(taskId: string | null, initialLimit: number = 10
     );
 
     return () => unsubscribe();
-  }, [taskId, initialLimit, colName]);
+  }, [candidateIds, initialLimit, colName]);
 
   return { sessions, isLoading, hasMore, loadMore, refetch: fetchSessions };
 }
@@ -271,12 +293,55 @@ export function useRecentSessions(limitCount: number = 30) {
  * Hook maestro para operaciones de inicio, fin, heartbeat y sesión manual
  */
 export function useSessions() {
+  const qc = useQueryClient();
   const workspaceId = useAuthStore((s) => s.workspaceId) || "brandex-master";
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
   const colName = getSessionsColName(workspaceId);
+  const tasksCol = getWorkspaceScopedCol("tasks", workspaceId, isMaster);
 
   const [activeSession, setActiveSession] = useState<SessionDoc | null>(null);
 
-  // Buscar sesión activa en curso al montar
+  // Escuchar sesión activa en curso en tiempo real con onSnapshot
+  useEffect(() => {
+    if (!colName || colName === "sessions_unauthorized") {
+      setActiveSession(null);
+      return;
+    }
+
+    const q = query(
+      collection(db, colName),
+      where("status", "==", "en_curso"),
+      orderBy("startTime", "desc"),
+      fsLimit(1)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      async (snap) => {
+        if (!snap.empty) {
+          const s = { id: snap.docs[0].id, ...snap.docs[0].data() } as SessionDoc;
+          const nowMs = Date.now();
+          const lastHbMs = getMillis(s.lastHeartbeat || s.startTime);
+
+          if (nowMs - lastHbMs > TIMEOUT_ORPHAN_MS) {
+            // Auto-cerrar sesión fantasma expirada
+            await checkAndAutoCloseOrphans([s], colName);
+            setActiveSession(null);
+          } else {
+            setActiveSession(s);
+          }
+        } else {
+          setActiveSession(null);
+        }
+      },
+      (err) => {
+        console.error("Error suscribiendo a sesión activa:", err);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [colName]);
+
   const checkActiveSession = useCallback(async () => {
     try {
       const q = query(
@@ -290,9 +355,7 @@ export function useSessions() {
         const s = { id: snap.docs[0].id, ...snap.docs[0].data() } as SessionDoc;
         const nowMs = Date.now();
         const lastHbMs = getMillis(s.lastHeartbeat || s.startTime);
-        
         if (nowMs - lastHbMs > TIMEOUT_ORPHAN_MS) {
-          // Auto-cerrar sesión fantasma expirada
           await checkAndAutoCloseOrphans([s], colName);
           setActiveSession(null);
         } else {
@@ -306,10 +369,6 @@ export function useSessions() {
     }
   }, [colName]);
 
-  useEffect(() => {
-    checkActiveSession();
-  }, [checkActiveSession]);
-
   // Intervalo de Heartbeat automático mientras exista una sesión activa
   useEffect(() => {
     if (!activeSession) return;
@@ -321,7 +380,7 @@ export function useSessions() {
           lastHeartbeat: nowTs,
           updatedAt: nowTs,
         });
-        setActiveSession((prev) => (prev ? { ...prev, lastHeartbeat: nowTs } : null));
+        setActiveSession((prev: SessionDoc | null) => (prev ? { ...prev, lastHeartbeat: nowTs } : null));
       } catch (err) {
         console.error("Error enviando heartbeat de sesión:", err);
       }
@@ -364,6 +423,7 @@ export function useSessions() {
       startTime: nowTs,
       endTime: null,
       lastHeartbeat: nowTs,
+      durationSeconds: 0,
       durationMins: 0,
       summary,
       created: nowTs,
@@ -377,6 +437,47 @@ export function useSessions() {
     await setDoc(docRef, sessionData);
     setActiveSession(sessionData);
 
+    // 1. Auto-promover tarea a "En proceso" si no está completada
+    if (taskId) {
+      try {
+        const taskRef = doc(db, tasksCol, String(taskId));
+        const taskSnap = await getDoc(taskRef);
+        if (taskSnap.exists()) {
+          const tData = taskSnap.data();
+          const currentStatus = tData.estado || tData.status || "Pendiente";
+          if (shouldPromoteTaskOnSessionStart(currentStatus)) {
+            await updateDoc(taskRef, {
+              estado: "En proceso",
+              status: "En proceso",
+              updatedAt: serverTimestamp(),
+              updated_at: serverTimestamp(),
+            });
+          }
+        }
+      } catch (tErr) {
+        console.warn("[startSession] Error auto-updating task to 'En proceso':", tErr);
+      }
+    }
+
+    // 2. Auto-promover proyecto padre a "En Proceso"
+    if (projectId) {
+      try {
+        await syncProjectStatusInFirestore({
+          projectId: String(projectId),
+          newStatus: "En Proceso",
+          workspaceId,
+          isMaster,
+        });
+      } catch (pErr) {
+        console.warn("[startSession] Error auto-updating project to 'En Proceso':", pErr);
+      }
+    }
+
+    // Invalidar caché reactiva para actualización visual instantánea
+    try {
+      qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
+    } catch (qErr) {}
+
     recordUndoAction({
       entityType: "session",
       entityId: newId,
@@ -388,11 +489,13 @@ export function useSessions() {
         const ref = doc(db, colName, newId);
         await deleteDoc(ref);
         setActiveSession(null);
+        qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
       },
       executeRedo: async () => {
         const ref = doc(db, colName, newId);
         await setDoc(ref, sessionData);
         setActiveSession(sessionData);
+        qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
       },
     });
 
@@ -401,7 +504,23 @@ export function useSessions() {
 
   // Finalizar sesión en curso
   const endSession = async (sessionId?: string, summaryNote?: string) => {
-    const targetId = sessionId || activeSession?.id;
+    let targetId = sessionId || activeSession?.id;
+    if (!targetId) {
+      try {
+        const q = query(
+          collection(db, colName),
+          where("status", "==", "en_curso"),
+          orderBy("startTime", "desc"),
+          fsLimit(1)
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          targetId = snap.docs[0].id;
+        }
+      } catch (err) {
+        console.warn("[endSession] Error finding running session:", err);
+      }
+    }
     if (!targetId) return;
 
     const docRef = doc(db, colName, targetId);
@@ -412,12 +531,14 @@ export function useSessions() {
     const nowTs = Timestamp.now();
     const startMs = getMillis(data.startTime);
     const endMs = getMillis(nowTs);
-    const durationMins = Math.max(1, Math.round((endMs - startMs) / 60000));
+    const durationSeconds = Math.max(0, Math.round((endMs - startMs) / 1000));
+    const durationMins = durationSeconds < 30 ? 0 : Math.round(durationSeconds / 60);
 
     const updateData: any = {
       status: "completada",
       endTime: nowTs,
       lastHeartbeat: nowTs,
+      durationSeconds,
       durationMins,
       updatedAt: nowTs,
       updated_at: nowTs,
@@ -465,6 +586,44 @@ export function useSessions() {
     });
   };
 
+  // Finalizar sesión en curso asociada a una tarea específica
+  const endSessionForTask = async (taskId: string | number) => {
+    if (!taskId) return;
+    const taskIdStr = String(taskId);
+    if (activeSession) {
+      const sTaskId = String(activeSession.task_id || (activeSession as any).taskId || "");
+      if (
+        sTaskId === taskIdStr ||
+        sTaskId.endsWith(`-${taskIdStr}`) ||
+        taskIdStr.endsWith(`-${sTaskId}`)
+      ) {
+        await endSession(activeSession.id);
+        return;
+      }
+    }
+    try {
+      const q = query(
+        collection(db, colName),
+        where("status", "==", "en_curso"),
+        fsLimit(5)
+      );
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        const sData = d.data();
+        const sTaskId = String(sData.task_id || sData.taskId || "");
+        if (
+          sTaskId === taskIdStr ||
+          sTaskId.endsWith(`-${taskIdStr}`) ||
+          taskIdStr.endsWith(`-${sTaskId}`)
+        ) {
+          await endSession(d.id);
+        }
+      }
+    } catch (e) {
+      console.warn("[endSessionForTask] Error ending task session:", e);
+    }
+  };
+
   // Registrar sesión manual retrospectiva
   const addManualSession = async ({
     taskId,
@@ -486,7 +645,8 @@ export function useSessions() {
     const newId = "sess-man-" + Date.now();
     const startTs = Timestamp.fromDate(startDate);
     const endTs = Timestamp.fromDate(endDate);
-    const durationMins = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 60000));
+    const durationSeconds = Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 1000));
+    const durationMins = durationSeconds < 30 ? 0 : Math.round(durationSeconds / 60);
     const nowTs = Timestamp.now();
 
     const sessionData: SessionDoc = {
@@ -500,6 +660,7 @@ export function useSessions() {
       startTime: startTs,
       endTime: endTs,
       lastHeartbeat: endTs,
+      durationSeconds,
       durationMins,
       summary,
       created: nowTs,
@@ -607,6 +768,125 @@ export function useSessions() {
     }
   };
 
+  // Actualizar sesión existente (duración, horarios, resumen) con soporte para Undo/Redo
+  const updateSession = async (
+    sessionId: string,
+    updates: {
+      durationMins?: number;
+      durationSeconds?: number;
+      startTime?: Date | Timestamp | null;
+      endTime?: Date | Timestamp | null;
+      summary?: string;
+      workerId?: string | null;
+      origin?: SessionOrigin;
+    }
+  ) => {
+    if (!sessionId) return;
+    const docRef = doc(db, colName, sessionId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return;
+
+    const prevData = snap.data() as SessionDoc;
+    const nowTs = Timestamp.now();
+
+    // 1. Resolver startTime
+    let newStartTs = prevData.startTime;
+    if (updates.startTime) {
+      newStartTs = updates.startTime instanceof Timestamp 
+        ? updates.startTime 
+        : Timestamp.fromDate(new Date(updates.startTime));
+    }
+
+    // 2. Resolver duración y endTime de forma consistente
+    let finalDurationMins = updates.durationMins !== undefined ? updates.durationMins : prevData.durationMins;
+    let finalDurationSeconds = updates.durationSeconds !== undefined 
+      ? updates.durationSeconds 
+      : (updates.durationMins !== undefined ? updates.durationMins * 60 : (prevData.durationSeconds || finalDurationMins * 60));
+
+    let newEndTs = prevData.endTime;
+    if (updates.endTime) {
+      newEndTs = updates.endTime instanceof Timestamp 
+        ? updates.endTime 
+        : Timestamp.fromDate(new Date(updates.endTime));
+      // Si se especificó endTime explícito pero no durationMins, recalcular duración
+      if (updates.durationMins === undefined) {
+        const sMs = getMillis(newStartTs);
+        const eMs = getMillis(newEndTs);
+        finalDurationSeconds = Math.max(0, Math.round((eMs - sMs) / 1000));
+        finalDurationMins = Math.round(finalDurationSeconds / 60);
+      }
+    } else if (updates.durationMins !== undefined || updates.startTime !== undefined) {
+      // Recalcular endTime a partir de startTime + finalDurationSeconds
+      const startMs = getMillis(newStartTs);
+      const endMs = startMs + finalDurationSeconds * 1000;
+      newEndTs = Timestamp.fromMillis(endMs);
+    }
+
+    const updatePayload: any = {
+      durationMins: finalDurationMins,
+      durationSeconds: finalDurationSeconds,
+      startTime: newStartTs,
+      endTime: newEndTs,
+      lastHeartbeat: newEndTs || nowTs,
+      updatedAt: nowTs,
+      updated_at: nowTs,
+    };
+
+    if (updates.summary !== undefined) {
+      updatePayload.summary = updates.summary;
+    }
+    if (updates.workerId !== undefined) {
+      updatePayload.worker_id = updates.workerId;
+    }
+    if (updates.origin !== undefined) {
+      updatePayload.origin = updates.origin;
+    }
+
+    await updateDoc(docRef, updatePayload);
+
+    try {
+      qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
+    } catch (qErr) {}
+
+    recordUndoAction({
+      entityType: "session",
+      entityId: sessionId,
+      actionType: "update",
+      description: `Ajustar duración de sesión a ${finalDurationMins}m`,
+      undoDescription: `Duración de sesión restaurada a ${prevData.durationMins}m`,
+      redoDescription: `Duración de sesión ajustada a ${finalDurationMins}m`,
+      executeUndo: async () => {
+        const ref = doc(db, colName, sessionId);
+        await updateDoc(ref, {
+          durationMins: prevData.durationMins,
+          durationSeconds: prevData.durationSeconds || prevData.durationMins * 60,
+          startTime: prevData.startTime,
+          endTime: prevData.endTime,
+          lastHeartbeat: prevData.lastHeartbeat || prevData.endTime,
+          summary: prevData.summary || "",
+          updatedAt: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+        try {
+          qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
+        } catch (e) {}
+      },
+      executeRedo: async () => {
+        const ref = doc(db, colName, sessionId);
+        await updateDoc(ref, {
+          ...updatePayload,
+          updatedAt: serverTimestamp(),
+          updated_at: serverTimestamp(),
+        });
+        try {
+          qc.invalidateQueries({ queryKey: ["taski-firestore-data"] });
+        } catch (e) {}
+      },
+    });
+
+    return { ...prevData, ...updatePayload, id: sessionId };
+  };
+
   // Eliminar sesiones definitivamente
   const permanentDeleteSessions = async (sessionIds: string[]) => {
     if (!sessionIds || sessionIds.length === 0) return;
@@ -625,6 +905,8 @@ export function useSessions() {
     activeSession,
     startSession,
     endSession,
+    endSessionForTask,
+    updateSession,
     addManualSession,
     checkActiveSession,
     softDeleteSessions,

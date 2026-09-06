@@ -11,6 +11,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { ProjectTemplateItem } from "@/app/taski/components/CreateTemplateModal";
+import { useAuthStore } from "@/lib/store";
+import { getWorkspaceScopedCol } from "@/lib/utils";
 
 export const DEFAULT_TEMPLATES: ProjectTemplateItem[] = [
   { id: "t1", name: "Estratégico", category: "Estratégico", desc: "Planificación estratégica y Roadmap de producto" },
@@ -20,13 +22,39 @@ export const DEFAULT_TEMPLATES: ProjectTemplateItem[] = [
   { id: "t5", name: "Marketing Digital", category: "Marketing Digital", desc: "Campaña de redes sociales y embudos de venta" }
 ];
 
+function getInitialTemplates(): ProjectTemplateItem[] {
+  const allTemplatesMap = new Map<string, ProjectTemplateItem>();
+  DEFAULT_TEMPLATES.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+  if (typeof window !== "undefined") {
+    try {
+      const saved = localStorage.getItem("taski_v3_templates");
+      if (saved) {
+        const parsed: ProjectTemplateItem[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((t) => {
+            if (t && t.name) {
+              allTemplatesMap.set(t.name.toLowerCase(), t);
+            }
+          });
+        }
+      }
+    } catch (e) {}
+  }
+  return Array.from(allTemplatesMap.values());
+}
+
 export function useTemplates() {
-  const [templates, setTemplates] = useState<ProjectTemplateItem[]>(DEFAULT_TEMPLATES);
-  const [isLoading, setIsLoading] = useState(true);
+  const workspaceId = useAuthStore((s) => s.workspaceId);
+  const isMaster = workspaceId === "brandex-master" || workspaceId === "ws_159789" || workspaceId === "159789";
+
+  const [templates, setTemplates] = useState<ProjectTemplateItem[]>(getInitialTemplates);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    // 1. Escuchar Firestore v3_templates en tiempo real
-    const colRef = collection(db, "v3_templates");
+    if (!db) return;
+    const colName = isMaster ? "v3_templates" : getWorkspaceScopedCol("templates", workspaceId, isMaster);
+    const colRef = collection(db, colName);
+
     const unsubscribe = onSnapshot(colRef, (snapshot) => {
       const allTemplatesMap = new Map<string, ProjectTemplateItem>();
 
@@ -38,7 +66,11 @@ export function useTemplates() {
         const saved = localStorage.getItem("taski_v3_templates");
         if (saved) {
           const parsed: ProjectTemplateItem[] = JSON.parse(saved);
-          parsed.forEach((t) => allTemplatesMap.set(t.name.toLowerCase(), t));
+          if (Array.isArray(parsed)) {
+            parsed.forEach((t) => {
+              if (t && t.name) allTemplatesMap.set(t.name.toLowerCase(), t);
+            });
+          }
         }
       } catch (e) {}
 
@@ -59,19 +91,24 @@ export function useTemplates() {
         }
       });
 
-      setTemplates(Array.from(allTemplatesMap.values()));
+      const merged = Array.from(allTemplatesMap.values());
+      setTemplates(merged);
+      try {
+        localStorage.setItem("taski_v3_templates", JSON.stringify(merged));
+      } catch (e) {}
       setIsLoading(false);
     }, (error) => {
-      console.error("Error listening to v3_templates in Firestore:", error);
+      console.error("Error listening to templates in Firestore:", error);
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [workspaceId, isMaster]);
 
   const createTemplate = useCallback(async (newTemplate: ProjectTemplateItem) => {
     try {
-      const docRef = doc(db, "v3_templates", newTemplate.id || String(Date.now()));
+      const colName = isMaster ? "v3_templates" : getWorkspaceScopedCol("templates", workspaceId, isMaster);
+      const docRef = doc(db, colName, newTemplate.id || String(Date.now()));
       await setDoc(docRef, {
         ...newTemplate,
         id: docRef.id,
@@ -80,32 +117,36 @@ export function useTemplates() {
         updatedAt: serverTimestamp(),
       });
 
-      // Update local storage
+      // Update local storage and reactive state
       try {
         const saved = localStorage.getItem("taski_v3_templates");
         const existing: ProjectTemplateItem[] = saved ? JSON.parse(saved) : [];
         const updated = [newTemplate, ...existing.filter(t => t.id !== newTemplate.id)];
         localStorage.setItem("taski_v3_templates", JSON.stringify(updated));
       } catch (e) {}
+      setTemplates((prev) => [newTemplate, ...prev.filter((t) => t.id !== newTemplate.id)]);
     } catch (err) {
       console.error("Error creating template in Firestore:", err);
     }
-  }, []);
+  }, [workspaceId, isMaster]);
 
   const deleteTemplate = useCallback(async (templateId: string) => {
     try {
-      await deleteDoc(doc(db, "v3_templates", templateId));
+      const colName = isMaster ? "v3_templates" : getWorkspaceScopedCol("templates", workspaceId, isMaster);
+      await deleteDoc(doc(db, colName, templateId));
       try {
         const saved = localStorage.getItem("taski_v3_templates");
         if (saved) {
           const existing: ProjectTemplateItem[] = JSON.parse(saved);
-          localStorage.setItem("taski_v3_templates", JSON.stringify(existing.filter(t => t.id !== templateId)));
+          const updated = existing.filter(t => t.id !== templateId);
+          localStorage.setItem("taski_v3_templates", JSON.stringify(updated));
         }
       } catch (e) {}
+      setTemplates((prev) => prev.filter((t) => t.id !== templateId));
     } catch (err) {
       console.error("Error deleting template in Firestore:", err);
     }
-  }, []);
+  }, [workspaceId, isMaster]);
 
   return {
     templates,

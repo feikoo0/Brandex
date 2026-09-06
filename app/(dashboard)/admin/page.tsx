@@ -18,6 +18,7 @@ import { CalendarView } from "@/components/views/CalendarView";
 import { FinanzasView } from "@/components/views/FinanzasView";
 import { PlaceholderView } from "@/components/views/PlaceholderView";
 import { TalentView } from "@/components/views/TalentView";
+import { DiagramsView } from "@/components/views/DiagramsView";
 
 // Icons for placeholders
 import { 
@@ -26,7 +27,8 @@ import {
   Database, 
   Key, 
   Kanban,
-  GitMerge
+  GitMerge,
+  Network
 } from "lucide-react";
 
 export default function AdminPage() {
@@ -54,6 +56,8 @@ export default function AdminPage() {
       case "clientes":  return <ClientsView />;
       case "calendario":return <CalendarView />;
       case "finanzas":  return <FinanzasView />;
+      case "diagramas": return <DiagramsView />;
+      case "equipo":    return <TalentView />;
       
       // Placeholders for unfinished tabs
       case "pipeline":  return <PlaceholderView title="Pipeline de Ventas" icon={GitMerge} description="Seguimiento de prospectos y cierres comerciales integrado con Notion." />;

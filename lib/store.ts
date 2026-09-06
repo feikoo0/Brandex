@@ -35,19 +35,79 @@ interface AuthState {
   userName:    string | null;
   token:       string | null;
   workspaceId: string | null;
+  hasHydrated: boolean;
 
   setAuth: (role: Role, id: string, name: string, token: string, workspaceId?: string) => void;
+  setHasHydrated: (hydrated: boolean) => void;
   logout:  () => void;
 }
+
+function getInitialAuthStateFromBrowser(): {
+  role: Role | null;
+  userId: string | null;
+  userName: string | null;
+  token: string | null;
+  workspaceId: string | null;
+} {
+  if (typeof document === "undefined" && typeof window === "undefined") {
+    return { role: null, userId: null, userName: null, token: null, workspaceId: null };
+  }
+
+  // 1. Intentar leer desde la cookie taski_session
+  try {
+    const cookies = typeof document !== "undefined" && document.cookie ? document.cookie.split("; ") : [];
+    const sessionCookie = cookies.find((c) => c.startsWith("taski_session="));
+    if (sessionCookie) {
+      const raw = sessionCookie.split("=")[1];
+      if (raw) {
+        const decoded = JSON.parse(decodeURIComponent(raw));
+        if (decoded && decoded.token && decoded.workspaceId) {
+          return {
+            role: (decoded.role as Role) || "admin",
+            userId: decoded.userId || decoded.id || "admin",
+            userName: decoded.userName || decoded.nombre || "Usuario",
+            token: decoded.token,
+            workspaceId: decoded.workspaceId || "brandex-master",
+          };
+        }
+      }
+    }
+  } catch {}
+
+  // 2. Fallback: Intentar leer desde localStorage directamente
+  try {
+    if (typeof localStorage !== "undefined") {
+      const local = localStorage.getItem("braindex-auth");
+      if (local) {
+        const parsed = JSON.parse(local);
+        const state = parsed?.state;
+        if (state && state.token && state.workspaceId) {
+          return {
+            role: (state.role as Role) || "admin",
+            userId: state.userId || "admin",
+            userName: state.userName || "Usuario",
+            token: state.token,
+            workspaceId: state.workspaceId || "brandex-master",
+          };
+        }
+      }
+    }
+  } catch {}
+
+  return { role: null, userId: null, userName: null, token: null, workspaceId: null };
+}
+
+const initialAuth = getInitialAuthStateFromBrowser();
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      role:        null,
-      userId:      null,
-      userName:    null,
-      token:       null,
-      workspaceId: null,
+      role:        initialAuth.role,
+      userId:      initialAuth.userId,
+      userName:    initialAuth.userName,
+      token:       initialAuth.token,
+      workspaceId: initialAuth.workspaceId,
+      hasHydrated: typeof window !== "undefined" && !!initialAuth.token,
 
       setAuth: (role, userId, userName, token, workspaceId = "brandex-master") => {
         if (typeof document !== "undefined") {
@@ -58,8 +118,10 @@ export const useAuthStore = create<AuthState>()(
             document.cookie = `taski_session=${cookieValue}; path=/; max-age=2592000; SameSite=Lax`;
           } catch {}
         }
-        set({ role, userId, userName, token, workspaceId });
+        set({ role, userId, userName, token, workspaceId, hasHydrated: true });
       },
+
+      setHasHydrated: (hasHydrated: boolean) => set({ hasHydrated }),
 
       logout: () => {
         if (typeof document !== "undefined") {
@@ -67,10 +129,31 @@ export const useAuthStore = create<AuthState>()(
             document.cookie = "taski_session=; path=/; max-age=0; SameSite=Lax";
           } catch {}
         }
-        set({ role: null, userId: null, userName: null, token: null, workspaceId: null });
+        set({ role: null, userId: null, userName: null, token: null, workspaceId: null, hasHydrated: true });
       },
     }),
-    { name: "braindex-auth" }   // persisted in localStorage
+    {
+      name: "braindex-auth",
+      onRehydrateStorage: () => (state) => {
+        if (state) {
+          state.setHasHydrated(true);
+          if (state.token && state.workspaceId && typeof document !== "undefined") {
+            try {
+              const cookieValue = encodeURIComponent(
+                JSON.stringify({
+                  token: state.token,
+                  workspaceId: state.workspaceId,
+                  role: state.role,
+                  userId: state.userId,
+                  userName: state.userName,
+                })
+              );
+              document.cookie = `taski_session=${cookieValue}; path=/; max-age=2592000; SameSite=Lax`;
+            } catch {}
+          }
+        }
+      },
+    }
   )
 );
 

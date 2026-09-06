@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useData } from "@/hooks/useData";
 import { useUIStore } from "@/lib/store";
-import { Loader2, UserPlus, GripVertical } from "lucide-react";
+import { Loader2, UserPlus, GripVertical, AlertCircle } from "lucide-react";
 import { DndContext, DragEndEvent, DragOverlay, useDraggable, useDroppable, pointerWithin } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { STATUS_COLORS } from "@/lib/constants";
+import type { Member } from "@/lib/types";
 
 // ── Components para DND ──
 function DraggableTask({ task, onClick }: { task: any; onClick: () => void }) {
@@ -45,24 +46,79 @@ function DraggableTask({ task, onClick }: { task: any; onClick: () => void }) {
   );
 }
 
-function DroppableCol({ id, title, count, children }: { id: string, title: string, count: number, children: React.ReactNode }) {
+interface DroppableColProps {
+  id: string;
+  title: string;
+  count: number;
+  member?: Member | null;
+  onMemberClick?: () => void;
+  children: React.ReactNode;
+}
+
+function DroppableCol({ id, title, count, member, onMemberClick, children }: DroppableColProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
+
+  // Semáforo de disponibilidad
+  const semaforoColor = useMemo(() => {
+    if (!member) return null;
+    if (member.semaforo === "sobrecargado") return "bg-rose-500 border-rose-500/40 shadow-rose-500/20";
+    if (member.semaforo === "al_limite") return "bg-yellow-400 border-yellow-500/40 shadow-yellow-500/20";
+    return "bg-emerald-400 border-emerald-500/40 shadow-emerald-500/20";
+  }, [member?.semaforo]);
+
   return (
     <div
       ref={setNodeRef}
-      className="w-[280px] flex flex-col rounded-2xl p-3 transition-colors"
+      className="w-[280px] flex flex-col rounded-2xl p-3 transition-colors shrink-0"
       style={{ background: isOver ? "rgba(58,123,213,.1)" : "rgba(255,255,255,.02)", border: `1px solid ${isOver ? "#3a7bd5" : "var(--border)"}` }}
     >
-      <div className="flex items-center justify-between mb-4 px-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-black uppercase tracking-widest leading-none text-white/70">
-            {title}
-          </span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/40 font-bold">
+      <div className="flex flex-col gap-1.5 mb-3.5 px-1">
+        <div className="flex items-center justify-between">
+          <div
+            onClick={onMemberClick}
+            className={`flex items-center gap-2 min-w-0 ${onMemberClick ? "cursor-pointer group" : ""}`}
+          >
+            {member && semaforoColor && (
+              <span
+                className={`w-2.5 h-2.5 rounded-full border shadow-sm shrink-0 ${semaforoColor}`}
+                title={`Disponibilidad: ${member.semaforo === "sobrecargado" ? "Sobrecargado" : member.semaforo === "al_limite" ? "Al límite" : "Disponible"}`}
+              />
+            )}
+            <span className="text-xs font-black uppercase tracking-widest leading-none text-[#ffffffd6] group-hover:text-blue-400 transition-colors truncate max-w-[150px]">
+              {title}
+            </span>
+            {member?.mood_semanal?.emoji && (
+              <span className="text-xs shrink-0" title={`Mood semanal: ${member.mood_semanal.emoji}`}>
+                {member.mood_semanal.emoji}
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/5 text-white/60 font-bold shrink-0">
             {count}
           </span>
         </div>
+
+        {/* Carga de trabajo Xh / Yh */}
+        {member && (
+          <div className="flex items-center justify-between text-[11px] text-[#ffffff6b] pl-4">
+            <span className="font-semibold">
+              {member.carga_horas_actual ?? 0}h / {member.capacidad_semanal ?? 40}h
+              <span className="text-white/30 ml-1">({member.workloadPercent ?? 0}%)</span>
+            </span>
+
+            {typeof member.tareasSinEstimar === "number" && member.tareasSinEstimar > 0 && (
+              <span
+                className="flex items-center gap-1 text-[10px] text-amber-400/90 font-medium bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20"
+                title={`Carga incompleta — ${member.tareasSinEstimar} tarea(s) sin estimar`}
+              >
+                <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>{member.tareasSinEstimar} sin estimar</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
       <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar min-h-[100px]">
         {children}
       </div>
@@ -75,7 +131,7 @@ export function TalentView() {
   const openModal = useUIStore((s) => s.openModal);
   const [activeTask, setActiveTask] = useState<any | null>(null);
 
-  if (isLoading) {
+  if (isLoading && !data) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
@@ -84,17 +140,15 @@ export function TalentView() {
   }
 
   const tasks = data?.tareas ?? [];
-  const workers = data?.trabajadores ?? [];
+  const workers = data?.miembros ?? [];
 
   // Agrupamos tareas por asignado. "" -> Sin asignar.
   const cols = [
-    { id: "unassigned", label: "Sin Asignar", name: "" },
-    ...workers.map(w => ({ id: w.nombre, label: w.nombre, name: w.nombre }))
+    { id: "unassigned", label: "Sin Asignar", name: "", member: null },
+    ...workers.map(w => ({ id: String(w.id), label: w.nombre, name: w.nombre, member: w }))
   ];
 
   // For optimistic updates during drag
-  // In a real app we'd dispatch to mutation, but since Notion takes time, 
-  // maybe we just rely on refetching. But wait, we can just call an API to update.
   const handleDragEnd = async (event: DragEndEvent) => {
     setActiveTask(null);
     const { active, over } = event;
@@ -103,17 +157,19 @@ export function TalentView() {
     const taskId = active.id as string;
     const oldAssignee = active.data.current?.task.asignado || "";
     let newAssignee = over.id as string;
-    if (newAssignee === "unassigned") newAssignee = "";
+    if (newAssignee === "unassigned") {
+      newAssignee = "";
+    } else {
+      const foundWorker = workers.find(w => String(w.id) === String(newAssignee) || w.nombre === newAssignee);
+      if (foundWorker) newAssignee = foundWorker.nombre;
+    }
 
     if (oldAssignee === newAssignee) return;
 
-    // TODO: Update via API hook here
     await fetch("/api/task/update", {
       method: "PATCH",
       body: JSON.stringify({ id: taskId, asignado: newAssignee })
     });
-    // Invalida cache en tu setup actual (el useData auto re-fetcheará pronto si cambias de tab)
-    // o el usuario puede darle "Sincronizar"
   };
 
   return (
@@ -137,7 +193,14 @@ export function TalentView() {
             {cols.map((col) => {
               const colTasks = tasks.filter(t => (t.asignado || "") === col.name);
               return (
-                <DroppableCol key={col.id} id={col.id} title={col.label} count={colTasks.length}>
+                <DroppableCol 
+                  key={col.id} 
+                  id={col.id} 
+                  title={col.label} 
+                  count={colTasks.length}
+                  member={col.member}
+                  onMemberClick={col.member ? () => openModal({ type: "worker", id: String(col.member?.id) }) : undefined}
+                >
                   {colTasks.map(t => (
                     <DraggableTask key={t.id} task={t} onClick={() => openModal({ type: "task", id: t.id })} />
                   ))}

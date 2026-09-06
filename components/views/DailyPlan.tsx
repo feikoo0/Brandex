@@ -9,6 +9,7 @@ import { Check, ShieldAlert, Activity, RefreshCcw, Target, Sparkles, Plus, Folde
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { calculateProjections, DAILY_CAPACITY_MINS } from "@/lib/scheduler";
+import { SmoothInput, SmoothTextarea } from "@/components/ui/SmoothInput";
 
 function readStoredArray(key: string) {
   if (typeof window === "undefined") return [] as string[];
@@ -803,12 +804,14 @@ export function DailyPlan() {
           <div className="grid grid-cols-1 xl:grid-cols-[1.1fr_.9fr] gap-4 overflow-y-auto pr-1 max-h-[70vh] custom-scrollbar">
             <label className="flex flex-col gap-2 xl:col-span-2">
               <span className="text-[9px] font-black uppercase tracking-widest text-white/35">Nombre *</span>
-              <input
+              <SmoothInput
                 autoFocus
+                unstyled
                 value={projectForm.nombre}
                 onChange={(e) => setProjectForm(prev => ({ ...prev, nombre: e.target.value }))}
                 placeholder="Nombre del proyecto"
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-[#4ade80]/60 placeholder:text-white/20"
+                wrapperClassName="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 focus-within:border-[#4ade80]/60 transition-colors"
+                className="text-sm font-bold text-white placeholder:text-white/20"
               />
             </label>
 
@@ -864,12 +867,14 @@ export function DailyPlan() {
 
             <label className="flex flex-col gap-2 xl:col-span-2">
               <span className="text-[9px] font-black uppercase tracking-widest text-white/35">Contexto</span>
-              <textarea
+              <SmoothTextarea
+                unstyled
                 value={projectForm.descripcion}
                 onChange={(e) => setProjectForm(prev => ({ ...prev, descripcion: e.target.value }))}
                 placeholder="Objetivo, entregables y notas iniciales..."
                 rows={3}
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-xs font-medium text-white outline-none focus:border-[#4ade80]/60 resize-none placeholder:text-white/20"
+                wrapperClassName="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 focus-within:border-[#4ade80]/60 transition-colors"
+                className="text-xs font-medium text-white resize-none placeholder:text-white/20"
               />
             </label>
 
@@ -920,12 +925,14 @@ export function DailyPlan() {
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 overflow-y-auto pr-1 max-h-[70vh] custom-scrollbar">
             <label className="flex flex-col gap-2 xl:col-span-2">
               <span className="text-[9px] font-black uppercase tracking-widest text-white/35">Título *</span>
-              <input
+              <SmoothInput
                 autoFocus
+                unstyled
                 value={taskForm.titulo}
                 onChange={(e) => setTaskForm(prev => ({ ...prev, titulo: e.target.value }))}
                 placeholder="Nombre de la tarea"
-                className="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-[#4ade80]/60 placeholder:text-white/20"
+                wrapperClassName="w-full rounded-xl bg-white/5 border border-white/10 px-3 py-2.5 focus-within:border-[#4ade80]/60 transition-colors"
+                className="text-sm font-bold text-white placeholder:text-white/20"
               />
             </label>
 
@@ -1141,7 +1148,7 @@ export function DailyPlan() {
                 const dateBadge = getTaskDateBadge(t);
                 
                 // Find assignee letters
-                const assignedWorker = data.trabajadores.find(w => t.asignado_ids?.includes(w.id));
+                const assignedWorker = data.miembros.find(w => t.asignado_ids?.includes(w.id));
                 const assigneeInitial = assignedWorker?.nombre?.[0] || t.asignado?.[0] || "";
 
                 return (
@@ -1226,7 +1233,7 @@ export function DailyPlan() {
               {todayTasksOtherProjects.map(t => {
                 const isDone = DONE_STATES.has(t.estado);
                 const dateBadge = getTaskDateBadge(t);
-                const assignedWorker = data.trabajadores.find(w => t.asignado_ids?.includes(w.id));
+                const assignedWorker = data.miembros.find(w => t.asignado_ids?.includes(w.id));
                 const assigneeInitial = assignedWorker?.nombre?.[0] || t.asignado?.[0] || "";
 
                 return (

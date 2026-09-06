@@ -3,6 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { addDays } from "date-fns";
 import { useData, useUpdateTask, useUpdateProject, useCreateTask } from "@/hooks/useData";
+import { useSessions } from "@/hooks/useSessions";
 import { useUIStore, useAuthStore } from "@/lib/store";
 import { statusColor, cn } from "@/lib/utils";
 import {
@@ -962,7 +963,7 @@ export function ProgressPanel() {
                   projectName={proj?.nombre || "Proyecto"}
                   clienteIds={proj?.cliente_ids || []}
                   clienteName={client?.nombre || ""}
-                  trabajadores={data.trabajadores || []}
+                  trabajadores={data.miembros || []}
                   onBack={() => setNewTaskProjectId(null)}
                 />
               </div>
@@ -1253,6 +1254,7 @@ function SortableProjectCard(props: any) {
 // ── Project Card ──────────────────────────────────────────────────────────────
 function ProjectCard({ project, allTasks, onPin, onOpen, onRemove, isPinned, clientes, nodeRef, dragStyle, dragListeners, dragAttributes }: any) {
   const updateTask = useUpdateTask();
+  const { endSessionForTask } = useSessions();
   const [locallyDone, setLocallyDone]   = useState<Set<string>>(new Set());
   const [pendingCheck, setPendingCheck] = useState<string | null>(null);
 
@@ -1272,7 +1274,10 @@ function ProjectCard({ project, allTasks, onPin, onOpen, onRemove, isPinned, cli
   const confirmCheckTask = async (taskId: string) => {
     setPendingCheck(null);
     setLocallyDone(prev => new Set([...prev, taskId]));
-    try { await updateTask.mutateAsync({ id: taskId, estado: "Hecho" }); }
+    try {
+      await endSessionForTask(taskId);
+      await updateTask.mutateAsync({ id: taskId, estado: "Completado", status: "Completado" } as any);
+    }
     catch { setLocallyDone(prev => { const n = new Set(prev); n.delete(taskId); return n; }); }
   };
 
@@ -1417,6 +1422,7 @@ function DetailPane({ type, id, data, onBack, onTaskSelect, onNewTask, activeSub
   const updateTask    = useUpdateTask();
   const updateProject = useUpdateProject();
   const createTask    = useCreateTask();
+  const { endSessionForTask } = useSessions();
 
   const [draft, setDraft]       = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -1614,7 +1620,7 @@ function DetailPane({ type, id, data, onBack, onTaskSelect, onNewTask, activeSub
           <div className="flex flex-col gap-2">
             <label className="text-[9px] font-black text-white/20 uppercase">Asignado a</label>
             <div className="flex flex-wrap gap-2">
-              {(data.trabajadores || []).map((w: any) => {
+              {(data.miembros || []).map((w: any) => {
                 const isSelected = (current.asignado_ids || []).includes(w.id);
                 return (
                   <button
@@ -1823,7 +1829,10 @@ function DetailPane({ type, id, data, onBack, onTaskSelect, onNewTask, activeSub
                         e.stopPropagation();
                         if (isDoneTask) return;
                         setLocallyDone(prev => new Set([...prev, t.id]));
-                        try { await updateTask.mutateAsync({ id: t.id, estado: "Hecho" }); }
+                        try {
+                          await endSessionForTask(t.id);
+                          await updateTask.mutateAsync({ id: t.id, estado: "Completado", status: "Completado" } as any);
+                        }
                         catch { setLocallyDone(prev => { const n = new Set(prev); n.delete(t.id); return n; }); }
                       }}
                       className={cn(
@@ -2226,7 +2235,7 @@ function SubTaskDetail({ task, projectName, data, onBack }: {
         <div className="flex flex-col gap-2">
           <label className="text-[9px] font-black text-white/20 uppercase">Asignado a</label>
           <div className="flex flex-wrap gap-2">
-            {(data.trabajadores || []).map((w: any) => {
+            {(data.miembros || []).map((w: any) => {
               const isSelected = (current.asignado_ids || []).includes(w.id);
               return (
                 <button

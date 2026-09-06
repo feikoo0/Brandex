@@ -17,6 +17,66 @@ export function priorityColor(priority: string): string {
   return PRIORITY_COLORS[priority] ?? "#636366";
 }
 
+/**
+ * Determina si una tarea se encuentra en un estado operativo activo.
+ * Retorna false si el estado coincide con: "completado", "hecho", "publicado", "entregado", "done", "cancelado".
+ * Retorna true en cualquier otro caso.
+ */
+export function isTaskActive(estado?: string | null): boolean {
+  if (!estado) return true;
+  const s = estado.trim().toLowerCase();
+  return !["completado", "hecho", "publicado", "entregado", "done", "cancelado"].includes(s);
+}
+
+/**
+ * Limpia recursivamente un objeto o array eliminando todas las propiedades con valor `undefined`,
+ * preservando instancias de Date, Timestamp y FieldValue de Firestore.
+ * Esto evita el error fatal "Function updateDoc() called with invalid data. Unsupported field value: undefined".
+ */
+export function cleanFirestorePayload<T = any>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj as T;
+  }
+  if (typeof obj !== "object") {
+    return obj;
+  }
+  // Preservar Date y objetos especiales de Firestore (FieldValue / Timestamp)
+  if (
+    obj instanceof Date ||
+    typeof (obj as any)?.toDate === "function" ||
+    typeof (obj as any)?._methodName === "string" ||
+    typeof (obj as any)?.isEqual === "function"
+  ) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((item) => item !== undefined)
+      .map((item) => cleanFirestorePayload(item)) as unknown as T;
+  }
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      const cleaned = cleanFirestorePayload(value);
+      if (cleaned !== undefined) {
+        result[key] = cleaned;
+      }
+    }
+  }
+  return result as T;
+}
+
+/**
+ * Determina si un proyecto se encuentra en un estado operativo activo.
+ * Retorna false si el estado coincide con: "completado", "cancelado".
+ * Retorna true en cualquier otro caso (incluyendo "Pausado", "En cola", "Activo", etc.).
+ */
+export function isProjectActive(estadoProyecto?: string | null): boolean {
+  if (!estadoProyecto) return true;
+  const s = estadoProyecto.trim().toLowerCase();
+  return !["completado", "cancelado"].includes(s);
+}
+
 // Returns initials avatar from a name (e.g. "Andres Perez" → "AP")
 export function avatarOf(name: string): string {
   return name
@@ -762,4 +822,86 @@ export function getWorkspaceScopedCol(
   const cleanId = workspaceId.startsWith("ws_") ? workspaceId : `ws_${workspaceId}`;
   return `${cleanId}_${baseCol}`;
 }
+
+/**
+ * Extrae de forma segura el ID puro de una tarea removiendo prefijos 'kt-${projectId}-' o 'kt-'
+ */
+export function extractCleanTaskId(
+  rawTaskId: string | number | null | undefined,
+  projectId?: string | number | null
+): string {
+  if (rawTaskId === null || rawTaskId === undefined) return "";
+  const s = String(rawTaskId).trim();
+  if (!s) return "";
+
+  // 1. Si se conoce el projectId y la cadena empieza por kt-${projectId}-
+  if (projectId !== undefined && projectId !== null && String(projectId).length > 0) {
+    const projStr = String(projectId).trim();
+    const prefixWithProj = `kt-${projStr}-`;
+    if (s.startsWith(prefixWithProj)) {
+      return s.slice(prefixWithProj.length);
+    }
+  }
+
+  // 2. Si empieza por el patrón kt-[projectId]-[taskId]
+  if (s.startsWith("kt-")) {
+    const withoutKt = s.replace(/^kt-[^-]+-/, "");
+    if (withoutKt && withoutKt !== s) {
+      return withoutKt;
+    }
+    return s.replace(/^kt-/, "");
+  }
+
+  return s;
+}
+
+/**
+ * Genera el conjunto de IDs candidatos asociados a una tarea para hacer matching exacto contra sesiones en Firestore o memoria
+ */
+export function getTaskCandidateIds(
+  rawTaskId?: string | number | null,
+  taskObj?: any,
+  projectId?: string | number | null
+): string[] {
+  const ids = new Set<string>();
+
+  const addId = (idVal: any) => {
+    if (idVal === null || idVal === undefined) return;
+    const str = String(idVal).trim();
+    if (!str) return;
+    ids.add(str);
+
+    const clean = extractCleanTaskId(str, projectId);
+    if (clean) ids.add(clean);
+
+    if (str.startsWith("kt-")) {
+      const parts = str.split("-");
+      if (parts.length >= 3) {
+        ids.add(parts.slice(2).join("-"));
+        ids.add(parts[parts.length - 1]);
+      }
+    }
+
+    if (clean) {
+      ids.add(`kt-${clean}`);
+      ids.add(`task-${clean}`);
+    }
+
+    const num = parseInt(clean || str, 10);
+    if (!isNaN(num) && num > 0) {
+      ids.add(String(num));
+    }
+  };
+
+  if (rawTaskId !== undefined && rawTaskId !== null) addId(rawTaskId);
+  if (taskObj) {
+    if (taskObj.id !== undefined && taskObj.id !== null) addId(taskObj.id);
+    if (taskObj.taskId !== undefined && taskObj.taskId !== null) addId(taskObj.taskId);
+    if (taskObj.task_id !== undefined && taskObj.task_id !== null) addId(taskObj.task_id);
+    if (taskObj.uid !== undefined && taskObj.uid !== null) addId(taskObj.uid);
+  }
+
+  return Array.from(ids);
+}
+
 

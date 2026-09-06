@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { X, ExternalLink, Loader2, Save, User, Mail, Phone, Briefcase, Clock, Calendar } from "lucide-react";
+import { X, ExternalLink, Loader2, Save, User, Mail, Phone, Briefcase, Clock, Calendar, DollarSign, Smile } from "lucide-react";
 import { useData, useUpdateWorker } from "@/hooks/useData";
 import { cn } from "@/lib/utils";
 import { DONE_STATES } from "@/lib/constants";
-import type { ModalEntry, Task } from "@/lib/types";
+import type { ModalEntry, Task, Member } from "@/lib/types";
 
 interface Props {
   id:           string;
@@ -18,7 +18,7 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
   const { data } = useData();
   const updateWorker = useUpdateWorker();
   
-  const worker = data?.trabajadores.find((x) => x.id === id);
+  const worker = data?.miembros.find((x) => x.id === id);
   const workerTasks = useMemo(() => 
     (data?.tareas ?? []).filter(t => t.asignado_ids?.includes(id) && !DONE_STATES.has(t.estado)),
   [data?.tareas, id]);
@@ -29,6 +29,22 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
   const [rol, setRol] = useState(worker?.rol ?? "");
   const [notas, setNotas] = useState(worker?.notas ?? "");
   const [disponibilidad, setDisponibilidad] = useState(worker?.disponibilidad ?? "");
+  
+  // Capacidad operativa & Mood
+  const [capacidadSemanal, setCapacidadSemanal] = useState<number>(worker?.capacidad_semanal ?? 40);
+  const [moodEmoji, setMoodEmoji] = useState<string>(worker?.mood_semanal?.emoji || "😊");
+
+  // Tarifas & Compensación (Solo Admin)
+  const [tarifaHora, setTarifaHora] = useState<string>(
+    worker?.tarifa_hora ? String(worker.tarifa_hora) : (worker as any)?.tarifa ? String((worker as any).tarifa) : ""
+  );
+  const [costoProyecto, setCostoProyecto] = useState<string>(
+    worker?.costo_proyecto ? String(worker.costo_proyecto) : ""
+  );
+  const [costoTarea, setCostoTarea] = useState<string>(
+    worker?.costo_tarea ? String(worker.costo_tarea) : ""
+  );
+
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -39,6 +55,11 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
       setRol(worker.rol || "");
       setNotas(worker.notas || "");
       setDisponibilidad(worker.disponibilidad || "");
+      setCapacidadSemanal(worker.capacidad_semanal || 40);
+      setMoodEmoji(worker.mood_semanal?.emoji || "😊");
+      setTarifaHora(worker.tarifa_hora ? String(worker.tarifa_hora) : (worker as any)?.tarifa ? String((worker as any).tarifa) : "");
+      setCostoProyecto(worker.costo_proyecto ? String(worker.costo_proyecto) : "");
+      setCostoTarea(worker.costo_tarea ? String(worker.costo_tarea) : "");
     }
   }, [worker]);
 
@@ -46,7 +67,33 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
     if (!nombre.trim()) return;
     setSaving(true);
     try {
-      await updateWorker.mutateAsync({ id, nombre, email, telefono, rol, notas, disponibilidad } as any);
+      const updatePayload: Record<string, any> = {
+        id,
+        nombre: nombre.trim(),
+        email: email.trim(),
+        telefono: telefono.trim(),
+        rol: rol.trim(),
+        notas: notas.trim(),
+        disponibilidad: disponibilidad.trim(),
+        capacidad_semanal: Number(capacidadSemanal) || 40,
+        mood_semanal: {
+          emoji: moodEmoji,
+          fecha: new Date().toISOString().split("T")[0],
+        },
+      };
+
+      if (isAdmin) {
+        const numTarifaHora = tarifaHora ? parseFloat(tarifaHora) : undefined;
+        const numCostoProj = costoProyecto ? parseFloat(costoProyecto) : undefined;
+        const numCostoTask = costoTarea ? parseFloat(costoTarea) : undefined;
+
+        updatePayload.tarifa_hora = numTarifaHora;
+        updatePayload.tarifa = numTarifaHora; // Compatibility alias
+        updatePayload.costo_proyecto = numCostoProj;
+        updatePayload.costo_tarea = numCostoTask;
+      }
+
+      await updateWorker.mutateAsync(updatePayload as any);
       onClose();
     } finally {
       setSaving(false);
@@ -72,7 +119,10 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
           </div>
           <div>
             <span className="text-[10px] text-white/40 font-black uppercase tracking-widest">Ficha de Equipo</span>
-            <h2 className="text-sm font-bold text-white leading-tight">{nombre || "Cargando..."}</h2>
+            <h2 className="text-sm font-bold text-white leading-tight flex items-center gap-2">
+              <span>{nombre || "Cargando..."}</span>
+              {moodEmoji && <span className="text-base">{moodEmoji}</span>}
+            </h2>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -114,6 +164,106 @@ export function WorkerDetail({ id, isAdmin, onClose, openRelated }: Props) {
             />
           </div>
         </div>
+
+        {/* Capacidad Operativa & Mood Semanal (Visible para todos los usuarios) */}
+        <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-white/40 uppercase ml-1 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-blue-400" />
+              Capacidad Semanal (Horas)
+            </label>
+            <input 
+              type="number"
+              min={1}
+              max={168}
+              value={capacidadSemanal} 
+              onChange={e => setCapacidadSemanal(Number(e.target.value) || 0)} 
+              placeholder="40"
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[10px] font-black text-white/40 uppercase ml-1 flex items-center gap-1">
+              <Smile className="w-3 h-3 text-blue-400" />
+              Mood Semanal
+            </label>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {["😊", "🔥", "🚀", "⚡", "🧘", "💪", "😴", "🤯"].map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  onClick={() => setMoodEmoji(emoji)}
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs transition-all cursor-pointer ${
+                    moodEmoji === emoji
+                      ? "bg-blue-500/20 border border-blue-500/50 scale-110 shadow-sm"
+                      : "bg-white/5 hover:bg-white/10 border border-transparent"
+                  }`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Bloque de Compensación & Tarifas (IMPORTANTE: Solo visible y renderizado en DOM para Admin) */}
+        {isAdmin && (
+          <div className="p-4 rounded-2xl bg-emerald-500/[0.03] border border-emerald-500/20 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-400" />
+                <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">
+                  Tarifas Operativas (Solo Admin)
+                </span>
+              </div>
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/20">
+                Confidencial
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black text-white/30 uppercase ml-1">Tarifa / Hora ($USD)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={tarifaHora}
+                  onChange={(e) => setTarifaHora(e.target.value)}
+                  placeholder="45"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-emerald-300 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black text-white/30 uppercase ml-1">Costo / Proyecto ($USD)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={costoProyecto}
+                  onChange={(e) => setCostoProyecto(e.target.value)}
+                  placeholder="500"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] font-black text-white/30 uppercase ml-1">Costo / Tarea ($USD)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={costoTarea}
+                  onChange={(e) => setCostoTarea(e.target.value)}
+                  placeholder="50"
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Contact */}
         <div className="grid grid-cols-2 gap-4">

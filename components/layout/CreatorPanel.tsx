@@ -203,7 +203,7 @@ function ProjectCreator({ onClose }: { onClose: () => void }) {
   const [done, setDone] = useState(false);
 
   const clientes = data?.clientes ?? [];
-  const team = data?.trabajadores ?? [];
+  const team = data?.miembros ?? [];
 
   const handleCreate = async () => {
     if (!nombre.trim() || isCreating) return;

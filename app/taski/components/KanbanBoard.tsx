@@ -23,6 +23,7 @@ import { Project } from "./ProjectDashboard";
 import { TaskCardContent } from "./TaskCard";
 import KanbanColumn, { SynthesizedTask } from "./KanbanColumn";
 import { playSound } from "../utils/audio";
+import { resolveBucketDate } from "@/lib/timelineUtils";
 
 class SmartMouseSensor extends MouseSensor {
   static activators = [
@@ -204,11 +205,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   const getTaskColumnId = useCallback(
     (task: SynthesizedTask): string => {
       if (groupingModeRef.current === "estado") {
-        return `status-${task.status || "Planificado"}`;
+        const s = (task.status || "").trim();
+        if (s === "En Proceso") return "status-En Proceso";
+        if (s === "En Revisión" || s === "Revisión") return "status-En Revisión";
+        if (s === "Completado" || s === "Completada") return "status-Completado";
+        return "status-Planificado";
       }
       if (groupingModeRef.current === "prioridad") {
-        const proj = projectsRef.current.find((p) => p.id === task.projectId);
-        return `priority-${proj?.priority || "Sin Prioridad"}`;
+        const proj = projectsRef.current.find((p) => String(p.id) === String(task.projectId));
+        const originalTask = proj?.tasks?.find(t => String(t.id) === String(task.id) || `kt-${proj.id}-${t.id}` === task.id);
+        const p = ((task as any).prioridad || task.priority || (originalTask as any)?.prioridad || originalTask?.priority || "Media").trim();
+        if (p === "Urgente") return "priority-Urgente";
+        if (p === "Alta") return "priority-Alta";
+        if (p === "Baja") return "priority-Baja";
+        return "priority-Media";
       }
       if (groupingModeRef.current === "fecha") {
         const diff = getCalendarDaysDiff(task.dueDate);
@@ -218,11 +228,16 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         return "mes";
       }
       if (groupingModeRef.current === "cliente") {
-        const proj = projectsRef.current.find((p) => p.id === task.projectId);
-        const client = proj?.client || "Cliente 1";
         const uniqueClients = Array.from(
           new Set(projectsRef.current.map((p) => p.client))
-        ).slice(0, 4);
+        );
+        const targetClient = (task as any).client;
+        if (targetClient && uniqueClients.includes(targetClient)) {
+          const idx = uniqueClients.indexOf(targetClient);
+          return `client-${idx !== -1 ? idx : 0}`;
+        }
+        const proj = projectsRef.current.find((p) => String(p.id) === String(task.projectId));
+        const client = proj?.client || "Cliente 1";
         const idx = uniqueClients.indexOf(client);
         return `client-${idx !== -1 ? idx : 0}`;
       }
@@ -301,9 +316,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     }
     if (groupingMode === "prioridad") {
       return [
+        "priority-Urgente",
         "priority-Alta",
         "priority-Media",
-        "priority-Normal",
         "priority-Baja",
       ].includes(colId);
     }
@@ -328,34 +343,44 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       const status = newColumnId.replace("status-", "");
       return { ...task, status };
     }
+    if (groupingMode === "prioridad") {
+      const priority = newColumnId.replace("priority-", "");
+      return { ...task, priority, ...({ prioridad: priority } as any) };
+    }
     if (groupingMode === "fecha") {
-      let newDueDate = new Date();
-      if (newColumnId === "manana") {
-        newDueDate.setDate(newDueDate.getDate() + 1);
-      } else if (newColumnId === "semana") {
-        newDueDate.setDate(newDueDate.getDate() + 4);
-      } else if (newColumnId === "mes") {
-        newDueDate.setDate(newDueDate.getDate() + 15);
-      }
+      const dateStr = resolveBucketDate(newColumnId, task.fecha_programada || "");
+      const newDueDate = new Date(dateStr + "T00:00:00");
       return {
         ...task,
-        fecha_programada: formatLocalDate(newDueDate),
+        fecha_programada: dateStr,
         dueDate: newDueDate,
       };
+    }
+    if (groupingMode === "cliente") {
+      const clientIdx = parseInt(newColumnId.replace("client-", ""), 10);
+      const uniqueClients = Array.from(new Set(projectsRef.current.map((p) => p.client)));
+      const targetClient = uniqueClients[clientIdx];
+      if (targetClient) {
+        return { ...task, client: targetClient } as any;
+      }
     }
     return task;
   };
 
-  const cleanupDrag = () => {
+  const cleanupDrag = useCallback(() => {
     if (
       typeof window !== "undefined" &&
-      (window as any)._handleGlobalMouseMove
+      (window as any)._handleGlobalPointerMove
     ) {
       window.removeEventListener(
         "mousemove",
-        (window as any)._handleGlobalMouseMove
+        (window as any)._handleGlobalPointerMove
       );
-      (window as any)._handleGlobalMouseMove = null;
+      window.removeEventListener(
+        "touchmove",
+        (window as any)._handleGlobalPointerMove
+      );
+      (window as any)._handleGlobalPointerMove = null;
     }
     if (physicsRef.current.animationFrameId !== null) {
       cancelAnimationFrame(physicsRef.current.animationFrameId);
@@ -368,7 +393,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     cachedOffsetRef.current = null;
     cachedWidthRef.current = 0;
     lastOverId.current = null;
-  };
+  }, [setDraggingTaskId]);
+
+  useEffect(() => {
+    return () => {
+      cleanupDrag();
+    };
+  }, [cleanupDrag]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -464,11 +495,15 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
     physicsRef.current.animationFrameId = requestAnimationFrame(updatePhysics);
 
-    const handleGlobalMouseMove = (e: MouseEvent) => {
+    const handleGlobalPointerMove = (e: MouseEvent | TouchEvent) => {
       const state = physicsRef.current;
+      const currentX = 'clientX' in e ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : null);
+      const currentY = 'clientY' in e ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : null);
+      if (currentX === null || currentY === null) return;
+
       if (state.lastX !== null && state.lastY !== null) {
-        const deltaX = e.clientX - state.lastX;
-        const deltaY = e.clientY - state.lastY;
+        const deltaX = currentX - state.lastX;
+        const deltaY = currentY - state.lastY;
 
         const torqueZ = -deltaX * 0.7;
         state.angularVelocity += torqueZ;
@@ -476,14 +511,15 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         const torqueX = deltaY * 0.45;
         state.angularVelocityX += torqueX;
       }
-      state.lastX = e.clientX;
-      state.lastY = e.clientY;
-      lastPointerXRef.current = e.clientX;
+      state.lastX = currentX;
+      state.lastY = currentY;
+      lastPointerXRef.current = currentX;
     };
 
     if (typeof window !== "undefined") {
-      window.addEventListener("mousemove", handleGlobalMouseMove);
-      (window as any)._handleGlobalMouseMove = handleGlobalMouseMove;
+      window.addEventListener("mousemove", handleGlobalPointerMove as any);
+      window.addEventListener("touchmove", handleGlobalPointerMove as any);
+      (window as any)._handleGlobalPointerMove = handleGlobalPointerMove;
     }
 
     playSound("click");
@@ -534,10 +570,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
       if (!isValidColumnId(overColIdInPrev)) return prev;
 
-      if (activeColIdInPrev !== overColIdInPrev) {
-        const activeIdx = prev.findIndex((t) => t.id === activeId);
-        const overIdx = prev.findIndex((t) => t.id === overId);
+      const activeIdx = prev.findIndex((t) => t.id === activeId);
+      const overIdx = prev.findIndex((t) => t.id === overId);
 
+      if (activeIdx === -1) return prev;
+
+      if (activeColIdInPrev !== overColIdInPrev) {
         const updatedTasks = prev.map((t) => {
           if (t.id === activeId) {
             return updateTaskColumn(t, overColIdInPrev);
@@ -550,6 +588,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         }
         return updatedTasks;
       }
+
+      // Reordenamiento dentro de la misma columna (arriba / abajo)
+      if (overIdx !== -1 && activeIdx !== overIdx) {
+        return arrayMove(prev, activeIdx, overIdx);
+      }
+
       return prev;
     });
   };
@@ -612,20 +656,21 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       orderMap[t.id] = index * 10;
     });
 
-    const parts = activeId.split("-");
-    const projectId = parts[1];
-    const taskNum = parts[2];
+    const projectId = activeTask.projectId;
+    const prefix = `kt-${projectId}-`;
+    const taskIdStr = activeId.startsWith(prefix) ? activeId.slice(prefix.length) : (activeId.match(/^kt-.*-(.*)$/)?.[1] || activeId);
 
     let oldColId: string | undefined = undefined;
     const project = projects.find((p) => String(p.id) === String(projectId));
     const originalTask = project?.tasks?.find(
-      (t) => String(t.id) === String(taskNum)
+      (t) => String(t.id) === String(taskIdStr)
     );
     if (originalTask) {
       if (groupingMode === "estado") {
         oldColId = `status-${originalTask.status || "Planificado"}`;
       } else if (groupingMode === "prioridad") {
-        oldColId = `priority-${project?.priority || "Sin Prioridad"}`;
+        const prio = (originalTask as any)?.prioridad || originalTask?.priority || "Media";
+        oldColId = `priority-${prio}`;
       } else if (groupingMode === "fecha") {
         const origProgDate = originalTask.fecha_programada
           ? new Date(originalTask.fecha_programada + "T00:00:00")
@@ -638,7 +683,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
       } else if (groupingMode === "cliente") {
         const uniqueClients = Array.from(
           new Set(projects.map((p) => p.client))
-        ).slice(0, 4);
+        );
         const idx = uniqueClients.indexOf(project?.client || "");
         oldColId = `client-${idx !== -1 ? idx : 0}`;
       }
@@ -652,7 +697,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
   };
 
   // Define columns dynamically based on groupingMode
-  let tasks = localKanbanTasks.length > 0 ? localKanbanTasks : filteredKanbanTasks;
+  let tasks = ((draggingTaskId || justFinishedDraggingRef.current) && localKanbanTasks.length > 0) ? localKanbanTasks : filteredKanbanTasks;
   if (groupingMode === "fecha") {
     tasks = tasks.filter((t) => t.status !== "Completado" && t.status !== "Completada");
   }
@@ -702,14 +747,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         badgeText: "text-slate-400",
         tasks: tasks.filter((t) => {
           const diff = getCalendarDaysDiff(t.dueDate);
-          return diff > 7 && diff <= 30;
+          return diff > 7 || isNaN(diff);
         }),
       },
     ];
   } else if (groupingMode === "cliente") {
     const uniqueClients = Array.from(
       new Set(projects.map((p) => p.client))
-    ).slice(0, 4);
+    );
     while (uniqueClients.length < 4) {
       uniqueClients.push(`Cliente ${uniqueClients.length + 1}`);
     }
@@ -730,15 +775,15 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         badgeBg: cStyle.bg,
         badgeText: cStyle.badge,
         tasks: tasks.filter((t) => {
-          const proj = projects.find((p) => p.id === t.projectId);
+          const proj = projects.find((p) => String(p.id) === String(t.projectId));
           return proj ? proj.client === client : false;
         }),
       };
     });
   } else if (groupingMode === "prioridad") {
-    const priorities = ["Alta", "Media", "Normal", "Baja"];
+    const priorities = ["Urgente", "Alta", "Media", "Baja"];
     const colors = [
-      { text: "text-red-400/90", bg: "bg-red-400/20", badge: "text-red-300" },
+      { text: "text-rose-400/90", bg: "bg-rose-400/20", badge: "text-rose-300" },
       { text: "text-orange-400/90", bg: "bg-orange-400/20", badge: "text-orange-300" },
       { text: "text-blue-400/90", bg: "bg-blue-400/20", badge: "text-blue-300" },
       { text: "text-slate-400", bg: "bg-white/10", badge: "text-slate-400" },
@@ -753,9 +798,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
         badgeBg: cStyle.bg,
         badgeText: cStyle.badge,
         tasks: tasks.filter((t) => {
-          const proj = projects.find((p) => p.id === t.projectId);
-          const projPriority = proj?.priority || "Normal";
-          return projPriority === priority;
+          const prio = (t as any).prioridad || t.priority || "Media";
+          return prio === priority;
         }),
       };
     });
@@ -802,7 +846,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
     >
       <div
         ref={boardRef}
-        className={`w-full h-full relative grid grid-cols-4 gap-5 pt-6 animate-fadeIn ${
+        className={`w-full h-full min-h-0 relative grid grid-cols-4 gap-2.5 px-2 pt-1 animate-fadeIn ${
           draggingTaskId ||
           activeStatusDropdownCardId !== null ||
           activeFormatDropdownCardId !== null ||
@@ -849,12 +893,12 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
               modifiers={[alignToTopCenter]}
             >
               {(() => {
-                const task = filteredKanbanTasks.find((t) => t.id === draggingTaskId);
+                const task = (localKanbanTasks.length > 0 ? localKanbanTasks : filteredKanbanTasks).find((t) => t.id === draggingTaskId) || filteredKanbanTasks.find((t) => t.id === draggingTaskId);
                 if (!task) return null;
                 return (
                   <div
                     className="w-full pointer-events-none select-none"
-                    style={{ height: 150 }}
+                    style={{ height: "10.125rem" }}
                   >
                     <div
                       ref={dragCardRef}

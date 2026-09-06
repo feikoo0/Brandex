@@ -7,7 +7,8 @@ import {
   ChevronUp, LogOut, RefreshCw, UserCircle,
   LayoutDashboard, Layout, Calendar,
   Users, DollarSign, Folder, CheckSquare,
-  Key, Database, LineChart, BarChart, Moon, Sun, Sparkles, Plus
+  Key, Database, LineChart, BarChart, Moon, Sun, Sparkles, Plus,
+  Network, Briefcase, User
 } from "lucide-react";
 import { useAuthStore, useUIStore } from "@/lib/store";
 import { useSync } from "@/hooks/useData";
@@ -26,18 +27,20 @@ type NavItem =
 function getIconForTab(tab: string) {
   switch(tab) {
     case "pulse": return <LayoutDashboard className="w-5 h-5 flex-shrink-0" />;
-    case "engine": return <Layout className="w-5 h-5 flex-shrink-0" />;
+    case "engine": return <Briefcase className="w-5 h-5 flex-shrink-0" />;
     case "timeline": return <Calendar className="w-5 h-5 flex-shrink-0" />;
-    case "clientes": return <Users className="w-5 h-5 flex-shrink-0" />;
+    case "clientes": return <User className="w-5 h-5 flex-shrink-0" />;
     case "pipeline": return <LineChart className="w-5 h-5 flex-shrink-0" />;
     case "proyectos": return <Folder className="w-5 h-5 flex-shrink-0" />;
     case "tareas": return <CheckSquare className="w-5 h-5 flex-shrink-0" />;
     case "talent": return <Users className="w-5 h-5 flex-shrink-0" />;
+    case "equipo": return <Users className="w-5 h-5 flex-shrink-0" />;
     case "analytics": return <BarChart className="w-5 h-5 flex-shrink-0" />;
     case "recursos": return <Database className="w-5 h-5 flex-shrink-0" />;
     case "calendario": return <Calendar className="w-5 h-5 flex-shrink-0" />;
     case "finanzas": return <DollarSign className="w-5 h-5 flex-shrink-0" />;
     case "accesos": return <Key className="w-5 h-5 flex-shrink-0" />;
+    case "diagramas": return <Network className="w-5 h-5 flex-shrink-0" />;
     default: return <LayoutDashboard className="w-5 h-5 flex-shrink-0" />;
   }
 }

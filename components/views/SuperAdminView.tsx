@@ -55,6 +55,9 @@ interface WorkspaceDoc {
   status?: string;
 }
 
+let cachedSurveys: SurveyDoc[] | null = null;
+let cachedWorkspaces: WorkspaceDoc[] | null = null;
+
 export function SuperAdminView() {
   const { features, updateFeatureAudience, toggleFeatureEnabled, isLoading: isFeaturesLoading } = useSystemFeatures();
 
@@ -62,10 +65,10 @@ export function SuperAdminView() {
   const [featureCategory, setFeatureCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
-  // Surveys & Workspaces State
-  const [surveys, setSurveys] = useState<SurveyDoc[]>([]);
-  const [workspaces, setWorkspaces] = useState<WorkspaceDoc[]>([]);
-  const [isLoadingSurveys, setIsLoadingSurveys] = useState<boolean>(true);
+  // Surveys & Workspaces State with in-memory caching
+  const [surveys, setSurveys] = useState<SurveyDoc[]>(() => cachedSurveys || []);
+  const [workspaces, setWorkspaces] = useState<WorkspaceDoc[]>(() => cachedWorkspaces || []);
+  const [isLoadingSurveys, setIsLoadingSurveys] = useState<boolean>(() => !cachedSurveys);
 
   // Selected Survey for Detail Modal
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyDoc | null>(null);
@@ -75,12 +78,14 @@ export function SuperAdminView() {
 
   // Load surveys and workspaces in real time
   useEffect(() => {
-    setIsLoadingSurveys(true);
+    if (!cachedSurveys) {
+      setIsLoadingSurveys(true);
+    }
     const surveysCol = collection(db, "onboarding_surveys");
     const workspacesCol = collection(db, "workspaces");
 
-    let latestSurveys: SurveyDoc[] = [];
-    let latestWorkspaces: WorkspaceDoc[] = [];
+    let latestSurveys: SurveyDoc[] = cachedSurveys || [];
+    let latestWorkspaces: WorkspaceDoc[] = cachedWorkspaces || [];
 
     const mergeAndSetData = (surveysList: SurveyDoc[], workspacesList: WorkspaceDoc[]) => {
       const surveyMap = new Map<string, SurveyDoc>();
@@ -119,7 +124,10 @@ export function SuperAdminView() {
         return timeB - timeA;
       });
 
+      cachedSurveys = combined;
+      cachedWorkspaces = workspacesList;
       setSurveys(combined);
+      setWorkspaces(workspacesList);
       setIsLoadingSurveys(false);
     };
 

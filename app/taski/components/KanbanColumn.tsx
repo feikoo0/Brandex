@@ -21,6 +21,8 @@ export interface SynthesizedTask {
   format?: string;
   time?: string;
   desc?: string;
+  priority?: string;
+  prioridad?: string;
   kanbanOrders?: Record<string, number>;
 }
 
@@ -56,18 +58,15 @@ export function ColumnContainer({
     <div
       ref={setNodeRef}
       data-column-id={col.id}
-      className={`h-full relative flex flex-col gap-2.5 transition-all duration-300 ${
-        draggingTaskId
-          ? isHovered
-            ? "z-50 shadow-[0_20px_50px_rgba(0,0,0,0.35)] border border-dashed border-sky-500/40 bg-sky-500/[0.02] p-2 rounded-[13px]"
-            : "z-10 border border-dashed border-white/[0.04] p-2 rounded-[13px]"
-          : "border border-transparent p-0"
-      }`}
+      className="h-full min-h-0 flex-1 relative flex flex-col gap-2.5 p-0"
       style={{
-        overflow: draggingTaskId || isAnyDropdownOpen ? "visible" : "hidden",
+        overflow: "visible",
       }}
     >
-      {children}
+
+      <div className="relative z-10 flex flex-col gap-2.5 h-full min-h-0 flex-1 w-full">
+        {children}
+      </div>
     </div>
   );
 }
@@ -120,22 +119,15 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const prevDraggingRef = useRef<string | null>(null);
 
-  // After drag ends, re-assign card-pos-* classes and remove hover-disabled
   useEffect(() => {
     const wasDragging = prevDraggingRef.current !== null;
     const isNowIdle = draggingTaskId === null;
     prevDraggingRef.current = draggingTaskId;
 
     if (wasDragging && isNowIdle && scrollContainerRef.current) {
-      const container = scrollContainerRef.current;
-      // Remove stale drag state classes
-      container.classList.remove("hover-disabled", "is-scrolling");
-      // Re-assign card-pos-* classes after DOM settles
-      requestAnimationFrame(() => {
-        updateVisibleCards(container);
-      });
+      scrollContainerRef.current.classList.remove("hover-disabled", "is-scrolling");
     }
-  }, [draggingTaskId, updateVisibleCards]);
+  }, [draggingTaskId]);
 
   return (
     <ColumnContainer
@@ -152,7 +144,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       }
     >
       {/* Header of Column */}
-      <div className="flex items-center gap-2.5 px-0 pt-1 pb-1 shrink-0">
+      <div className="flex items-center gap-2.5 px-1.5 pt-1 pb-1 shrink-0">
         <span
           className={`text-[13px] font-bold ${
             isNightMode ? "text-white" : "text-slate-900"
@@ -175,52 +167,14 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         strategy={verticalListSortingStrategy}
       >
         <div
-          ref={(el) => {
-            scrollContainerRef.current = el;
-            if (el) {
-              if (!draggingTaskId) {
-                setTimeout(() => {
-                  updateVisibleCards(el);
-                }, 0);
-              }
-            }
-          }}
-          className={`task-list-scroll relative h-[506px] hide-scrollbar flex flex-col gap-2.5 px-0 py-0 overflow-y-auto ${
+          ref={scrollContainerRef}
+          className={`task-list-scroll relative flex-1 h-full min-h-0 flex flex-col gap-2 -mx-2 px-3.5 py-2 hide-scrollbar overflow-y-auto ${
             draggingTaskId
               ? `${isHovered ? "z-50" : "z-10"} hover-disabled`
               : "z-10"
           }`}
           style={{
             overflowX: draggingTaskId ? "visible" : "hidden",
-          }}
-          onScroll={(e) => {
-            const container = e.currentTarget;
-            if ((container as any)._ignoreScrollCollapse) {
-              return;
-            }
-            container.classList.add("is-scrolling", "hover-disabled");
-            setExpandedCardId(null);
-
-            const scrollTimeout = (container as any)._scrollTimeout;
-            if (scrollTimeout) clearTimeout(scrollTimeout);
-
-            const cooldownTimeout = (container as any)._cooldownTimeout;
-            if (cooldownTimeout) clearTimeout(cooldownTimeout);
-
-            (container as any)._scrollTimeout = setTimeout(() => {
-              container.classList.remove("is-scrolling");
-              updateVisibleCards(container);
-
-              const topIndex = Math.round(container.scrollTop / 172);
-              setColumnScrollIndices((prev) => {
-                if (prev[col.id] === topIndex) return prev;
-                return { ...prev, [col.id]: topIndex };
-              });
-
-              (container as any)._cooldownTimeout = setTimeout(() => {
-                container.classList.remove("hover-disabled");
-              }, 250);
-            }, 150);
           }}
         >
           {colTasks.map((t) => {

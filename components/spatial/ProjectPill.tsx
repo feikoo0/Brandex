@@ -202,10 +202,10 @@ export default function ProjectPill({
                     {completedTasks}/{totalTasks} Tareas
                   </span>
                 </div>
-                {role === "admin" && project.costo > 0 && (
+                {role === "admin" && (project.presupuesto ?? project.costo ?? 0) > 0 && (
                   <div className="flex items-center gap-0.5 text-emerald-400 font-black">
                     <DollarSign className="w-3.5 h-3.5" />
-                    <span>{project.costo.toLocaleString()}</span>
+                    <span>{(project.presupuesto ?? project.costo ?? 0).toLocaleString()}</span>
                   </div>
                 )}
               </div>
