@@ -568,6 +568,16 @@ export default function BrandexV3Page() {
   return (
     <AppLayout
       isNightMode={isNightMode}
+      headerWrapperClassName={
+        activeTab === "inicio"
+          ? "absolute top-0 left-0 right-0 z-50 pointer-events-none"
+          : undefined
+      }
+      contentClassName={
+        activeTab === "inicio"
+          ? "!p-0"
+          : undefined
+      }
       sidebar={
         <TaskiSidebar
           isMenuOpen={isMenuOpen}

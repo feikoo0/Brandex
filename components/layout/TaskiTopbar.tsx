@@ -661,7 +661,7 @@ export function TaskiTopbar({
             )}
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 pointer-events-auto">
             <SaveStatusBadge isNightMode={isNightMode} />
           </div>
         </div>

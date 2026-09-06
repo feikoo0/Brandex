@@ -8,6 +8,7 @@ import { useAuthStore } from "@/lib/store";
 import { playSound } from "../utils/audio";
 import { InlineLoader } from "generative-loaders";
 import "generative-loaders/styles.css";
+import MagicRings from "./MagicRings";
 
 interface ProposedTask {
   id?: string;
@@ -695,10 +696,40 @@ export function InicioDashboard() {
   );
 
   return (
-    <div className="w-full max-w-3xl h-full flex flex-col justify-between mx-auto select-none py-2 gap-4">
-      {messages.length === 0 ? (
-        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col justify-center px-1">
-          <div className="my-auto flex flex-col items-center justify-center text-center w-full py-4">
+    <div className="w-full h-full relative overflow-hidden select-none">
+      {/* MagicRings Animated Background spanning the entire rounded rectangle container of the page */}
+      {messages.length === 0 && (
+        <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden z-0">
+          <MagicRings
+            color="#4d4d4d"
+            colorTwo="#323232"
+            ringCount={6}
+            speed={1}
+            attenuation={10}
+            lineThickness={2}
+            baseRadius={0.38}
+            radiusStep={0.12}
+            scaleRate={0.12}
+            opacity={1}
+            blur={0}
+            noiseAmount={0.02}
+            rotation={0}
+            ringGap={1.4}
+            fadeIn={0.7}
+            fadeOut={0.5}
+            followMouse={false}
+            mouseInfluence={0.2}
+            hoverScale={1.2}
+            parallax={0.05}
+            clickBurst={false}
+          />
+        </div>
+      )}
+
+      <div className="w-full max-w-3xl h-full min-h-0 flex flex-col justify-between mx-auto py-2 gap-4 relative z-10">
+        {messages.length === 0 ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col justify-center px-4">
+            <div className="my-auto flex flex-col items-center justify-center text-center w-full py-4">
             {/* Logo de Brandex */}
             <div className="mb-4 flex items-center justify-center select-none">
               <Image
@@ -739,7 +770,7 @@ export function InicioDashboard() {
       ) : (
         <>
           {/* ── Top Bar: Active Chat Controls (Nuevo Chat & Stats) ── */}
-          <div className="flex items-center justify-between px-1 shrink-0">
+          <div className="flex items-center justify-between px-4 shrink-0 pt-16">
             <div className="text-[11px] text-[#ffffff40]">
               {lastUsage && <span>Último uso: {lastUsage.totalTokens} tokens</span>}
             </div>
@@ -1206,11 +1237,12 @@ export function InicioDashboard() {
           </div>
 
           {/* ── Chat Box at bottom of conversation ── */}
-          <div className="shrink-0">
+          <div className="shrink-0 pb-4 px-4">
             {renderChatBox()}
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }
