@@ -20,10 +20,12 @@ import {
   Database,
   Layers,
   Handshake,
-  FileText
+  FileText,
+  Sparkles,
 } from "lucide-react";
 import { playSound } from "@/app/taski/utils/audio";
 import { Project } from "@/app/taski/components/ProjectDashboard";
+import { TaskiAvatar, AURORA_PALETTES } from "@/components/ui/TaskiAvatar";
 
 interface TaskiSidebarProps {
   isMenuOpen: boolean;
@@ -34,6 +36,7 @@ interface TaskiSidebarProps {
   recentProjects?: Project[];
   onSelectProject?: (projId: string | number) => void;
   userName?: string;
+  userEmail?: string;
   workspaceId?: string;
   isMaster?: boolean;
   onLogout?: () => void;
@@ -51,6 +54,7 @@ export function TaskiSidebar({
   recentProjects = [],
   onSelectProject,
   userName = "Usuario",
+  userEmail,
   workspaceId,
   isMaster = false,
   onLogout,
@@ -58,6 +62,7 @@ export function TaskiSidebar({
   copiedKey = false,
   isFeatureVisible = () => true,
 }: TaskiSidebarProps) {
+  const [activePaletteIndex, setActivePaletteIndex] = useState<number | null>(null);
   const [isLogoHovered, setIsLogoHovered] = useState(false);
   const [hoveredMenuItem, setHoveredMenuItem] = useState<string | null>(null);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -281,48 +286,44 @@ export function TaskiSidebar({
       <div
         onMouseLeave={() => setHoveredMenuItem(null)}
         className={`flex-1 min-h-0 flex flex-col overflow-y-auto custom-scrollbar ${
-          isMenuOpen ? "pr-0.5" : "pr-0"
+          isMenuOpen ? "pr-0.5" : "pr-0 items-center w-full"
         }`}
       >
         {/* Botón "Nuevo proyecto" */}
-        <motion.button
+        <button
           type="button"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.96 }}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             onNewProject({ x: rect.x, y: rect.y, width: rect.width, height: rect.height });
             playSound("click");
           }}
-          className={`mb-[10px] group relative flex items-center h-10 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 text-[#ffffffd6] cursor-pointer select-none overflow-hidden transition-all duration-300 border border-[#ffffff1f] shadow-sm shrink-0 ${
-            isMenuOpen ? "w-full" : "w-10 justify-center"
+          className={`mb-[10px] group relative flex items-center justify-center h-10 rounded-xl bg-white hover:bg-[#e4e4e4] active:bg-[#d8d8d8] text-[#121212] cursor-pointer select-none overflow-hidden transition-colors duration-150 shadow-sm shrink-0 ${
+            isMenuOpen ? "w-full gap-1" : "w-10 mx-auto"
           }`}
           title="Nuevo proyecto"
         >
-          <div className="flex items-center justify-center shrink-0 w-10 h-10">
-            <Plus className="w-[15px] h-[15px] text-[#ffffffd6] stroke-[2] shrink-0" />
-          </div>
+          <Plus className="w-[14px] h-[14px] text-[#121212] stroke-[2.5] shrink-0" />
           {isMenuOpen && (
-            <span className="text-[14px] font-semibold whitespace-nowrap select-none pr-3 text-[#ffffffd6] -translate-y-[0.5px]">
+            <span className="text-[14px] font-medium whitespace-nowrap select-none text-[#121212] leading-none">
               Nuevo proyecto
             </span>
           )}
-        </motion.button>
+        </button>
 
         {/* Navigation Groups */}
-        <div className="flex flex-col gap-0.5">
+        <div className={`flex flex-col gap-0.5 ${!isMenuOpen ? "w-full items-center" : ""}`}>
           {visibleGroups.map((group, groupIdx) => (
-            <div key={group.id} className="flex flex-col gap-0.5">
-              {/* Group Header / Separator (Same 24px height in both collapsed and expanded) */}
+            <div key={group.id} className={`flex flex-col gap-0.5 ${!isMenuOpen ? "w-full items-center" : ""}`}>
+              {/* Group Header / Separator (Refined Gestalt spacing matching reference) */}
               {groupIdx > 0 && (
                 isMenuOpen ? (
-                  <div className="h-6 flex items-center pl-3.5 shrink-0">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff40] select-none">
+                  <div className="pt-4 pb-1 pl-3.5 shrink-0 flex items-center">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-[#ffffff6b] select-none">
                       {group.title}
                     </span>
                   </div>
                 ) : (
-                  <div className="h-6 flex items-center justify-center shrink-0">
+                  <div className="h-6 w-full flex items-center justify-center shrink-0">
                     <div className="w-5 h-px bg-white/10" />
                   </div>
                 )
@@ -343,7 +344,7 @@ export function TaskiSidebar({
                       playSound("click");
                     }}
                     className={`group relative flex items-center h-10 rounded-xl cursor-pointer select-none overflow-hidden transition-all duration-200 border-0 ${
-                      isMenuOpen ? "w-full" : "w-10 justify-center"
+                      isMenuOpen ? "w-full" : "w-10 justify-center mx-auto"
                     } ${
                       isActive
                         ? "bg-white/10 text-[#ffffffd6]"
@@ -370,7 +371,7 @@ export function TaskiSidebar({
       </div>
 
       {/* ── BOTTOM: Tarjeta de Usuario y Menú Desplegable ── */}
-      <div ref={userMenuRef} className="relative mt-2 shrink-0">
+      <div ref={userMenuRef} className={`relative mt-2 shrink-0 ${!isMenuOpen ? "w-full flex justify-center" : ""}`}>
         <AnimatePresence>
           {isUserMenuOpen && (
             <motion.div
@@ -382,19 +383,46 @@ export function TaskiSidebar({
                 isMenuOpen ? "left-0 w-[232px]" : "left-0 w-[210px]"
               } bg-[#181818] border border-white/10 rounded-2xl p-1.5 shadow-2xl shadow-black/90 backdrop-blur-xl flex flex-col gap-1 z-[70]`}
             >
-              {/* Encabezado: Avatar + Nombre + Subtítulo */}
+              {/* Encabezado: Avatar + Nombre + Correo */}
               <div className="flex items-center gap-2.5 p-2 rounded-xl bg-white/[0.03]">
-                <div className="w-8 h-8 rounded-full border border-white/10 bg-[#1f1f1f] flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-[#ffffffd6]" />
-                </div>
+                <TaskiAvatar
+                  name={userName}
+                  email={userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
+                  size={34}
+                  paletteId={activePaletteIndex !== null ? AURORA_PALETTES[activePaletteIndex].id : undefined}
+                />
                 <div className="flex flex-col min-w-0 flex-1">
                   <span className="text-[14px] font-bold text-[#ffffffd6] truncate leading-tight">
                     {userName}
                   </span>
-                  <span className="text-[12px] font-medium text-[#ffffff80] truncate leading-tight">
-                    {isMaster ? "SuperAdmin" : "Colaborador"}
+                  <span
+                    className="text-[11px] font-medium text-[#ffffff80] truncate leading-tight mt-0.5"
+                    title={userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
+                  >
+                    {userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
                   </span>
                 </div>
+              </div>
+
+              {/* Selector / Randomizer de fondos Aurora Mesh */}
+              <div className="px-2 py-1.5 flex items-center justify-between gap-1.5 rounded-lg bg-white/[0.02]">
+                <span className="text-[11px] font-semibold text-[#ffffff6b] flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-amber-400" />
+                  Fondo Aurora
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound("pop");
+                    setActivePaletteIndex((prev) => {
+                      const next = (prev === null ? 0 : prev + 1) % AURORA_PALETTES.length;
+                      return next;
+                    });
+                  }}
+                  className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/15 text-white/90 transition-all cursor-pointer"
+                >
+                  {activePaletteIndex !== null ? AURORA_PALETTES[activePaletteIndex].name : "Estilo"} ↻
+                </button>
               </div>
 
               <div className="w-full h-px bg-white/10 my-0.5" />
@@ -438,16 +466,22 @@ export function TaskiSidebar({
           >
             <div className="flex items-center min-w-0 h-full">
               <div className="w-10 h-12 flex items-center justify-center shrink-0">
-                <div className="w-8 h-8 rounded-full border border-white/10 bg-[#1f1f1f] flex items-center justify-center shrink-0">
-                  <User className="w-4 h-4 text-[#ffffffd6]" />
-                </div>
+                <TaskiAvatar
+                  name={userName}
+                  email={userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
+                  size={30}
+                  paletteId={activePaletteIndex !== null ? AURORA_PALETTES[activePaletteIndex].id : undefined}
+                />
               </div>
-              <div className="flex flex-col min-w-0 text-left pl-0.5">
+              <div className="flex flex-col min-w-0 text-left pl-1">
                 <span className="text-[14px] font-bold text-[#ffffffd6] group-hover:text-white truncate leading-tight">
                   {userName}
                 </span>
-                <span className="text-[12px] font-medium text-[#ffffff80] truncate leading-tight">
-                  {isMaster ? "SuperAdmin" : "Colaborador"}
+                <span
+                  className="text-[11px] font-medium text-[#ffffff80] truncate leading-tight mt-0.5"
+                  title={userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
+                >
+                  {userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
                 </span>
               </div>
             </div>
@@ -467,12 +501,15 @@ export function TaskiSidebar({
               setIsUserMenuOpen((prev) => !prev);
               playSound("click");
             }}
-            className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:scale-105 transition-transform"
-            title={`${userName} (${isMaster ? "SuperAdmin" : "Colaborador"})`}
+            className="w-10 h-10 rounded-xl flex items-center justify-center cursor-pointer hover:scale-105 transition-transform mx-auto"
+            title={`${userName} (${userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")})`}
           >
-            <div className="w-8 h-8 rounded-full border border-white/10 bg-[#1f1f1f] flex items-center justify-center shrink-0">
-              <User className="w-4 h-4 text-[#ffffffd6]" />
-            </div>
+            <TaskiAvatar
+              name={userName}
+              email={userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app")}
+              size={30}
+              paletteId={activePaletteIndex !== null ? AURORA_PALETTES[activePaletteIndex].id : undefined}
+            />
           </button>
         )}
       </div>

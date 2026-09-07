@@ -113,10 +113,13 @@ export default function BrandexV3Page() {
   const [taskModalOriginRect, setTaskModalOriginRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   const authUserName = useAuthStore((s) => s.userName);
+  const authUserEmail = useAuthStore((s) => s.userEmail);
   const currentUserName =
     authUserName && authUserName.toLowerCase() !== "malebar"
       ? authUserName
       : (isMaster ? "Feiko" : "Usuario");
+  const currentUserEmail =
+    authUserEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app");
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [sessionGreetingObj, setSessionGreetingObj] = useState<{ title: string; subtitle: string }>({
@@ -553,7 +556,7 @@ export default function BrandexV3Page() {
 
   if (!isAuthReady) {
     return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#181817] text-white select-none">
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-[#0f0f0f] text-white select-none">
         <div className="w-10 h-10 relative flex items-center justify-center mb-4 animate-pulse">
           <Image src="/taski-icon.png" alt="Taski" width={40} height={40} className="object-contain" priority />
         </div>
@@ -602,6 +605,7 @@ export default function BrandexV3Page() {
             setActiveTab("proyectos");
           }}
           userName={currentUserName}
+          userEmail={currentUserEmail}
           workspaceId={workspaceId || ""}
           isMaster={isMaster}
           onLogout={handleLogout}
@@ -1030,7 +1034,24 @@ export default function BrandexV3Page() {
         {activeTab === "proyectos" && (
           <ProjectsView
             selectedProjectId={activeProject}
-            onClearSelectedProject={() => setActiveProject(null)}
+            onClearSelectedProject={() => {
+              setActiveProject(null);
+              setActiveSideTask(null);
+            }}
+            onSelectTask={(task, pId, originRect) => {
+              const matchedProj = projects.find((p) => String(p.id) === String(pId || task.projectId || activeProject));
+              const fullTaskData = {
+                ...task,
+                projectId: pId || (task as any).projectId || matchedProj?.id || activeProject,
+                projectName: matchedProj?.title || (matchedProj as any)?.nombre || (task as any).projectName || "Proyecto",
+                client: matchedProj?.client || (task as any).client || "Brandex",
+                color: (matchedProj as any)?.color || task.color,
+              };
+              setActiveSideTask(fullTaskData);
+              setEditingTaskModal(fullTaskData);
+              setTaskModalOriginRect(originRect || null);
+              playSound('click');
+            }}
             onCreateProject={(originRect) => {
               setEditingProjectModal(null);
               setProjectModalOriginRect(originRect || null);

@@ -33,11 +33,13 @@ interface AuthState {
   role:        Role | null;
   userId:      string | null;
   userName:    string | null;
+  userEmail:   string | null;
   token:       string | null;
   workspaceId: string | null;
   hasHydrated: boolean;
 
-  setAuth: (role: Role, id: string, name: string, token: string, workspaceId?: string) => void;
+  setAuth: (role: Role, id: string, name: string, token: string, workspaceId?: string, email?: string) => void;
+  setUserEmail: (email: string) => void;
   setHasHydrated: (hydrated: boolean) => void;
   logout:  () => void;
 }
@@ -46,11 +48,12 @@ function getInitialAuthStateFromBrowser(): {
   role: Role | null;
   userId: string | null;
   userName: string | null;
+  userEmail: string | null;
   token: string | null;
   workspaceId: string | null;
 } {
   if (typeof document === "undefined" && typeof window === "undefined") {
-    return { role: null, userId: null, userName: null, token: null, workspaceId: null };
+    return { role: null, userId: null, userName: null, userEmail: null, token: null, workspaceId: null };
   }
 
   // 1. Intentar leer desde la cookie taski_session
@@ -62,10 +65,14 @@ function getInitialAuthStateFromBrowser(): {
       if (raw) {
         const decoded = JSON.parse(decodeURIComponent(raw));
         if (decoded && decoded.token && decoded.workspaceId) {
+          const role = (decoded.role as Role) || "admin";
+          const userId = decoded.userId || decoded.id || "admin";
+          const email = decoded.userEmail || decoded.email || (role === "admin" || userId === "admin" ? "contacto.milenial@gmail.com" : null);
           return {
-            role: (decoded.role as Role) || "admin",
-            userId: decoded.userId || decoded.id || "admin",
+            role,
+            userId,
             userName: decoded.userName || decoded.nombre || "Usuario",
+            userEmail: email,
             token: decoded.token,
             workspaceId: decoded.workspaceId || "brandex-master",
           };
@@ -82,10 +89,14 @@ function getInitialAuthStateFromBrowser(): {
         const parsed = JSON.parse(local);
         const state = parsed?.state;
         if (state && state.token && state.workspaceId) {
+          const role = (state.role as Role) || "admin";
+          const userId = state.userId || "admin";
+          const email = state.userEmail || state.email || (role === "admin" || userId === "admin" ? "contacto.milenial@gmail.com" : null);
           return {
-            role: (state.role as Role) || "admin",
-            userId: state.userId || "admin",
+            role,
+            userId,
             userName: state.userName || "Usuario",
+            userEmail: email,
             token: state.token,
             workspaceId: state.workspaceId || "brandex-master",
           };
@@ -94,7 +105,7 @@ function getInitialAuthStateFromBrowser(): {
     }
   } catch {}
 
-  return { role: null, userId: null, userName: null, token: null, workspaceId: null };
+  return { role: null, userId: null, userName: null, userEmail: null, token: null, workspaceId: null };
 }
 
 const initialAuth = getInitialAuthStateFromBrowser();
@@ -105,20 +116,26 @@ export const useAuthStore = create<AuthState>()(
       role:        initialAuth.role,
       userId:      initialAuth.userId,
       userName:    initialAuth.userName,
+      userEmail:   initialAuth.userEmail,
       token:       initialAuth.token,
       workspaceId: initialAuth.workspaceId,
       hasHydrated: typeof window !== "undefined" && !!initialAuth.token,
 
-      setAuth: (role, userId, userName, token, workspaceId = "brandex-master") => {
+      setAuth: (role, userId, userName, token, workspaceId = "brandex-master", email) => {
+        const resolvedEmail = email || (role === "admin" || userId === "admin" ? "contacto.milenial@gmail.com" : null);
         if (typeof document !== "undefined") {
           try {
             const cookieValue = encodeURIComponent(
-              JSON.stringify({ token, workspaceId, role, userId, userName })
+              JSON.stringify({ token, workspaceId, role, userId, userName, userEmail: resolvedEmail })
             );
             document.cookie = `taski_session=${cookieValue}; path=/; max-age=2592000; SameSite=Lax`;
           } catch {}
         }
-        set({ role, userId, userName, token, workspaceId, hasHydrated: true });
+        set({ role, userId, userName, userEmail: resolvedEmail, token, workspaceId, hasHydrated: true });
+      },
+
+      setUserEmail: (userEmail: string) => {
+        set({ userEmail });
       },
 
       setHasHydrated: (hasHydrated: boolean) => set({ hasHydrated }),
@@ -129,7 +146,7 @@ export const useAuthStore = create<AuthState>()(
             document.cookie = "taski_session=; path=/; max-age=0; SameSite=Lax";
           } catch {}
         }
-        set({ role: null, userId: null, userName: null, token: null, workspaceId: null, hasHydrated: true });
+        set({ role: null, userId: null, userName: null, userEmail: null, token: null, workspaceId: null, hasHydrated: true });
       },
     }),
     {
@@ -146,6 +163,7 @@ export const useAuthStore = create<AuthState>()(
                   role: state.role,
                   userId: state.userId,
                   userName: state.userName,
+                  userEmail: state.userEmail,
                 })
               );
               document.cookie = `taski_session=${cookieValue}; path=/; max-age=2592000; SameSite=Lax`;

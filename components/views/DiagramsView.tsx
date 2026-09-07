@@ -64,7 +64,7 @@ export function DiagramsView() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden bg-[#121212] p-4 lg:p-6 space-y-4">
+    <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden bg-[#0d0d0d] p-4 lg:p-6 space-y-4">
       {/* ── TOP HEADER & SUBMENU ── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-[20px] bg-[#181818] border border-white/10 shadow-sm flex-shrink-0">
         <div>

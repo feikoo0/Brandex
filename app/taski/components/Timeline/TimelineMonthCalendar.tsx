@@ -241,7 +241,7 @@ export const TimelineMonthCalendar: React.FC<TimelineMonthCalendarProps> = React
   }, [calendarCells, expandedDayIso]);
 
   return (
-    <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-[#121212] select-none">
+    <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-[#0d0d0d] select-none">
       {/* ── Encabezado de los 7 Días de la Semana (tal cual en el fondo: Lun, Mar, Mié...) ── */}
       <div className="grid grid-cols-7 gap-1.5 px-2 pt-2 pb-1 shrink-0 bg-transparent select-none">
         {WEEKDAY_NAMES_SHORT.map((dayName) => {

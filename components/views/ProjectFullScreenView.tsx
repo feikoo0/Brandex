@@ -1,17 +1,17 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   ArrowLeft, Calendar, DollarSign, Loader2, Plus, Trash2, User, Flag, Tag, X, 
   Maximize2, MoreHorizontal, Paperclip, Search, LayoutGrid, Table, Clock, 
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, Check, Layers, Users, Sparkles,
-  CalendarDays, ListFilter, Target, UserCheck
+  CalendarDays, ListFilter, Target, UserCheck, ArrowRight
 } from "lucide-react";
 import { useData, useUpdateProject, useUpdateTask, useCreateTask } from "@/hooks/useData";
 import { useClients } from "@/hooks/useClients";
 import { useProjectSummary } from "@/hooks/useProjectSummary";
+import { useRecentSessions } from "@/hooks/useSessions";
 import { 
   cn, 
   getSingleSourceProjectColor, 
@@ -21,45 +21,55 @@ import {
   parseAnyDate, 
   getCalendarDaysDiff as getCalendarDaysDiffUtil,
   CARD_COLOR_KEYS,
-  getCardColorTheme
+  getCardColorTheme,
+  extractCleanTaskId,
+  parseTimeToHours
 } from "@/lib/utils";
-import { useUIStore } from "@/lib/store";
+import { resolveBucketDate } from "@/lib/timelineUtils";
 import { TaskCardContent } from "@/app/taski/components/TaskCard";
 import { useTaskCardInteractions } from "@/app/taski/hooks/useTaskCardInteractions";
-import { DeleteConfirmModal } from "@/app/taski/components/DeleteConfirmModal";
+import DeleteConfirmModal from "@/app/taski/components/DeleteConfirmModal";
 import NewTaskModal, { TaskData } from "@/app/taski/components/NewTaskModal";
-import FormatoShape from "@/app/taski/components/FormatoShape";
-import { FORMATOS_ESTANDAR, getFormato } from "@/app/taski/utils/formatos";
+import KanbanBoard from "@/app/taski/components/KanbanBoard";
+import { SynthesizedTask } from "@/app/taski/components/KanbanColumn";
+import { TimelineView } from "@/app/taski/components/Timeline/TimelineView";
+import TaskTableView from "@/app/taski/components/TaskTableView";
+import { ResizableDivider } from "@/components/ui/ResizableDivider";
 import LinearDropdownPopover from "@/app/taski/components/LinearDropdownPopover";
 import LinearDatePopover from "@/app/taski/components/LinearDatePopover";
+import { TaskSidePanel } from "@/components/task-detail/TaskSidePanel";
 import { ProjectStatusIcon } from "@/components/common/ProjectStatusIcon";
 import { SmoothInput, SmoothTextarea } from "@/components/ui/SmoothInput";
 import { playSound } from "@/app/taski/utils/audio";
-import { doc, deleteDoc } from "firebase/firestore";
+import { doc, updateDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { Client, ProjectHealthRAG } from "@/lib/types";
 import type { Project, Task } from "@/app/taski/components/ProjectDashboard";
 
-type ProjectViewTab = "todo" | "kanban" | "tabla" | "timeline" | "buscar";
+type ProjectViewTab = "buscar" | "todo" | "kanban" | "tabla" | "timeline";
+
+export interface ProjectFullScreenProps {
+  projectId: string;
+  onBack: () => void;
+  onSelectTask?: (task: Task, projectId?: string | number, originRect?: any) => void;
+}
 
 export default function ProjectFullScreenView({ 
   projectId, 
-  onBack 
-}: { 
-  projectId: string; 
-  onBack: () => void;
-}) {
+  onBack,
+  onSelectTask: onSelectTaskProp,
+}: ProjectFullScreenProps) {
   const summary = useProjectSummary(projectId);
   const { data } = useData();
   const { clients: firestoreClients } = useClients();
+  const { sessions: recentSessions } = useRecentSessions();
   const updateProject = useUpdateProject();
   const updateTask = useUpdateTask();
   const createTask = useCreateTask();
-  const openModal = useUIStore((s) => s.openModal);
 
   const project = summary.project;
 
-  // Catálogo unificado de marcas clientes
+  // Catálogo unificado de clientes
   const availableClients = useMemo(() => {
     const map = new Map<string, Client>();
     (firestoreClients || []).forEach((c) => {
@@ -73,9 +83,35 @@ export default function ProjectFullScreenView({
     return Array.from(map.values());
   }, [firestoreClients, data?.clientes]);
 
+  // Ancho redimensionable de la columna izquierda (Persistido)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("taski_project_sidebar_width");
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 240 && parsed <= 480) {
+          return parsed;
+        }
+      }
+    }
+    return 310;
+  });
+
+  const handleSidebarResize = useCallback((deltaX: number) => {
+    setSidebarWidth((prev) => {
+      const maxW = typeof window !== "undefined" ? Math.floor(window.innerWidth * 0.40) : 480;
+      return Math.min(Math.max(prev + deltaX, 240), maxW);
+    });
+  }, []);
+
+  const handleSidebarResizeEnd = useCallback(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("taski_project_sidebar_width", String(sidebarWidth));
+    }
+  }, [sidebarWidth]);
+
   // Controles de Popovers de Proyecto
-  const [activePopover, setActivePopover] = useState<"header_client" | "status" | "priority" | "type" | "assignee" | "date" | "salud" | "lead" | null>(null);
-  const [showMoreProps, setShowMoreProps] = useState(false);
+  const [activePopover, setActivePopover] = useState<"client" | "status" | "priority" | "type" | "lead" | "date" | "salud" | "assignee" | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [newMetaInput, setNewMetaInput] = useState("");
@@ -88,23 +124,31 @@ export default function ProjectFullScreenView({
   }, []);
 
   // Navegador Superior (Idéntico a Work / HomeDashboard con la opción "Todo")
-  const [activeView, setActiveView] = useState<ProjectViewTab>("todo");
+  const [activeView, setActiveView] = useState<ProjectViewTab>("kanban");
   const [hoveredTab, setHoveredTab] = useState<string | null>(null);
-  const [previousView, setPreviousView] = useState<ProjectViewTab>("todo");
+  const [previousView, setPreviousView] = useState<ProjectViewTab>("kanban");
   const [taskSearch, setTaskSearch] = useState("");
   const isSearchActive = activeView === "buscar";
 
-  // Dropdown de agrupación y filtros
+  // Agrupación y Filtros (Kanban y Timeline)
   const [groupDropdownOpen, setGroupDropdownOpen] = useState(false);
+  const [groupingMode, setGroupingMode] = useState<"fecha" | "cliente" | "prioridad" | "estado">("estado");
   const [groupingFilter, setGroupingFilter] = useState<"todos" | "Planificado" | "En Proceso" | "En Revisión" | "Completado">("todos");
+  const [timelineHideCompleted, setTimelineHideCompleted] = useState<boolean>(false);
+  const [timelineSortBy, setTimelineSortBy] = useState<"recientes" | "urgentes" | "alfabetico">("recientes");
 
-  // Creación inline de tarea rápida
+  // Creación inline de tarea rápida en vista Todo
   const [isCreatingInlineTask, setIsCreatingInlineTask] = useState(false);
   const [inlineTaskTitle, setInlineTaskTitle] = useState("");
   const [inlineTaskFormato, setInlineTaskFormato] = useState("Post");
   const [inlineTaskEsfuerzo, setInlineTaskEsfuerzo] = useState("30 min");
 
-  // Hook Oficial de Interacciones de Tarjetas de Tareas (Idéntico a Work / HomeDashboard)
+  // DnD States para KanbanBoard
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [columnScrollIndices, setColumnScrollIndices] = useState<Record<string, number>>({});
+
+  // Hook Oficial de Interacciones de Tarjetas de Tareas
   const {
     activeStatusDropdownCardId,
     setActiveStatusDropdownCardId,
@@ -120,8 +164,6 @@ export default function ProjectFullScreenView({
     setEditingTaskField,
     editingValue,
     setEditingValue,
-    expandedCardId,
-    setExpandedCardId,
     hoveredStatusOptionCard,
     setHoveredStatusOptionCard,
     hoveredFormatOptionCard,
@@ -130,8 +172,28 @@ export default function ProjectFullScreenView({
     getFormatPillConfig,
   } = useTaskCardInteractions();
 
+  const [availableFormats] = useState<string[]>([
+    "Post",
+    "Reel",
+    "Story",
+    "Flyer",
+    "Banner",
+    "Web",
+    "Video",
+    "Copywriting",
+    "Branding",
+  ]);
+
   // Modal de confirmación de eliminación
-  const [deleteModalConfig, setDeleteModalConfig] = useState<any>(null);
+  const [deleteModalConfig, setDeleteModalConfig] = useState<{
+    isOpen: boolean;
+    step: 1 | 2;
+    projectId: number;
+    projectTitle: string;
+    taskId: number;
+    taskTitle: string;
+    targetType?: "task" | "project";
+  } | null>(null);
 
   // Modal Oficial de Detalle y Edición de Tarea
   const [showTaskModal, setShowTaskModal] = useState(false);
@@ -178,7 +240,7 @@ export default function ProjectFullScreenView({
     };
   });
 
-  // Sincronizar formData cuando el proyecto cambia
+  // Sincronizar formData cuando el proyecto de Firestore cambia
   useEffect(() => {
     if (project) {
       const cObj = getSingleSourceProjectColor(project);
@@ -214,7 +276,7 @@ export default function ProjectFullScreenView({
     }
   }, [project, summary.client?.id, summary.clientName]);
 
-  const tasks = summary.tasks || [];
+  const tasks = useMemo(() => summary.tasks || [], [summary.tasks]);
   const workers = useMemo(() => data?.miembros || [], [data?.miembros]);
   const leadMember = useMemo(() => {
     return workers.find((w: any) => String(w.id) === String(formData.lead_id));
@@ -243,62 +305,115 @@ export default function ProjectFullScreenView({
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }, []);
 
-  // Filtrado reactivo de tareas
-  const filteredTasks = tasks.filter((t: any) => {
-    const query = taskSearch.toLowerCase().trim();
-    const matchesSearch = !query || 
-      (t.titulo || t.title || "").toLowerCase().includes(query) ||
-      (t.descripcion || t.desc || "").toLowerCase().includes(query) ||
-      (t.formato || t.format || "").toLowerCase().includes(query);
-    
-    const taskStatus = t.estado || t.status || "Planificado";
-    const matchesGroup = groupingFilter === "todos" || taskStatus === groupingFilter;
-    return matchesSearch && matchesGroup;
-  });
-
   const completedTasksCount = tasks.filter((t: any) => (t.estado || t.status) === "Completado").length;
   const progressPercent = tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 0;
 
-  // Objeto Adapter del Proyecto para alimentar el TaskCard oficial
-  const adaptedTasks: Task[] = tasks.map((t: any, index: number) => ({
-    id: t.id,
-    title: t.titulo || t.title || "Tarea",
-    desc: t.descripcion || t.desc || "",
-    format: t.formato || t.format || "Post",
-    formato: t.formato || t.format || "Post",
-    time: t.esfuerzo || t.time || "30 min",
-    status: (t.estado || t.status || "Planificado") as any,
-    statusColor: (t.estado || t.status) === "Completado" 
-      ? "bg-emerald-500/20 text-emerald-400" 
-      : (t.estado || t.status) === "En Proceso"
-      ? "bg-amber-500/20 text-amber-400"
-      : "bg-white/10 text-white",
-    attachmentUrl: t.attachmentUrl || "",
-    subtasks: t.subtasks || [],
-    sessions: t.sessions || [],
-    deadline: t.fecha_limite || t.deadline || t.fechaEntrega || t.fechaProg || formData.fechaFin,
-    fecha_limite: t.fecha_limite || t.deadline || t.fechaEntrega || t.fechaProg || formData.fechaFin,
-    fecha_programada: t.fecha_programada || t.fechaProg || formData.fechaInicio,
-    fecha_creacion: t.fecha_creacion || t.createdAt || "",
-    color: t.color || formData.color,
-  }));
+  // Objeto Adapter Oficial de Tareas
+  const adaptedTasks: Task[] = useMemo(() => {
+    return tasks.map((t: any, index: number) => {
+      const rawStatus = t.estado || t.status || "Planificado";
+      let statusColor = t.statusColor;
+      if (!statusColor || statusColor.includes("white/5") || statusColor === "bg-white") {
+        if (rawStatus === "Completado") statusColor = "bg-emerald-500/20 border-emerald-500/30 text-emerald-400";
+        else if (rawStatus === "En Proceso") statusColor = "bg-amber-500/20 border-amber-500/30 text-amber-400";
+        else if (rawStatus === "En Revisión" || rawStatus === "Revisión") statusColor = "bg-purple-500/20 border-purple-500/30 text-purple-400";
+        else statusColor = "bg-slate-500/20 border-slate-500/30 text-slate-300";
+      }
 
-  const adaptedProject: Project = {
-    id: project ? Number(project.id) || 1 : 1,
-    title: formData.nombre || project?.nombre || "Proyecto",
-    client: formData.clientName || summary.clientName || "Brandex",
-    desc: formData.descripcion || project?.descripcion || "",
-    progress: `${progressPercent}%`,
-    percent: `${progressPercent}%`,
-    gradient: PROJECT_COLOR_PALETTE[selectedColorIdx]?.gradient || "",
-    glow: "",
-    customColor: PROJECT_COLOR_PALETTE[selectedColorIdx] 
-      ? { h: PROJECT_COLOR_PALETTE[selectedColorIdx].h, s: PROJECT_COLOR_PALETTE[selectedColorIdx].s, l: PROJECT_COLOR_PALETTE[selectedColorIdx].l } 
-      : undefined,
-    fechaInicio: formData.fechaInicio,
-    fechaFin: formData.fechaFin,
-    tasks: adaptedTasks,
-  } as any;
+      const progDate = t.fecha_programada || t.fechaProg || t.fecha_limite || t.deadline || formData.fechaFin || formData.fechaInicio || "";
+      const limitDate = t.fecha_limite || t.fechaEntrega || t.deadline || formData.fechaFin || progDate || "";
+
+      return {
+        id: t.id,
+        title: t.titulo || t.title || "Tarea",
+        desc: t.descripcion || t.desc || t.contenido || "",
+        format: t.formato || t.format || "Post",
+        formato: t.formato || t.format || "Post",
+        time: t.esfuerzo || t.time || "30 min",
+        status: rawStatus as any,
+        estado: rawStatus as any,
+        statusColor,
+        attachmentUrl: t.attachmentUrl || t.recursosDrive || "",
+        recursosDrive: t.attachmentUrl || t.recursosDrive || "",
+        subtasks: t.subtasks || [],
+        sessions: t.sessions || [],
+        deadline: limitDate,
+        fecha_limite: limitDate,
+        fechaEntrega: limitDate,
+        fecha_programada: progDate,
+        fechaProg: progDate,
+        fecha_creacion: t.fecha_creacion || t.createdAt || "",
+        color: t.color || formData.color,
+        priority: t.prioridad || t.priority || "Media",
+        prioridad: t.prioridad || t.priority || "Media",
+        asignado_id: t.asignado_id || t.asignado_ids?.[0],
+        asignado_ids: t.asignado_ids || (t.asignado_id ? [t.asignado_id] : []),
+        asignado: t.asignado,
+        copywriting: t.copywriting,
+        copy: t.copy,
+        fechaPublicacion: t.fechaPublicacion,
+        kanbanOrders: t.kanbanOrders || {},
+      } as Task;
+    });
+  }, [tasks, formData.color, formData.fechaFin, formData.fechaInicio]);
+
+  // Objeto Adapter del Proyecto
+  const adaptedProject: Project = useMemo(() => {
+    if (!project) return null as any;
+    return {
+      ...project,
+      id: project.id as any,
+      title: formData.nombre || project.nombre || "Proyecto",
+      client: formData.clientName || summary.clientName || "Brandex",
+      desc: formData.descripcion || project.descripcion || "",
+      progress: `${progressPercent}%`,
+      percent: `${progressPercent}%`,
+      gradient: PROJECT_COLOR_PALETTE[selectedColorIdx]?.gradient || (project as any).gradient || "",
+      glow: "",
+      customColor: PROJECT_COLOR_PALETTE[selectedColorIdx] 
+        ? { h: PROJECT_COLOR_PALETTE[selectedColorIdx].h, s: PROJECT_COLOR_PALETTE[selectedColorIdx].s, l: PROJECT_COLOR_PALETTE[selectedColorIdx].l } 
+        : undefined,
+      fechaInicio: formData.fechaInicio,
+      fechaFin: formData.fechaFin,
+      tasks: adaptedTasks,
+    } as any;
+  }, [project, formData, summary.clientName, progressPercent, selectedColorIdx, adaptedTasks]);
+
+  // Estado reactivo local de proyectos para sincronizar KanbanBoard y TimelineView
+  const [localProjects, setLocalProjects] = useState<Project[]>([]);
+  useEffect(() => {
+    if (adaptedProject) {
+      setLocalProjects([adaptedProject]);
+    }
+  }, [adaptedProject]);
+
+  const handleUpdateProjects = useCallback((updater: React.SetStateAction<Project[]>) => {
+    setLocalProjects((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      const proj = next[0];
+      if (proj?.tasks) {
+        proj.tasks.forEach((t) => {
+          const cleanId = String(t.id).startsWith("kt-")
+            ? extractCleanTaskId(String(t.id), proj.id)
+            : String(t.id);
+          if (cleanId) {
+            updateTask.mutate({
+              id: cleanId,
+              fecha_programada: t.fecha_programada || (t as any).fechaProg || null,
+              fechaProg: t.fecha_programada || (t as any).fechaProg || null,
+              fecha_limite: t.fecha_limite || (t as any).deadline || null,
+              fechaEntrega: t.fecha_limite || (t as any).deadline || null,
+              deadline: t.fecha_limite || (t as any).deadline || null,
+              estado: t.status || (t as any).estado || "Planificado",
+              status: t.status || (t as any).estado || "Planificado",
+              kanbanOrders: t.kanbanOrders || {},
+            } as any);
+          }
+        });
+      }
+      return next;
+    });
+  }, [updateTask]);
 
   // Manejo de paleta de colores
   const handleSelectColor = (idx: number) => {
@@ -306,27 +421,11 @@ export default function ProjectFullScreenView({
     playSound("click");
     const preset = PROJECT_COLOR_PALETTE[idx];
     if (preset) {
-      setFormData((prev) => ({
-        ...prev,
+      triggerSave({
         color: preset.hslStr,
         colorName: preset.name,
-      }));
+      });
     }
-  };
-
-  // Toggle asignados
-  const handleToggleWorker = (workerId: string) => {
-    const currentIds = formData.asignado_ids || [];
-    const newIds = currentIds.includes(workerId)
-      ? currentIds.filter((id: string) => id !== workerId)
-      : [...currentIds, workerId];
-    
-    const selectedWorkers = workers.filter((w) => newIds.includes(w.id));
-    setFormData((prev) => ({
-      ...prev,
-      asignado_ids: newIds,
-      asignado: selectedWorkers.map((w) => w.nombre).join(", ") || "",
-    }));
   };
 
   // Auto-guardado debounced reactivo hacia Firestore (Single Source of Truth)
@@ -411,9 +510,9 @@ export default function ProjectFullScreenView({
   ], []);
 
   const PROJ_HEALTH_OPTIONS = useMemo(() => [
-    { id: "verde", label: "En tiempo", icon: <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-sm" /> },
-    { id: "ambar", label: "Con riesgos", icon: <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shadow-sm" /> },
-    { id: "rojo", label: "Bloqueado", icon: <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow-sm" /> },
+    { id: "verde", label: "En tiempo", icon: <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-sm" /> },
+    { id: "ambar", label: "Con riesgos", icon: <span className="w-2 h-2 rounded-full bg-amber-500 shadow-sm" /> },
+    { id: "rojo", label: "Bloqueado", icon: <span className="w-2 h-2 rounded-full bg-rose-500 shadow-sm" /> },
   ], []);
 
   const PROJ_TYPE_OPTIONS = useMemo(() => [
@@ -423,6 +522,20 @@ export default function ProjectFullScreenView({
     { id: "UI/UX Design", label: "UI/UX Design" },
     { id: "Marketing Digital", label: "Marketing Digital" },
   ], []);
+
+  const handleToggleWorker = (workerId: string) => {
+    const currentIds = formData.asignado_ids || [];
+    const newIds = currentIds.includes(workerId)
+      ? currentIds.filter((id: string) => id !== workerId)
+      : [...currentIds, workerId];
+    
+    const selectedWorkers = workers.filter((w: any) => newIds.includes(w.id));
+    const assignedNames = selectedWorkers.map((w: any) => w.nombre).join(", ");
+    triggerSave({
+      asignado_ids: newIds,
+      asignado: assignedNames || "",
+    });
+  };
 
   const handleAddMeta = () => {
     if (!newMetaInput.trim()) return;
@@ -440,24 +553,42 @@ export default function ProjectFullScreenView({
     triggerSave({ metas_negocio: updated });
   };
 
-  // Guardar Cambios en Firestore
-  const handleSaveChanges = async () => {
-    if (!project) return;
-    playSound("click");
-    triggerSave();
-  };
-
   // Actualizar propiedad de tarea directamente en Firestore
-  const handleUpdateTaskProperty = async (projId: string | number, tId: string | number, property: string, value: any) => {
-    const cleanId = String(tId).startsWith("kt-") ? String(tId).split("-").slice(2).join("-") : String(tId);
+  const handleUpdateTaskProperty = useCallback(async (projId: string | number, tId: string | number, property: string, value: any) => {
+    const cleanId = String(tId).startsWith("kt-")
+      ? extractCleanTaskId(String(tId), projId)
+      : String(tId);
     if (!cleanId) return;
     playSound("click");
+
+    handleUpdateProjects((prev) =>
+      prev.map((p) => {
+        if (String(p.id) !== String(projId)) return p;
+        const updatedTasks = (p.tasks || []).map((t) => {
+          if (String(t.id) !== String(cleanId) && `kt-${projId}-${t.id}` !== String(tId)) return t;
+          const updated = { ...t, [property]: value };
+          if (property === "status") {
+            updated.status = value;
+            updated.estado = value;
+          }
+          return updated;
+        });
+        return { ...p, tasks: updatedTasks };
+      })
+    );
+
     try {
       if (property === "status" || property === "estado") {
-        await updateTask.mutateAsync({ id: cleanId, estado: value, status: value } as any);
+        await updateTask.mutateAsync({
+          id: cleanId,
+          estado: value,
+          status: value,
+          fecha_hora_completado: value === "Completado" ? new Date().toISOString() : null,
+          fecha_completado_real: value === "Completado" ? new Date().toISOString().split("T")[0] : null,
+        } as any);
       } else if (property === "format" || property === "formato") {
         await updateTask.mutateAsync({ id: cleanId, formato: value, format: value } as any);
-      } else if (property === "time" || property === "esfuerzo" || property === "duracion") {
+      } else if (property === "time" || property === "esfuerzo") {
         await updateTask.mutateAsync({ id: cleanId, esfuerzo: value, time: value } as any);
       } else if (property === "priority" || property === "prioridad") {
         await updateTask.mutateAsync({ id: cleanId, prioridad: value, priority: value } as any);
@@ -465,11 +596,11 @@ export default function ProjectFullScreenView({
         await updateTask.mutateAsync({ id: cleanId, color: value } as any);
       } else if (property === "title" || property === "titulo") {
         await updateTask.mutateAsync({ id: cleanId, titulo: value, title: value } as any);
-      } else if (property === "desc" || property === "descripcion" || property === "contenido") {
-        await updateTask.mutateAsync({ id: cleanId, descripcion: value, desc: value, contenido: value } as any);
-      } else if (property === "deadline" || property === "fecha_limite" || property === "fechaEntrega") {
-        await updateTask.mutateAsync({ id: cleanId, fecha_limite: value, fechaEntrega: value, deadline: value } as any);
-      } else if (property === "startDate" || property === "fecha_programada" || property === "fechaProg") {
+      } else if (property === "desc" || property === "descripcion") {
+        await updateTask.mutateAsync({ id: cleanId, descripcion: value, desc: value } as any);
+      } else if (property === "deadline" || property === "fecha_limite") {
+        await updateTask.mutateAsync({ id: cleanId, fecha_limite: value, deadline: value } as any);
+      } else if (property === "fecha_programada" || property === "startDate") {
         await updateTask.mutateAsync({ id: cleanId, fecha_programada: value, fechaProg: value } as any);
       } else {
         await updateTask.mutateAsync({ id: cleanId, [property]: value } as any);
@@ -477,36 +608,43 @@ export default function ProjectFullScreenView({
     } catch (e) {
       console.error("Error actualizando propiedad de tarea:", e);
     }
-  };
+  }, [handleUpdateProjects, updateTask]);
 
   // Guardar edición de título/descripción inline
-  const handleSaveEditing = async (pId: string | number, tId: string | number) => {
+  const handleSaveEditing = useCallback(async (pId: string | number, tId: string | number) => {
     if (!editingTaskField || !editingValue.trim()) {
       setEditingTaskField(null);
       return;
     }
     const field = editingTaskField.field;
     const val = editingValue.trim();
-    const cleanId = String(tId).startsWith("kt-") ? String(tId).split("-").slice(2).join("-") : String(tId);
+    const cleanId = String(tId).startsWith("kt-") ? extractCleanTaskId(String(tId), pId) : String(tId);
+
+    setEditingTaskField(null);
+    setEditingValue("");
+
     try {
       if (field === "title") {
-        await updateTask.mutateAsync({ id: cleanId, titulo: val, title: val } as any);
+        await handleUpdateTaskProperty(pId, cleanId, "title", val);
       } else if (field === "desc") {
-        await updateTask.mutateAsync({ id: cleanId, descripcion: val, desc: val, contenido: val } as any);
+        await handleUpdateTaskProperty(pId, cleanId, "desc", val);
       }
     } catch (e) {
       console.error(e);
-    } finally {
-      setEditingTaskField(null);
-      setEditingValue("");
     }
-  };
+  }, [editingTaskField, editingValue, handleUpdateTaskProperty, setEditingTaskField, setEditingValue]);
 
   // Confirmar eliminación de tarea
   const handleConfirmTaskDelete = async (pId: number, tId: number) => {
     playSound("trash");
     try {
       await deleteDoc(doc(db, "tasks", String(tId)));
+      handleUpdateProjects((prev) =>
+        prev.map((p) => ({
+          ...p,
+          tasks: (p.tasks || []).filter((t) => String(t.id) !== String(tId)),
+        }))
+      );
     } catch (e) {
       console.error("Error eliminando tarea:", e);
     } finally {
@@ -514,18 +652,9 @@ export default function ProjectFullScreenView({
     }
   };
 
-  if (!project) {
-    return (
-      <div className="p-12 text-center flex flex-col items-center justify-center h-full bg-[#121212] rounded-[24px]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#ffffff6b] mb-4" />
-        <p className="text-sm font-bold text-[#ffffff6b]">Cargando detalles del proyecto...</p>
-      </div>
-    );
-  }
-
-  // Confirmar creación de tarea inline
+  // Creación rápida de tarea inline
   const handleCreateInlineTask = async () => {
-    if (!inlineTaskTitle.trim()) return;
+    if (!inlineTaskTitle.trim() || !project) return;
     playSound("pop");
     try {
       await createTask.mutateAsync({
@@ -542,15 +671,78 @@ export default function ProjectFullScreenView({
       setInlineTaskTitle("");
       setIsCreatingInlineTask(false);
     } catch (e) {
-      console.error("Error creando tarea:", e);
+      console.error("Error creando tarea inline:", e);
     }
   };
 
-  // Manejadores del Modal Oficial de Tarea (NewTaskModal)
-  const handleOpenTaskModal = (taskObj: any, originRect?: { x: number; y: number; width: number; height: number }) => {
+  // Panel Lateral Derecho de Tarea (TaskSidePanel)
+  const [internalSideTask, setInternalSideTask] = useState<any | null>(null);
+  const [taskSidePanelWidth, setTaskSidePanelWidth] = useState<number>(315);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("taski_task_sidepanel_width");
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 315) {
+          setTaskSidePanelWidth(parsed);
+        }
+      }
+    }
+  }, []);
+
+  const handleSelectTask = useCallback((taskObj: any, pId?: any, originRect?: { x: number; y: number; width: number; height: number }) => {
     playSound("click");
     const cleanId = String(taskObj.id).startsWith("kt-")
-      ? String(taskObj.id).split("-").slice(2).join("-")
+      ? extractCleanTaskId(String(taskObj.id), project?.id)
+      : String(taskObj.id);
+    const foundTask = tasks.find((t: any) => String(t.id) === cleanId) || taskObj;
+
+    const synthesizedTask: any = {
+      ...foundTask,
+      id: cleanId,
+      title: foundTask.titulo || foundTask.title || "",
+      desc: foundTask.descripcion || foundTask.desc || foundTask.contenido || "",
+      status: foundTask.estado || foundTask.status || "Planificado",
+      estado: foundTask.estado || foundTask.status || "Planificado",
+      priority: foundTask.prioridad || foundTask.priority || "Media",
+      prioridad: foundTask.prioridad || foundTask.priority || "Media",
+      format: foundTask.formato || foundTask.format || "Post",
+      formato: foundTask.formato || foundTask.format || "Post",
+      time: foundTask.esfuerzo || foundTask.time || "30 min",
+      startDate: foundTask.fecha_programada || foundTask.fechaProg || foundTask.fechaInicio || formData.fechaInicio,
+      deadline: foundTask.fecha_limite || foundTask.deadline || foundTask.fechaEntrega || foundTask.fechaFin || formData.fechaFin,
+      fecha_programada: foundTask.fecha_programada || foundTask.fechaProg || foundTask.fechaInicio || formData.fechaInicio,
+      fecha_limite: foundTask.fecha_limite || foundTask.deadline || foundTask.fechaEntrega || foundTask.fechaFin || formData.fechaFin,
+      fechaPublicacion: foundTask.fechaPublicacion || "",
+      projectId: project?.id,
+      proyecto_id: project?.id,
+      projectName: formData.nombre || project?.nombre || "Proyecto",
+      client: formData.clientName || summary.clientName || "Brandex",
+      clientId: formData.cliente_id || summary.client?.id,
+      asignado_id: foundTask.asignado_id,
+      asignado_ids: foundTask.asignado_ids || (foundTask.asignado_id ? [foundTask.asignado_id] : []),
+      asignado: foundTask.asignado,
+      subtasks: foundTask.subtasks || [],
+      copywriting: foundTask.copywriting,
+      copy: foundTask.copy,
+      attachmentUrl: foundTask.attachmentUrl || foundTask.recursosDrive || "",
+      recursosDrive: foundTask.attachmentUrl || foundTask.recursosDrive || "",
+      color: foundTask.color || formData.color,
+    };
+
+    if (onSelectTaskProp) {
+      onSelectTaskProp(synthesizedTask, project?.id, originRect);
+    } else {
+      setInternalSideTask(synthesizedTask);
+    }
+  }, [tasks, project?.id, project?.nombre, formData.fechaInicio, formData.fechaFin, formData.nombre, formData.clientName, formData.cliente_id, formData.color, summary.clientName, summary.client?.id, onSelectTaskProp]);
+
+  // Manejadores del Modal Oficial de Tarea (NewTaskModal)
+  const handleOpenTaskModal = useCallback((taskObj: any, originRect?: { x: number; y: number; width: number; height: number }) => {
+    playSound("click");
+    const cleanId = String(taskObj.id).startsWith("kt-")
+      ? extractCleanTaskId(String(taskObj.id), project?.id)
       : String(taskObj.id);
     const foundTask = tasks.find((t: any) => String(t.id) === cleanId) || taskObj;
 
@@ -569,9 +761,9 @@ export default function ProjectFullScreenView({
       fecha_programada: foundTask.fecha_programada || foundTask.fechaProg || foundTask.fechaInicio || formData.fechaInicio,
       fecha_limite: foundTask.fecha_limite || foundTask.deadline || foundTask.fechaEntrega || foundTask.fechaFin || formData.fechaFin,
       fechaPublicacion: foundTask.fechaPublicacion || "",
-      projectId: project.id,
-      proyecto_id: project.id,
-      projectName: formData.nombre || project.nombre || "Proyecto",
+      projectId: project?.id,
+      proyecto_id: project?.id,
+      projectName: formData.nombre || project?.nombre || "Proyecto",
       client: formData.clientName || summary.clientName || "Brandex",
       clientId: formData.cliente_id || summary.client?.id,
       asignado_id: foundTask.asignado_id,
@@ -586,16 +778,17 @@ export default function ProjectFullScreenView({
     });
     setTaskModalOriginRect(originRect || null);
     setShowTaskModal(true);
-  };
+  }, [tasks, project?.id, project?.nombre, formData.fechaInicio, formData.fechaFin, formData.nombre, formData.clientName, formData.cliente_id, formData.color, summary.clientName, summary.client?.id]);
 
-  const handleOpenNewTaskModal = (originRect?: { x: number; y: number; width: number; height: number }) => {
+  const handleOpenNewTaskModal = useCallback((originRect?: { x: number; y: number; width: number; height: number }) => {
     playSound("pop");
     setEditingTaskModal(null);
     setTaskModalOriginRect(originRect || null);
     setShowTaskModal(true);
-  };
+  }, []);
 
   const handleModalCreateTask = async (taskData: TaskData) => {
+    if (!project) return;
     playSound("pop");
     try {
       const payload: Record<string, any> = {
@@ -673,7 +866,7 @@ export default function ProjectFullScreenView({
   const handleModalUpdateTask = async (taskId: string | number, updatedData: Partial<TaskData>) => {
     playSound("pop");
     const cleanId = String(taskId).startsWith("kt-")
-      ? String(taskId).split("-").slice(2).join("-")
+      ? extractCleanTaskId(String(taskId), project?.id)
       : String(taskId);
     try {
       const updatePayload: Record<string, any> = {
@@ -701,9 +894,6 @@ export default function ProjectFullScreenView({
         const fmt = updatedData.formato || updatedData.format;
         updatePayload.formato = fmt;
         updatePayload.format = fmt;
-      }
-      if (updatedData.area !== undefined) {
-        updatePayload.area = updatedData.area;
       }
       if (updatedData.time !== undefined) {
         updatePayload.esfuerzo = updatedData.time;
@@ -762,75 +952,287 @@ export default function ProjectFullScreenView({
     }
   };
 
-  const handleModalDeleteTask = async (taskId: string | number) => {
-    playSound("trash");
+  // Drag & Drop Handler Oficial para KanbanBoard
+  const handleDropTask = (
+    taskId: string,
+    projId: string | number,
+    oldColId: string | undefined,
+    newColId: string,
+    orderMap: Record<string, number>
+  ) => {
     const cleanId = String(taskId).startsWith("kt-")
-      ? String(taskId).split("-").slice(2).join("-")
+      ? extractCleanTaskId(taskId, projId)
       : String(taskId);
-    try {
-      await deleteDoc(doc(db, "tasks", cleanId));
-      setShowTaskModal(false);
-      setEditingTaskModal(null);
-    } catch (err) {
-      console.error("Error al eliminar tarea desde modal:", err);
+    if (!cleanId) return;
+
+    if (groupingMode === "estado") {
+      const status = newColId.replace("status-", "");
+      playSound("pop");
+      handleUpdateProjects((prev) =>
+        prev.map((p) => {
+          const updatedTasks = (p.tasks || []).map((t) => {
+            let updatedTask = t;
+            const fullTaskId = `kt-${p.id}-${t.id}`;
+
+            if (orderMap[fullTaskId] !== undefined) {
+              updatedTask = {
+                ...updatedTask,
+                kanbanOrders: { ...(updatedTask.kanbanOrders || {}), [groupingMode]: orderMap[fullTaskId] },
+              };
+            }
+
+            if (String(t.id) === String(cleanId) || fullTaskId === taskId) {
+              updatedTask = {
+                ...updatedTask,
+                status: status as any,
+                estado: status as any,
+                statusColor:
+                  status === "Completado"
+                    ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
+                    : status === "En Proceso"
+                    ? "bg-amber-500/20 border-amber-500/30 text-amber-400"
+                    : status === "En Revisión" || status === "Revisión"
+                    ? "bg-purple-500/20 border-purple-500/30 text-purple-400"
+                    : "bg-slate-500/20 border-slate-500/30 text-slate-300",
+                fecha_hora_completado: status === "Completado" ? new Date().toISOString() : undefined,
+                fecha_completado_real: status === "Completado" ? new Date().toISOString().split("T")[0] : undefined,
+              };
+
+              updateDoc(doc(db, "tasks", String(cleanId)), {
+                estado: status,
+                status: status,
+                fecha_hora_completado: status === "Completado" ? new Date().toISOString() : null,
+                fecha_completado_real: status === "Completado" ? new Date().toISOString().split("T")[0] : null,
+                kanbanOrders: updatedTask.kanbanOrders || {},
+                updatedAt: serverTimestamp(),
+                updated_at: serverTimestamp(),
+              }).catch((err) => console.error("Error actualizando /tasks:", err));
+            }
+
+            return updatedTask;
+          });
+
+          return { ...p, tasks: updatedTasks };
+        })
+      );
+    } else if (groupingMode === "prioridad") {
+      const priority = newColId.replace("priority-", "");
+      playSound("pop");
+      handleUpdateProjects((prev) =>
+        prev.map((p) => {
+          const updatedTasks = (p.tasks || []).map((t) => {
+            let updatedTask = t;
+            const fullTaskId = `kt-${p.id}-${t.id}`;
+            if (orderMap[fullTaskId] !== undefined) {
+              updatedTask = {
+                ...updatedTask,
+                kanbanOrders: { ...(updatedTask.kanbanOrders || {}), [groupingMode]: orderMap[fullTaskId] },
+              };
+            }
+            if (String(t.id) === String(cleanId) || fullTaskId === taskId) {
+              updatedTask = {
+                ...updatedTask,
+                prioridad: priority,
+                priority: priority,
+              };
+              updateDoc(doc(db, "tasks", String(cleanId)), {
+                prioridad: priority,
+                priority: priority,
+                kanbanOrders: updatedTask.kanbanOrders || {},
+                updatedAt: serverTimestamp(),
+                updated_at: serverTimestamp(),
+              }).catch((err) => console.error("Error actualizando prioridad en /tasks:", err));
+            }
+            return updatedTask;
+          });
+          return { ...p, tasks: updatedTasks };
+        })
+      );
+    } else if (groupingMode === "fecha") {
+      playSound("pop");
+      handleUpdateProjects((prev) =>
+        prev.map((p) => {
+          const updatedTasks = (p.tasks || []).map((t) => {
+            let updatedTask = t;
+            const fullTaskId = `kt-${p.id}-${t.id}`;
+
+            if (orderMap[fullTaskId] !== undefined) {
+              updatedTask = {
+                ...updatedTask,
+                kanbanOrders: { ...(updatedTask.kanbanOrders || {}), [groupingMode]: orderMap[fullTaskId] },
+              };
+            }
+
+            if (String(t.id) === String(cleanId) || fullTaskId === taskId) {
+              const existingDateStr = t.fecha_programada || (t as any).fechaProg || "";
+              const dateStr = resolveBucketDate(newColId, existingDateStr);
+              const targetDate = new Date(dateStr + "T00:00:00");
+
+              updatedTask = {
+                ...updatedTask,
+                fecha_programada: dateStr,
+                fechaProg: dateStr,
+                dueDate: targetDate,
+              };
+
+              updateDoc(doc(db, "tasks", String(cleanId)), {
+                fecha_programada: dateStr,
+                fechaProg: dateStr,
+                kanbanOrders: updatedTask.kanbanOrders || {},
+                updatedAt: serverTimestamp(),
+                updated_at: serverTimestamp(),
+              }).catch((err) => console.error("Error actualizando fecha en /tasks:", err));
+            }
+
+            return updatedTask;
+          });
+
+          return { ...p, tasks: updatedTasks };
+        })
+      );
     }
   };
 
-  // Helper para renderizar una tarjeta de tarea oficial
-  const renderOfficialTaskCard = (t: any, idx: number) => {
-    const cardTaskId = `kt-${project.id}-${t.id}`;
+  // Props compartidas oficiales para tarjetas de tareas (Idéntico a Work / HomeDashboard)
+  const taskCardSharedProps = useMemo(() => ({
+    projects: localProjects,
+    setProjects: handleUpdateProjects,
+    onSelectProject: () => {},
+    onSelectTask: (task: Task, pId: any, originRect: any) => handleSelectTask(task, pId, originRect),
+    onAddTaskToProject: () => handleOpenNewTaskModal(),
+    onChangeProjectColor: () => {},
+    colorConfig,
+    getStatusPillConfig,
+    getFormatPillConfig,
+    updateTaskProperty: handleUpdateTaskProperty,
+    activeStatusDropdownCardId,
+    setActiveStatusDropdownCardId,
+    activeFormatDropdownCardId,
+    setActiveFormatDropdownCardId,
+    activeTimeDropdownCardId,
+    setActiveTimeDropdownCardId,
+    activeColorSelectorCardId,
+    setActiveColorSelectorCardId,
+    activeCardMenuId,
+    setActiveCardMenuId,
+    sortBy: "visto" as const,
+    setSortBy: () => {},
+    sortOrder: "desc" as const,
+    setSortOrder: () => {},
+    hoveredStatusOptionCard,
+    setHoveredStatusOptionCard,
+    hoveredFormatOptionCard,
+    setHoveredFormatOptionCard,
+    availableFormats,
+    editingTaskField,
+    setEditingTaskField,
+    editingValue,
+    setEditingValue,
+    saveEditing: handleSaveEditing,
+    isNightMode: true,
+    isHomeEditMode: false,
+    setDeleteModalConfig,
+    getCalendarDaysDiff,
+    formatLocalDate,
+    sessions: recentSessions,
+  }), [
+    localProjects,
+    handleUpdateProjects,
+    colorConfig,
+    getStatusPillConfig,
+    getFormatPillConfig,
+    handleUpdateTaskProperty,
+    activeStatusDropdownCardId,
+    setActiveStatusDropdownCardId,
+    activeFormatDropdownCardId,
+    setActiveFormatDropdownCardId,
+    activeTimeDropdownCardId,
+    setActiveTimeDropdownCardId,
+    activeColorSelectorCardId,
+    setActiveColorSelectorCardId,
+    activeCardMenuId,
+    setActiveCardMenuId,
+    hoveredStatusOptionCard,
+    setHoveredStatusOptionCard,
+    hoveredFormatOptionCard,
+    setHoveredFormatOptionCard,
+    availableFormats,
+    editingTaskField,
+    setEditingTaskField,
+    editingValue,
+    setEditingValue,
+    handleSaveEditing,
+    getCalendarDaysDiff,
+    formatLocalDate,
+    recentSessions,
+    handleSelectTask,
+    handleOpenNewTaskModal,
+    setDeleteModalConfig,
+  ]);
+
+  // Lista de Tareas Sintetizadas para el Kanban y la Tabla
+  const kanbanTasks: SynthesizedTask[] = useMemo(() => {
+    const proj = localProjects[0] || adaptedProject;
+    if (!proj || !proj.tasks) return [];
+    return proj.tasks.map((t, index) => {
+      const progDateStr = t.fecha_programada || (t as any).fechaProg || t.fecha_limite || (t as any).deadline || formData.fechaFin || formData.fechaInicio || formatLocalDate(new Date());
+      const limitDateStr = t.fecha_limite || (t as any).deadline || formData.fechaFin || progDateStr;
+      const dueDate = parseAnyDate(limitDateStr) || new Date();
+
+      return {
+        id: `kt-${proj.id}-${t.id}`,
+        projectName: proj.title,
+        projectId: proj.id as any,
+        taskTitle: t.title,
+        completedTasks: completedTasksCount,
+        totalTasks: proj.tasks?.length || 0,
+        taskIndex: index,
+        dueDate,
+        fecha_programada: progDateStr,
+        fecha_limite: limitDateStr,
+        fecha_creacion: (t as any).fecha_creacion || "",
+        status: t.status || (t as any).estado || "Planificado",
+        format: t.format || (t as any).formato || "Post",
+        time: t.time || (t as any).esfuerzo || "30 min",
+        desc: t.desc || "",
+        priority: (t as any).priority || (t as any).prioridad || "Media",
+        prioridad: (t as any).prioridad || (t as any).priority || "Media",
+        kanbanOrders: (t as any).kanbanOrders || {},
+        asignado_id: (t as any).asignado_id,
+        asignado_ids: (t as any).asignado_ids,
+        asignado: (t as any).asignado,
+      } as SynthesizedTask;
+    });
+  }, [localProjects, adaptedProject, formData.fechaFin, formData.fechaInicio, completedTasksCount, formatLocalDate]);
+
+  // Tareas filtradas por búsqueda y filtro de estado
+  const filteredKanbanTasks = useMemo(() => {
+    return kanbanTasks.filter((t) => {
+      const query = taskSearch.toLowerCase().trim();
+      if (query) {
+        const matches =
+          t.taskTitle.toLowerCase().includes(query) ||
+          (t.desc && t.desc.toLowerCase().includes(query)) ||
+          (t.format && t.format.toLowerCase().includes(query));
+        if (!matches) return false;
+      }
+      if (groupingFilter !== "todos") {
+        if (t.status !== groupingFilter) return false;
+      }
+      return true;
+    });
+  }, [kanbanTasks, taskSearch, groupingFilter]);
+
+  if (!project) {
     return (
-      <div key={t.id} className="w-full h-[10.75rem] task-card-wrapper relative hover:z-20 transition-[z-index] duration-150">
-        <TaskCardContent
-          taskId={cardTaskId}
-          projectId={project.id}
-          projectName={formData.nombre || project.nombre || "Proyecto"}
-          taskTitle={t.titulo || t.title || ""}
-          completedTasks={completedTasksCount}
-          totalTasks={tasks.length}
-          taskIndex={idx}
-          desc={t.descripcion || t.desc || ""}
-          projects={[adaptedProject]}
-          setProjects={() => {}}
-          colorConfig={colorConfig}
-          getStatusPillConfig={getStatusPillConfig}
-          getFormatPillConfig={getFormatPillConfig}
-          updateTaskProperty={handleUpdateTaskProperty}
-          activeStatusDropdownCardId={activeStatusDropdownCardId}
-          setActiveStatusDropdownCardId={setActiveStatusDropdownCardId}
-          activeFormatDropdownCardId={activeFormatDropdownCardId}
-          setActiveFormatDropdownCardId={setActiveFormatDropdownCardId}
-          activeTimeDropdownCardId={activeTimeDropdownCardId}
-          setActiveTimeDropdownCardId={setActiveTimeDropdownCardId}
-          activeColorSelectorCardId={activeColorSelectorCardId}
-          setActiveColorSelectorCardId={setActiveColorSelectorCardId}
-          activeCardMenuId={activeCardMenuId}
-          setActiveCardMenuId={setActiveCardMenuId}
-          onSelectTask={(taskObj, pId, originRect) => handleOpenTaskModal(taskObj, originRect)}
-          onSelectProject={() => {}}
-          onAddTaskToProject={() => handleOpenNewTaskModal()}
-          onChangeProjectColor={() => {}}
-          hoveredStatusOptionCard={hoveredStatusOptionCard}
-          setHoveredStatusOptionCard={setHoveredStatusOptionCard}
-          hoveredFormatOptionCard={hoveredFormatOptionCard}
-          setHoveredFormatOptionCard={setHoveredFormatOptionCard}
-          availableFormats={["Post", "Reels", "Story", "Flyer", "Banner", "Web", "Video", "Copywriting", "Branding"]}
-          editingTaskField={editingTaskField}
-          setEditingTaskField={setEditingTaskField}
-          editingValue={editingValue}
-          setEditingValue={setEditingValue}
-          saveEditing={handleSaveEditing}
-          isNightMode={true}
-          isHomeEditMode={false}
-          setDeleteModalConfig={setDeleteModalConfig}
-          getCalendarDaysDiff={getCalendarDaysDiff}
-          formatLocalDate={formatLocalDate}
-        />
+      <div className="p-12 text-center flex flex-col items-center justify-center h-full bg-[#121212] rounded-[24px] border border-white/[0.08]">
+        <Loader2 className="w-8 h-8 animate-spin text-[#ffffff6b] mb-4" />
+        <p className="text-sm font-bold text-[#ffffff6b]">Cargando detalles del proyecto...</p>
       </div>
     );
-  };
+  }
 
-  // Helper para renderizar la tarjeta inicial de '+ Nueva tarea'
+  // Renderizador de tarjeta de '+ Nueva Tarea' en vista Todo
   const renderNewTaskCard = () => {
     if (!isCreatingInlineTask) {
       return (
@@ -842,7 +1244,7 @@ export default function ProjectFullScreenView({
             setInlineTaskFormato("Post");
             setInlineTaskEsfuerzo("30 min");
           }}
-          className="w-full h-[10.75rem] relative flex flex-col items-center justify-center p-4 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/40 transition-all cursor-pointer group select-none shadow-sm"
+          className="w-full task-card-wrapper relative flex flex-col items-center justify-center p-4 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-white/40 transition-all cursor-pointer group select-none shadow-sm"
         >
           <div className="flex items-center justify-center w-10 h-10 rounded-2xl bg-white/10 group-hover:bg-white/20 group-hover:scale-110 transition-all mb-2 text-white">
             <Plus className="w-5 h-5 stroke-[2.5]" />
@@ -858,7 +1260,7 @@ export default function ProjectFullScreenView({
     }
 
     return (
-      <div className="w-full h-[10.75rem] relative flex flex-col justify-between p-3.5 rounded-2xl border border-white/20 bg-[#1c1c1f] shadow-lg">
+      <div className="w-full task-card-wrapper relative flex flex-col justify-between p-3.5 rounded-2xl border border-white/20 bg-[#1c1c1f] shadow-lg">
         <div className="flex flex-col gap-1.5">
           <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
             Crear Nueva Tarea
@@ -884,9 +1286,9 @@ export default function ProjectFullScreenView({
               onChange={(e) => setInlineTaskFormato(e.target.value)}
               className="px-2 py-1 text-[10px] font-bold rounded-xl bg-[#252528] border border-white/10 text-white outline-none"
             >
-              {Object.values(FORMATOS_ESTANDAR).map((f) => (
-                <option key={f.key} value={f.nombre}>
-                  {f.nombre}
+              {availableFormats.map((f: string) => (
+                <option key={f} value={f}>
+                  {f}
                 </option>
               ))}
             </select>
@@ -910,7 +1312,7 @@ export default function ProjectFullScreenView({
           <button
             type="button"
             onClick={() => setIsCreatingInlineTask(false)}
-            className="px-2.5 py-0.5 text-[11px] text-[#ffffff6b] hover:text-white"
+            className="px-2.5 py-0.5 text-[11px] text-[#ffffff6b] hover:text-white cursor-pointer"
           >
             Cancelar
           </button>
@@ -918,7 +1320,7 @@ export default function ProjectFullScreenView({
             type="button"
             onClick={handleCreateInlineTask}
             disabled={!inlineTaskTitle.trim()}
-            className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-white text-black hover:bg-[#e4e4e7] disabled:opacity-40"
+            className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold bg-white text-black hover:bg-[#e4e4e7] disabled:opacity-40 cursor-pointer"
           >
             Añadir
           </button>
@@ -928,91 +1330,151 @@ export default function ProjectFullScreenView({
   };
 
   return (
-    <div className="w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden bg-transparent text-[#ffffffd6]">
-      
-      {/* ── CONTENEDOR 12-COLUMN GRID (IDÉNTICO A CLIENTS Y WORK) ── */}
-      <div className="w-full h-full flex-1 grid grid-cols-12 gap-5 items-stretch max-w-full min-h-0 min-w-0 overflow-hidden">
+    <div className={`w-full h-full flex flex-col min-h-0 min-w-0 overflow-hidden bg-transparent text-[#ffffffd6] select-none ${
+      draggingTaskId ? "is-dragging-active" : ""
+    }`}>
+      <style>{`
+        @keyframes subtle-wiggle {
+          0% { transform: rotate(-0.5deg); }
+          100% { transform: rotate(0.5deg); }
+        }
+        @keyframes subtle-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.82; }
+        }
+        .home-edit-wiggle {
+          animation: subtle-wiggle 0.22s ease-in-out infinite alternate, subtle-pulse 1.3s ease-in-out infinite;
+        }
+
+        .task-list-scroll {
+          scroll-behavior: smooth;
+        }
+
+        /* Task card wrapper standard scalable dimensions */
+        .task-card-wrapper {
+          height: 10.125rem;
+          overflow: visible;
+          opacity: 1;
+          touch-action: none;
+        }
+        .task-card-wrapper.is-dragging-card {
+          transition: none !important;
+        }
+
+        /* Inner card base styles */
+        .task-card {
+          transition: border-color 0.3s ease-out, background-color 0.3s ease-out !important;
+        }
+
+        /* Keep full opacity on all task cards */
+        .task-card-wrapper .task-card {
+          opacity: 1 !important;
+        }
+
+        .project-title {
+          opacity: 1 !important;
+          transform: translateY(0) !important;
+        }
+
+        .task-card-title {
+          transform: translateY(0px) !important;
+        }
+
+        .task-card-details {
+          max-height: 0 !important;
+          opacity: 0 !important;
+          overflow: hidden;
+          display: none;
+        }
+      `}</style>
+
+      {/* ── LAYOUT REDIMENSIONABLE CON DIVISOR INTERACTIVO (IDÉNTICO A WORK) ── */}
+      <div className="w-full h-full flex-1 flex gap-3 items-stretch max-w-full min-h-0 min-w-0 overflow-hidden">
         
-        {/* ── COLUMNA IZQUIERDA (3 COLUMNAS): PORTADA & DATOS DEL PROYECTO ── */}
-        <div className="col-span-3 flex flex-col h-full min-h-0 rounded-[24px] bg-[#121212] border border-white/[0.08] shadow-2xl overflow-hidden">
-          
-          {/* Scrollable Container (idéntico a TaskSidePanel) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 flex flex-col justify-between min-h-full space-y-3">
+        {/* ── COLUMNA IZQUIERDA: INFORMACIÓN DEL PROYECTO (LIMPIO, MONOCROMÁTICO Y SIN CAJAS DISONANTES) ── */}
+        <div 
+          style={{ width: `${sidebarWidth}px` }}
+          className="shrink-0 flex flex-col h-full overflow-hidden min-h-0 bg-transparent"
+        >
+          {/* Scrollable Container */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 py-0.5 flex flex-col justify-between min-h-full space-y-3">
             
             <div className="space-y-3 w-full shrink-0">
-              {/* 1. PORTADA CON COLOR DINÁMICO DEL PROYECTO (HERO CARD) */}
-              <div 
-                className="w-full shrink-0 rounded-[20px] p-4 relative flex flex-col justify-between overflow-hidden shadow-sm transition-all group gap-2.5 text-white"
-                style={{ backgroundColor: currentProjColor }}
-              >
-                {/* Controles Superiores: Botón Volver + 3 Puntos */}
-                <div className="flex items-center justify-between">
+              {/* 0. CONTROLES SUPERIORES: BOTÓN VOLVER + ACCIONES */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound("click");
+                    onBack();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 text-white/70 hover:text-white text-xs font-semibold border border-white/10 transition-colors cursor-pointer"
+                  title="Volver a proyectos"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Volver</span>
+                </button>
+
+                {/* Menú de 3 puntos */}
+                <div className="relative">
                   <button
                     type="button"
                     onClick={() => {
                       playSound("click");
-                      onBack();
+                      setIsMoreMenuOpen(!isMoreMenuOpen);
                     }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 hover:bg-white/30 text-white text-[11px] font-semibold transition-all cursor-pointer border border-white/20 shadow-sm backdrop-blur-sm"
-                    title="Volver a proyectos"
+                    className={cn(
+                      "p-1.5 rounded-lg transition-colors cursor-pointer",
+                      isMoreMenuOpen ? "bg-white/20 text-white" : "text-white/60 hover:text-white hover:bg-white/10"
+                    )}
+                    title="Opciones del proyecto"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5 text-white" />
-                    <span>Volver</span>
+                    <MoreHorizontal className="w-4 h-4" />
                   </button>
 
-                  {/* Menú de opciones de proyecto */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playSound("click");
-                        setIsMoreMenuOpen(!isMoreMenuOpen);
-                      }}
-                      className={cn(
-                        "p-1.5 rounded-lg transition-colors cursor-pointer",
-                        isMoreMenuOpen ? "bg-white/30 text-white" : "text-white/80 hover:text-white hover:bg-white/20"
-                      )}
-                      title="Opciones del proyecto"
-                    >
-                      <MoreHorizontal className="w-4 h-4 text-white" />
-                    </button>
+                  {isMoreMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)} />
+                      <div className="absolute right-0 top-full mt-1.5 z-50 w-44 rounded-xl bg-[#1d1d22] border border-[#2e2e38] shadow-2xl p-1 overflow-hidden">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            playSound("trash");
+                            setIsMoreMenuOpen(false);
+                            try {
+                              await deleteDoc(doc(db, "projects", project.id));
+                              await deleteDoc(doc(db, "v3_projects", project.id)).catch(() => {});
+                            } catch (e) {
+                              console.error(e);
+                            }
+                            onBack();
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors cursor-pointer text-left"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <span>Eliminar proyecto</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
 
-                    {isMoreMenuOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)} />
-                        <div className="absolute right-0 top-full mt-1.5 z-50 w-44 rounded-xl bg-[#1d1d22] border border-[#2e2e38] shadow-2xl p-1 overflow-hidden">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              playSound("trash");
-                              setIsMoreMenuOpen(false);
-                              try {
-                                await deleteDoc(doc(db, "projects", project.id));
-                                await deleteDoc(doc(db, "v3_projects", project.id)).catch(() => {});
-                              } catch (e) {
-                                console.error(e);
-                              }
-                              onBack();
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors cursor-pointer text-left"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                            <span>Eliminar proyecto</span>
-                          </button>
-                        </div>
-                      </>
-                    )}
+              {/* 1. HERO CARD DEL PROYECTO (COLOR DEL PROYECTO) */}
+              <div 
+                className="w-full rounded-[22px] p-4 flex flex-col gap-2.5 shadow-md text-white transition-colors duration-300 relative overflow-hidden"
+                style={{ backgroundColor: currentProjColor }}
+              >
+                {/* Meta superior: Cliente */}
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="font-semibold text-white/90 truncate max-w-[200px] text-[13px] drop-shadow-sm">
+                      {formData.clientName || "Brandex"}
+                    </span>
                   </div>
                 </div>
 
-                {/* Cliente & Fecha de Creación */}
-                <div className="flex items-center gap-1.5 text-[11px] text-white/80 font-medium">
-                  <span className="truncate max-w-[140px]">{formData.clientName || "Brandex"}</span>
-                  <span className="text-white/40">·</span>
-                  <span className="text-white/70 text-[10px]">{formatProjectCreatedDate(project)}</span>
-                </div>
-
-                {/* Título del Proyecto con Smooth Caret */}
+                {/* Título editable con SmoothInput */}
                 <SmoothInput
                   type="text"
                   unstyled
@@ -1024,29 +1486,40 @@ export default function ProjectFullScreenView({
                   onBlur={() => triggerSave({ nombre: formData.nombre })}
                   placeholder="Nombre del proyecto…"
                   caretClassName="bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)]"
-                  className="w-full text-[22px] font-bold text-white placeholder-white/60 leading-tight select-text"
+                  className="w-full text-lg font-bold text-white placeholder:text-white/40 leading-snug py-0.5 select-text drop-shadow-sm"
                 />
 
-                {/* Barra de Progreso Minimalista (Idéntica a TaskSidePanel) */}
-                <div className="pt-1 flex flex-col gap-1 w-full">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-white/90">
+                {/* Barra de progreso segmentada oficial (Taski standard) — SIN separador */}
+                <div className="flex flex-col gap-1 w-full pt-0.5">
+                  <div className="flex items-center justify-between text-[11px] text-white/90 font-medium drop-shadow-sm">
                     <span>Tarea {completedTasksCount} de {tasks.length}</span>
-                    <span>{progressPercent}%</span>
+                    <span className="font-bold text-white">{progressPercent}%</span>
                   </div>
-                  <div
-                    className="w-full h-[5px] rounded-full bg-black/30 overflow-hidden select-none"
-                    title={`Progreso: ${completedTasksCount} de ${tasks.length} tareas (${progressPercent}%)`}
-                  >
-                    <div
-                      className="h-full bg-white rounded-full transition-all duration-300 ease-out"
-                      style={{ width: `${Math.min(Math.max(progressPercent, 0), 100)}%` }}
-                    />
+                  <div className="w-full flex items-center gap-1 h-1.5 my-0.5">
+                    {Array.from({ length: Math.max(1, tasks.length) }).map((_, idx) => (
+                      <div
+                        key={idx}
+                        className={cn(
+                          "h-full flex-1 rounded-full transition-all duration-300",
+                          idx < completedTasksCount ? "bg-white" : "bg-white/25"
+                        )}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
 
-              {/* 2. PROPIEDADES EN PÍLDORAS (2 FILAS LIMPIAS) */}
-              <div className="space-y-1.5 w-full">
+              {/* Fecha de creación: Debajo del rectángulo redondeado */}
+              <div className="px-1 text-[11px] text-[#ffffff6b] font-normal">
+                Creado el {formatProjectCreatedDate(project)}
+              </div>
+
+              {/* 1. PROPIEDADES (2 FILAS DE 3 PÍLDORAS) */}
+              <div className="flex flex-col gap-2 pt-1">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b] px-0.5">
+                  Propiedades
+                </span>
+
                 {/* Fila 1: Estado, Cliente, Fechas */}
                 <div className="grid grid-cols-3 gap-1.5 w-full">
                   {/* Estado */}
@@ -1057,13 +1530,15 @@ export default function ProjectFullScreenView({
                         playSound("click");
                         setActivePopover(activePopover === "status" ? null : "status");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
                         activePopover === "status"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
-                      title={formData.estadoProyecto || "Estado"}
+                      )}
+                      title={`Estado: ${formData.estadoProyecto || "Planificación"}`}
                     >
+                      <ProjectStatusIcon status={formData.estadoProyecto || "Planificación"} className="w-3 h-3 shrink-0" />
                       <span className="truncate">{formData.estadoProyecto || "Estado"}</span>
                     </button>
                     <LinearDropdownPopover
@@ -1086,19 +1561,21 @@ export default function ProjectFullScreenView({
                       type="button"
                       onClick={() => {
                         playSound("click");
-                        setActivePopover(activePopover === "header_client" ? null : "header_client");
+                        setActivePopover(activePopover === "client" ? null : "client");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
-                        activePopover === "header_client"
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
+                        activePopover === "client"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
-                      title={formData.clientName || "Cliente"}
+                      )}
+                      title={`Cliente: ${formData.clientName || "Cliente"}`}
                     >
+                      <User className="w-3 h-3 shrink-0 text-white/60" />
                       <span className="truncate">{formData.clientName || "Cliente"}</span>
                     </button>
                     <LinearDropdownPopover
-                      isOpen={activePopover === "header_client"}
+                      isOpen={activePopover === "client"}
                       onClose={() => setActivePopover(null)}
                       placeholder="Cambiar cliente…"
                       shortcutKey="C"
@@ -1118,7 +1595,7 @@ export default function ProjectFullScreenView({
                     />
                   </div>
 
-                  {/* Fecha */}
+                  {/* Fechas */}
                   <div className="relative w-full">
                     <button
                       type="button"
@@ -1126,13 +1603,15 @@ export default function ProjectFullScreenView({
                         playSound("click");
                         setActivePopover(activePopover === "date" ? null : "date");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
                         activePopover === "date"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
+                      )}
                       title={dateLabel}
                     >
+                      <Calendar className="w-3 h-3 shrink-0 text-white/60" />
                       <span className="truncate">{dateLabel}</span>
                     </button>
                     <LinearDatePopover
@@ -1148,7 +1627,7 @@ export default function ProjectFullScreenView({
                   </div>
                 </div>
 
-                {/* Fila 2: Prioridad, Salud RAG, Tipo de Proyecto */}
+                {/* Fila 2: Prioridad, Salud RAG, Tipo de proyecto */}
                 <div className="grid grid-cols-3 gap-1.5 w-full">
                   {/* Prioridad */}
                   <div className="relative w-full">
@@ -1158,13 +1637,15 @@ export default function ProjectFullScreenView({
                         playSound("click");
                         setActivePopover(activePopover === "priority" ? null : "priority");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
                         activePopover === "priority"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
+                      )}
                       title={`Prioridad: ${formData.prioridad || "Media"}`}
                     >
+                      <Flag className="w-3 h-3 shrink-0 text-white/60" />
                       <span className="truncate">{formData.prioridad || "Prioridad"}</span>
                     </button>
                     <LinearDropdownPopover
@@ -1189,11 +1670,12 @@ export default function ProjectFullScreenView({
                         playSound("click");
                         setActivePopover(activePopover === "salud" ? null : "salud");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center gap-1 text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
                         activePopover === "salud"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
+                      )}
                       title={formData.salud === "rojo" ? "Bloqueado" : formData.salud === "ambar" ? "Con riesgos" : "En tiempo"}
                     >
                       <span className={cn(
@@ -1217,7 +1699,7 @@ export default function ProjectFullScreenView({
                     />
                   </div>
 
-                  {/* Tipo de Proyecto */}
+                  {/* Tipo de proyecto */}
                   <div className="relative w-full">
                     <button
                       type="button"
@@ -1225,11 +1707,12 @@ export default function ProjectFullScreenView({
                         playSound("click");
                         setActivePopover(activePopover === "type" ? null : "type");
                       }}
-                      className={`w-full h-[28px] flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate ${
+                      className={cn(
+                        "w-full h-7 flex items-center justify-center text-center border text-[11px] font-medium px-1.5 rounded-full transition-colors cursor-pointer truncate",
                         activePopover === "type"
                           ? "bg-white/10 border-white/30 text-white"
                           : "bg-white/[0.03] hover:bg-white/[0.08] border-white/10 text-white/80"
-                      }`}
+                      )}
                       title={formData.tipo || "Tipo"}
                     >
                       <span className="truncate">{formData.tipo || "Tipo"}</span>
@@ -1248,37 +1731,36 @@ export default function ProjectFullScreenView({
                     />
                   </div>
                 </div>
+              </div>
 
-                {/* Fila de Selector de Color */}
-                <div className="flex items-center justify-between px-1 pt-0.5">
-                  <span className="text-[10px] text-white/40 font-medium">Color de portada</span>
-                  <div className="flex items-center gap-1.5">
-                    {PROJECT_COLOR_PALETTE.map((preset, idx) => {
-                      const isSelected = selectedColorIdx === idx;
-                      return (
-                        <button
-                          key={preset.name}
-                          type="button"
-                          title={preset.name}
-                          onClick={() => {
-                            handleSelectColor(idx);
-                            triggerSave({ color: preset.hslStr, colorName: preset.name });
-                          }}
-                          className={cn(
-                            "w-3.5 h-3.5 rounded-full bg-gradient-to-br transition-all cursor-pointer border",
-                            preset.gradient,
-                            isSelected ? "border-white scale-125 shadow-sm ring-1 ring-white/40" : "border-transparent opacity-50 hover:opacity-100"
-                          )}
-                        />
-                      );
-                    })}
-                  </div>
+              {/* 2. COLOR DE PORTADA (SQUIRCLES) */}
+              <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b] px-0.5">
+                  Color de portada
+                </span>
+                <div className="flex items-center gap-1.5">
+                  {PROJECT_COLOR_PALETTE.map((preset, idx) => {
+                    const isSelected = selectedColorIdx === idx;
+                    return (
+                      <button
+                        key={preset.name}
+                        type="button"
+                        title={preset.name}
+                        onClick={() => handleSelectColor(idx)}
+                        className={cn(
+                          "w-4 h-4 rounded-[6px] bg-gradient-to-br transition-all cursor-pointer border",
+                          preset.gradient,
+                          isSelected ? "border-white scale-110 shadow-sm ring-1 ring-white/50" : "border-transparent opacity-60 hover:opacity-100"
+                        )}
+                      />
+                    );
+                  })}
                 </div>
               </div>
 
               {/* 3. FINANZAS & RENTABILIDAD */}
-              <div className="pt-2 border-t border-white/5 space-y-1.5">
-                <div className="flex items-center justify-between">
+              <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
+                <div className="flex items-center justify-between px-0.5">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
                     Finanzas & Rentabilidad
                   </span>
@@ -1290,7 +1772,7 @@ export default function ProjectFullScreenView({
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-1.5 p-2.5 rounded-2xl bg-white/[0.025] border border-white/10">
+                <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-white/[0.02] border border-white/5">
                   {/* Presupuesto */}
                   <div className="flex flex-col gap-0.5">
                     <span className="text-[10px] text-white/40 font-medium">Presupuesto</span>
@@ -1308,42 +1790,62 @@ export default function ProjectFullScreenView({
                         className="w-full bg-transparent text-xs font-semibold text-[#ffffffd6] placeholder-white/20 outline-none ring-0 border-none p-0"
                       />
                     </div>
+                    {(summary.tareasExtrasPrecio ?? 0) > 0 && (
+                      <span className="text-[9px] text-emerald-400/80 font-mono leading-none" title="Precio acumulado de tareas extras">
+                        +${(summary.tareasExtrasPrecio || 0).toLocaleString()} extra
+                      </span>
+                    )}
                   </div>
 
-                  {/* Costo Real (Rollup de Sesiones) */}
+                  {/* Costo Real */}
                   <div className="flex flex-col gap-0.5 border-l border-white/5 pl-2">
                     <span className="text-[10px] text-white/40 font-medium">Costo Real</span>
-                    <span className="text-xs font-semibold text-white/80" title="Calculado a partir de sesiones de trabajo registradas">
+                    <span className="text-xs font-semibold text-white/80" title={`Sesiones: $${summary.costoSesiones || 0} | Delegación: $${summary.tareasCostoDelegado || 0}`}>
                       ${(summary.costoReal || 0).toLocaleString()}
                     </span>
+                    {(summary.tareasCostoDelegado ?? 0) > 0 && (
+                      <span className="text-[9px] text-white/40 font-mono leading-none" title="Costo de tareas delegadas">
+                        ${(summary.tareasCostoDelegado || 0).toLocaleString()} del.
+                      </span>
+                    )}
                   </div>
 
                   {/* Margen */}
                   <div className="flex flex-col gap-0.5 border-l border-white/5 pl-2">
                     <span className="text-[10px] text-white/40 font-medium">Margen</span>
                     {summary.margen !== null ? (
-                      <span className={cn(
-                        "text-[11px] font-bold px-1.5 py-0.5 rounded-md w-fit",
-                        summary.margen >= 20 ? "text-emerald-400 bg-emerald-500/15" :
-                        summary.margen >= 0 ? "text-amber-400 bg-amber-500/15" :
-                        "text-rose-400 bg-rose-500/15"
-                      )}>
-                        {summary.margen > 0 ? `+${summary.margen}%` : `${summary.margen}%`}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span className={cn(
+                          "text-[10px] font-bold px-1 py-0.5 rounded leading-none",
+                          summary.margen >= 20 ? "text-emerald-400 bg-emerald-500/15" :
+                          summary.margen >= 0 ? "text-amber-400 bg-amber-500/15" :
+                          "text-rose-400 bg-rose-500/15"
+                        )}>
+                          {summary.margen > 0 ? `+${summary.margen}%` : `${summary.margen}%`}
+                        </span>
+                      </div>
                     ) : (
                       <span className="text-xs text-white/40 font-medium">—</span>
+                    )}
+                    {summary.margenDinero !== undefined && summary.margenDinero !== null && (
+                      <span className={cn(
+                        "text-[9px] font-mono leading-none",
+                        summary.margenDinero >= 0 ? "text-white/60" : "text-rose-400/80"
+                      )}>
+                        ${summary.margenDinero.toLocaleString()}
+                      </span>
                     )}
                   </div>
                 </div>
               </div>
 
               {/* 4. EQUIPO DEL PROYECTO */}
-              <div className="pt-2 border-t border-white/5 space-y-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
+              <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b] px-0.5">
                   Equipo del Proyecto
                 </span>
 
-                <div className="p-2.5 rounded-2xl bg-white/[0.025] border border-white/10 space-y-2">
+                <div className="flex flex-col gap-2 px-0.5">
                   {/* Project Lead */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-1.5 text-xs text-white/70">
@@ -1420,75 +1922,73 @@ export default function ProjectFullScreenView({
                 </div>
               </div>
 
-              {/* 5. METAS DE NEGOCIO / OKRs */}
-              <div className="pt-2 border-t border-white/5 space-y-1.5">
-                <div className="flex items-center justify-between">
+              {/* 5. METAS DE NEGOCIO / OKRS */}
+              <div className="pt-2 border-t border-white/5 flex flex-col gap-2">
+                <div className="flex items-center justify-between px-0.5">
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
                     Metas & OKRs ({formData.metas_negocio?.length || 0})
                   </span>
                 </div>
 
-                <div className="p-2.5 rounded-2xl bg-white/[0.025] border border-white/10 space-y-2">
-                  {/* Input para nueva meta */}
-                  <div className="flex items-center gap-1.5">
-                    <SmoothInput
-                      type="text"
-                      unstyled
-                      value={newMetaInput}
-                      onChange={(e) => setNewMetaInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddMeta();
-                        }
-                      }}
-                      placeholder="Añadir objetivo u OKR..."
-                      wrapperClassName="flex-1 bg-white/[0.03] border border-white/10 rounded-xl px-2.5 py-1 focus-within:border-white/20"
-                      className="text-xs text-[#ffffffd6] placeholder:text-white/30"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddMeta}
-                      disabled={!newMetaInput.trim()}
-                      className="px-2 py-1 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white transition-colors cursor-pointer shrink-0"
-                      title="Agregar objetivo"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-
-                  {/* Lista de metas */}
-                  {formData.metas_negocio && formData.metas_negocio.length > 0 ? (
-                    <div className="flex flex-col gap-1 max-h-[120px] overflow-y-auto custom-scrollbar">
-                      {formData.metas_negocio.map((meta: string, idx: number) => (
-                        <div
-                          key={idx}
-                          className="flex items-start justify-between gap-2 p-1.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-colors group"
-                        >
-                          <div className="flex items-start gap-1.5 min-w-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
-                            <span className="text-[11px] text-[#ffffffd6] leading-relaxed break-words">{meta}</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteMeta(idx)}
-                            className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-rose-400 transition-opacity cursor-pointer p-0.5 shrink-0"
-                            title="Eliminar meta"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-white/30 italic">Sin objetivos definidos aún.</p>
-                  )}
+                {/* Input para agregar meta */}
+                <div className="flex items-center gap-1.5">
+                  <SmoothInput
+                    type="text"
+                    unstyled
+                    value={newMetaInput}
+                    onChange={(e) => setNewMetaInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddMeta();
+                      }
+                    }}
+                    placeholder="Añadir objetivo u OKR..."
+                    wrapperClassName="flex-1 bg-[#181818] border border-white/10 rounded-xl px-2.5 py-1 focus-within:border-white/20"
+                    className="text-xs text-[#ffffffd6] placeholder:text-[#ffffff6b]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddMeta}
+                    disabled={!newMetaInput.trim()}
+                    className="px-2 py-1 rounded-xl text-xs font-semibold bg-white/10 hover:bg-white/20 disabled:opacity-30 text-white transition-colors cursor-pointer shrink-0"
+                    title="Agregar objetivo"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
                 </div>
+
+                {/* Lista de metas */}
+                {formData.metas_negocio && formData.metas_negocio.length > 0 ? (
+                  <div className="flex flex-col gap-1 max-h-[110px] overflow-y-auto custom-scrollbar pr-0.5">
+                    {formData.metas_negocio.map((meta: string, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex items-start justify-between gap-2 p-1.5 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-colors group"
+                      >
+                        <div className="flex items-start gap-1.5 min-w-0">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-1.5 shrink-0" />
+                          <span className="text-xs text-[#ffffffd6] leading-relaxed break-words">{meta}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMeta(idx)}
+                          className="opacity-0 group-hover:opacity-100 text-white/40 hover:text-rose-400 transition-opacity cursor-pointer p-0.5 shrink-0"
+                          title="Eliminar meta"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-[#ffffff6b] italic px-1">Sin objetivos definidos aún.</p>
+                )}
               </div>
 
-              {/* 6. DIRECTRICES Y NOTAS DEL PROYECTO */}
+              {/* 6. DIRECTRICES Y NOTAS */}
               <div className="pt-2 border-t border-white/5 flex flex-col gap-1.5">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b] px-0.5">
                   Directrices y Notas
                 </span>
                 <SmoothTextarea
@@ -1501,38 +2001,48 @@ export default function ProjectFullScreenView({
                   }}
                   onBlur={() => triggerSave({ descripcion: formData.descripcion })}
                   placeholder="Escribe directrices, objetivos, brief o notas del proyecto..."
-                  wrapperClassName="w-full p-3 rounded-2xl bg-white/[0.025] hover:bg-white/[0.04] focus-within:bg-white/[0.04] border border-white/10 transition-colors"
-                  className="text-xs text-[#ffffffd6] placeholder:text-white/30 leading-relaxed custom-scrollbar"
+                  wrapperClassName="w-full p-2.5 rounded-xl bg-[#181818] border border-white/10 focus-within:border-white/20 transition-colors"
+                  className="text-xs text-[#ffffffd6] placeholder:text-[#ffffff6b] leading-relaxed custom-scrollbar"
                 />
               </div>
 
               {/* 7. ENTREGABLES DEL PROYECTO */}
               {tasks.length > 0 && (
                 <div className="pt-2 border-t border-white/5 flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b]">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-[#ffffff6b] px-0.5">
                     <span>Entregables ({tasks.length})</span>
                     <span>{completedTasksCount} listos</span>
                   </div>
-                  <div className="flex flex-col gap-1 max-h-[140px] overflow-y-auto custom-scrollbar">
+                  <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto custom-scrollbar pr-0.5">
                     {tasks.map((t: any) => {
                       const isDone = (t.estado || t.status) === "Completado";
                       return (
                         <div
                           key={t.id}
-                          onClick={(e) => {
-                            playSound("click");
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            handleOpenTaskModal(t, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-                          }}
+                          onClick={() => handleSelectTask(t)}
                           className="w-full flex items-center justify-between p-2 rounded-xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all cursor-pointer group select-none"
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <div className={cn(
-                              "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors",
-                              isDone ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "border-white/20 text-transparent"
-                            )}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                playSound("pop");
+                                const newStatus = isDone ? "Planificado" : "Completado";
+                                updateTask.mutate({
+                                  id: String(t.id),
+                                  estado: newStatus,
+                                  status: newStatus,
+                                } as any);
+                              }}
+                              className={cn(
+                                "w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0 transition-colors cursor-pointer",
+                                isDone ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "border-white/20 hover:border-white/40 text-transparent"
+                              )}
+                              title={isDone ? "Marcar como pendiente" : "Marcar como completada"}
+                            >
                               {isDone && <Check className="w-2.5 h-2.5 stroke-[3]" />}
-                            </div>
+                            </button>
                             <span className={cn(
                               "text-xs truncate transition-colors",
                               isDone ? "line-through text-white/40" : "text-[#ffffffd6] group-hover:text-white"
@@ -1549,15 +2059,16 @@ export default function ProjectFullScreenView({
                   </div>
                 </div>
               )}
+
             </div>
 
-            {/* Indicador de guardado discreto en el pie */}
+            {/* Pie con indicador de guardado Firestore */}
             <div className="pt-2 flex items-center justify-between text-[11px] text-[#ffffff6b] border-t border-white/5">
               <div className="flex items-center gap-1.5">
                 <span className={cn(
                   "w-1.5 h-1.5 rounded-full transition-all",
                   saveStatus === "saving" ? "bg-amber-400 animate-pulse" :
-                  saveStatus === "saved" ? "bg-emerald-400" : "bg-white/20"
+                  saveStatus === "saved" ? "bg-emerald-400" : "bg-emerald-500/60"
                 )} />
                 <span>
                   {saveStatus === "saving" ? "Guardando…" :
@@ -1570,16 +2081,24 @@ export default function ProjectFullScreenView({
           </div>
         </div>
 
-        {/* ── COLUMNA DERECHA (9 COLUMNAS): CATÁLOGO DE TARJETAS DE TAREAS ── */}
-        <div className="col-span-9 flex flex-col h-full min-h-0 overflow-hidden pl-1">
+        {/* ── DIVISOR REDIMENSIONABLE CON PÍLDORA AZUL (IDÉNTICO A WORK) ── */}
+        <ResizableDivider 
+          side="right"
+          ariaLabel="Redimensionar panel del proyecto"
+          onResize={handleSidebarResize}
+          onResizeEnd={handleSidebarResizeEnd}
+        />
+
+        {/* ── COLUMNA DERECHA: KANBAN / TODAS LAS TAREAS / TIMELINE / TABLA ── */}
+        <div className="flex-1 min-w-0 flex flex-col gap-4 h-full overflow-hidden">
           
-          {/* ── BARRA SUPERIOR: NAVEGADOR DE PESTAÑAS (DUPLICADO DE WORK + OPCIÓN 'TODO') ── */}
-          <div className="flex items-center h-[52px] w-full gap-2 shrink-0 mb-4 select-none">
+          {/* ── BARRA SUPERIOR DE VISTAS (IDÉNTICO A WORK + OPCIÓN 'TODO') ── */}
+          <div className="flex items-center h-[52px] w-full gap-2 shrink-0 select-none">
             
             {/* Zona Izquierda de balance */}
             <div className="flex-1 basis-0" />
 
-            {/* ZONA CENTRAL: VIEW SWITCHER (Idéntico a Work) */}
+            {/* ZONA CENTRAL: VIEW SWITCHER OFICIAL (PÍLDORA TASKI) */}
             <div className="flex-none flex items-center justify-center">
               {/* Botón de cerrar búsqueda */}
               <AnimatePresence>
@@ -1632,14 +2151,14 @@ export default function ProjectFullScreenView({
                 >
                   {activeView === "buscar" && (
                     <motion.span
-                      layoutId="projectActiveViewIndicator"
+                      layoutId="projActiveViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#1f1f1f] border-[#ffffff1f] shadow-sm"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
                   {!isSearchActive && hoveredTab === "buscar" && (
                     <motion.span
-                      layoutId="projectHoverViewIndicator"
+                      layoutId="projHoverViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#282828] border-white/10"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
@@ -1653,7 +2172,7 @@ export default function ProjectFullScreenView({
                       value={taskSearch}
                       onChange={(e) => setTaskSearch(e.target.value)}
                       onClick={(e) => e.stopPropagation()}
-                      placeholder="Buscar tareas del proyecto..."
+                      placeholder="Buscar tareas en este proyecto..."
                       wrapperClassName="w-full relative z-10"
                       className="text-xs text-[#ffffffd6] placeholder:text-[#ffffff6b]"
                     />
@@ -1662,7 +2181,7 @@ export default function ProjectFullScreenView({
                   )}
                 </motion.button>
 
-                {/* 2. Todo Tab (Nueva opción solicitada) */}
+                {/* 2. Todo Tab (Todas las tareas) */}
                 <motion.button
                   layout
                   type="button"
@@ -1673,7 +2192,7 @@ export default function ProjectFullScreenView({
                     playSound('click');
                   }}
                   transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
+                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                     activeView === "todo"
                       ? "text-[#ffffffd6]"
                       : "text-[#ffffffd6] hover:text-white"
@@ -1681,14 +2200,14 @@ export default function ProjectFullScreenView({
                 >
                   {activeView === "todo" && (
                     <motion.span
-                      layoutId="projectActiveViewIndicator"
+                      layoutId="projActiveViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#1f1f1f] border-[#ffffff1f] shadow-sm"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
                   {hoveredTab === "todo" && (
                     <motion.span
-                      layoutId="projectHoverViewIndicator"
+                      layoutId="projHoverViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#282828] border-white/10"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
@@ -1708,7 +2227,7 @@ export default function ProjectFullScreenView({
                     playSound('click');
                   }}
                   transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
+                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                     activeView === "kanban"
                       ? "text-[#ffffffd6]"
                       : "text-[#ffffffd6] hover:text-white"
@@ -1716,14 +2235,14 @@ export default function ProjectFullScreenView({
                 >
                   {activeView === "kanban" && (
                     <motion.span
-                      layoutId="projectActiveViewIndicator"
+                      layoutId="projActiveViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#1f1f1f] border-[#ffffff1f] shadow-sm"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
                   {hoveredTab === "kanban" && (
                     <motion.span
-                      layoutId="projectHoverViewIndicator"
+                      layoutId="projHoverViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#282828] border-white/10"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
@@ -1743,7 +2262,7 @@ export default function ProjectFullScreenView({
                     playSound('click');
                   }}
                   transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
+                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                     activeView === "tabla"
                       ? "text-[#ffffffd6]"
                       : "text-[#ffffffd6] hover:text-white"
@@ -1751,14 +2270,14 @@ export default function ProjectFullScreenView({
                 >
                   {activeView === "tabla" && (
                     <motion.span
-                      layoutId="projectActiveViewIndicator"
+                      layoutId="projActiveViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#1f1f1f] border-[#ffffff1f] shadow-sm"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
                   {hoveredTab === "tabla" && (
                     <motion.span
-                      layoutId="projectHoverViewIndicator"
+                      layoutId="projHoverViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#282828] border-white/10"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
@@ -1778,7 +2297,7 @@ export default function ProjectFullScreenView({
                     playSound('click');
                   }}
                   transition={{ type: "spring", stiffness: 350, damping: 28 }}
-                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 ${
+                  className={`relative z-10 box-border inline-flex h-8 items-center justify-center rounded-full whitespace-nowrap select-none gap-1.5 px-4 text-xs font-bold transition-colors duration-200 cursor-pointer ${
                     activeView === "timeline"
                       ? "text-[#ffffffd6]"
                       : "text-[#ffffffd6] hover:text-white"
@@ -1786,14 +2305,14 @@ export default function ProjectFullScreenView({
                 >
                   {activeView === "timeline" && (
                     <motion.span
-                      layoutId="projectActiveViewIndicator"
+                      layoutId="projActiveViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#1f1f1f] border-[#ffffff1f] shadow-sm"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
                   )}
                   {hoveredTab === "timeline" && (
                     <motion.span
-                      layoutId="projectHoverViewIndicator"
+                      layoutId="projHoverViewIndicator"
                       className="absolute inset-0 rounded-full border bg-[#282828] border-white/10"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
                     />
@@ -1804,7 +2323,7 @@ export default function ProjectFullScreenView({
               </motion.div>
             </div>
 
-            {/* ZONA DERECHA: Botón de Agrupar/Filtros */}
+            {/* ZONA DERECHA: Botón de Agrupación / Filtros */}
             <div className="flex-1 basis-0 flex items-center justify-end">
               <div className="relative">
                 <button
@@ -1812,7 +2331,7 @@ export default function ProjectFullScreenView({
                     playSound('click');
                     setGroupDropdownOpen(!groupDropdownOpen);
                   }}
-                  title="Filtrar por estado"
+                  title="Filtros y agrupación"
                   className="flex items-center justify-center h-8 w-8 rounded-full border transition-all duration-200 shrink-0 shadow-sm active:scale-95 bg-[#1f1f1f] border-[#ffffff1f] text-[#ffffffd6] hover:bg-[#282828] hover:text-white cursor-pointer"
                 >
                   <ListFilter className="w-[13.55px] h-[13.55px] text-[#ffffffd6]" />
@@ -1828,31 +2347,82 @@ export default function ProjectFullScreenView({
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 8 }}
                         transition={{ duration: 0.15 }}
-                        className="absolute right-0 mt-2.5 w-48 rounded-2xl border backdrop-blur-md shadow-2xl z-50 p-2 flex flex-col gap-0.5 bg-slate-950/95 border-white/10 text-slate-350 shadow-black/80"
+                        className="absolute right-0 mt-2.5 w-52 rounded-2xl border backdrop-blur-md shadow-2xl z-50 p-2 flex flex-col gap-0.5 bg-slate-950/95 border-white/10 text-slate-350 shadow-black/80"
                       >
-                        <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-2.5 py-1 select-none">
-                          Filtrar por estado
-                        </div>
-                        
-                        {(["todos", "Planificado", "En Proceso", "En Revisión", "Completado"] as const).map((st) => (
-                          <button
-                            key={st}
-                            onClick={() => {
-                              setGroupingFilter(st);
-                              setGroupDropdownOpen(false);
-                              playSound("click");
-                            }}
-                            className={cn(
-                              "text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 cursor-pointer",
-                              groupingFilter === st
-                                ? "bg-white/10 text-white shadow-sm font-bold"
-                                : "hover:bg-white/[0.04] hover:text-slate-200 text-slate-400"
-                            )}
-                          >
-                            <span>{st === "todos" ? "Todos los estados" : st}</span>
-                            {groupingFilter === st && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
-                          </button>
-                        ))}
+                        {activeView === "kanban" ? (
+                          <>
+                            <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-2.5 py-1 select-none">
+                              Agrupar Kanban por
+                            </div>
+                            
+                            {(["estado", "fecha", "prioridad"] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                onClick={() => {
+                                  setGroupingMode(mode);
+                                  setGroupDropdownOpen(false);
+                                  playSound("click");
+                                }}
+                                className={cn(
+                                  "text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 cursor-pointer",
+                                  groupingMode === mode
+                                    ? "bg-white/10 text-white shadow-sm font-bold"
+                                    : "hover:bg-white/[0.04] hover:text-slate-200 text-slate-400"
+                                )}
+                              >
+                                <span>
+                                  {mode === "estado" ? "Estado de tarea" :
+                                   mode === "fecha" ? "Fecha de entrega" : "Prioridad"}
+                                </span>
+                                {groupingMode === mode && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                              </button>
+                            ))}
+                          </>
+                        ) : activeView === "timeline" ? (
+                          <>
+                            <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-2.5 py-1 select-none">
+                              Filtros de Timeline
+                            </div>
+                            <button
+                              onClick={() => {
+                                setTimelineHideCompleted(!timelineHideCompleted);
+                                playSound("click");
+                              }}
+                              className={cn(
+                                "text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 cursor-pointer",
+                                timelineHideCompleted ? "bg-white/10 text-white font-bold" : "hover:bg-white/[0.04] text-slate-400"
+                              )}
+                            >
+                              <span>Ocultar completadas</span>
+                              {timelineHideCompleted && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest px-2.5 py-1 select-none">
+                              Filtrar por estado
+                            </div>
+                            {(["todos", "Planificado", "En Proceso", "En Revisión", "Completado"] as const).map((st) => (
+                              <button
+                                key={st}
+                                onClick={() => {
+                                  setGroupingFilter(st);
+                                  setGroupDropdownOpen(false);
+                                  playSound("click");
+                                }}
+                                className={cn(
+                                  "text-left px-2.5 py-1.5 text-xs font-semibold rounded-xl flex items-center justify-between transition-all duration-150 cursor-pointer",
+                                  groupingFilter === st
+                                    ? "bg-white/10 text-white shadow-sm font-bold"
+                                    : "hover:bg-white/[0.04] hover:text-slate-200 text-slate-400"
+                                )}
+                              >
+                                <span>{st === "todos" ? "Todos los estados" : st}</span>
+                                {groupingFilter === st && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />}
+                              </button>
+                            ))}
+                          </>
+                        )}
                       </motion.div>
                     </>
                   )}
@@ -1863,204 +2433,137 @@ export default function ProjectFullScreenView({
           </div>
 
           {/* ── CONTENIDO DINÁMICO SEGÚN LA PESTAÑA ACTIVA ── */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
+          <div className={`w-full h-full flex-1 min-h-0 min-w-0 relative ${draggingTaskId ? "overflow-visible" : "overflow-hidden"}`}>
             
-            {/* ── 1. VISTA 'TODO' O 'BUSCAR' (CUADRÍCULA COMPLETA CON '+ NUEVA TAREA') ── */}
-            {(activeView === "todo" || activeView === "buscar") && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 pb-8">
-                {/* Tarjeta 0: '+ Nueva tarea' */}
-                {renderNewTaskCard()}
-
-                {/* Tarjetas oficiales de tareas */}
-                {filteredTasks.map((t: any, idx: number) => renderOfficialTaskCard(t, idx))}
-              </div>
-            )}
-
-            {/* ── 2. VISTA 'KANBAN' (COLUMNAS POR ESTADO DENTRO DEL PROYECTO) ── */}
+            {/* 1. VISTA 'KANBAN' (EL KANBAN REAL DE WORK CON DND) */}
             {activeView === "kanban" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 pb-8 items-start">
-                {(["Planificado", "En Proceso", "En Revisión", "Completado"] as const).map((colStatus) => {
-                  const colTasks = filteredTasks.filter((t: any) => {
-                    const st = t.estado || t.status || "Planificado";
-                    if (colStatus === "Planificado") return st === "Planificado" || st === "Pendiente" || !st;
-                    if (colStatus === "En Revisión") return st === "En Revisión" || st === "Revisión";
-                    return st === colStatus;
-                  });
-
-                  return (
-                    <div key={colStatus} className="flex flex-col gap-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] p-3 min-h-[500px]">
-                      {/* Header de Columna */}
-                      <div className="flex items-center justify-between px-1 pb-1">
-                        <div className="flex items-center gap-2">
-                          <ProjectStatusIcon status={colStatus} className="w-3.5 h-3.5" />
-                          <span className="text-xs font-bold text-[#ffffffd6]">{colStatus}</span>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-full bg-white/10 text-white text-[11px] font-mono font-bold">
-                          {colTasks.length}
-                        </span>
-                      </div>
-
-                      {/* Lista de Tarjetas en esta columna */}
-                      <div className="flex flex-col gap-3">
-                        {colTasks.map((t: any, idx: number) => renderOfficialTaskCard(t, idx))}
-                        
-                        {colTasks.length === 0 && (
-                          <div className="py-12 text-center text-[11px] text-[#ffffff40] border border-dashed border-white/10 rounded-xl">
-                            Sin tareas en {colStatus}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <KanbanBoard
+                projects={localProjects}
+                filteredKanbanTasks={filteredKanbanTasks}
+                groupingMode={groupingMode}
+                isNightMode={true}
+                headerBgStyle="bg-white/[0.03]"
+                draggingTaskId={draggingTaskId}
+                setDraggingTaskId={setDraggingTaskId}
+                activeStatusDropdownCardId={activeStatusDropdownCardId}
+                activeFormatDropdownCardId={activeFormatDropdownCardId}
+                activeTimeDropdownCardId={activeTimeDropdownCardId}
+                activeColorSelectorCardId={activeColorSelectorCardId}
+                editingTaskField={editingTaskField}
+                expandedCardId={expandedCardId}
+                setExpandedCardId={setExpandedCardId}
+                columnScrollIndices={columnScrollIndices}
+                setColumnScrollIndices={setColumnScrollIndices}
+                updateVisibleCards={() => {}}
+                getCalendarDaysDiff={getCalendarDaysDiff}
+                formatLocalDate={formatLocalDate}
+                handleDropTask={handleDropTask}
+                taskCardSharedProps={taskCardSharedProps}
+              />
             )}
 
-            {/* ── 3. VISTA 'BASE DE DATOS' (TABLA COMPACTA) ── */}
-            {activeView === "tabla" && (
-              <div className="flex flex-col gap-2 pb-8">
-                {/* Botón rápido de creación en lista */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenNewTaskModal()}
-                  className="w-full flex items-center justify-center gap-2 p-3 rounded-2xl border border-dashed border-white/20 bg-white/[0.02] hover:bg-white/[0.05] text-xs font-bold text-[#ffffffd6] hover:text-white transition-all mb-1 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Crear Nueva Tarea en este proyecto</span>
-                </button>
+            {/* 2. VISTA 'TODO' (TODAS LAS TAREAS EN CUADRÍCULA CON TARJETAS OFICIALES ACTUALIZADAS) */}
+            {activeView === "todo" && (
+              <div className="w-full h-full overflow-y-auto custom-scrollbar pr-1 pb-10">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 items-start">
+                  {/* Tarjeta 0: '+ Nueva tarea' */}
+                  {renderNewTaskCard()}
 
-                {filteredTasks.map((t: any) => {
-                  const fmtObj = getFormato(t.formato || t.format);
-                  const rawStatus = t.estado || t.status || "Planificado";
-                  const isDone = rawStatus === "Completado";
-
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        handleOpenTaskModal(t, { x: rect.x, y: rect.y, width: rect.width, height: rect.height });
-                      }}
-                      className="w-full flex items-center justify-between p-3 px-4 rounded-2xl bg-[#181818] border border-white/10 hover:border-white/20 transition-all cursor-pointer group shadow-sm"
+                  {/* Tarjetas oficiales de tareas */}
+                  {filteredKanbanTasks.map((t, idx) => (
+                    <div 
+                      key={t.id} 
+                      className="w-full task-card-wrapper relative hover:z-20 transition-[z-index] duration-150"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
-                          {fmtObj ? (
-                            <FormatoShape formatoObj={fmtObj} size="sm" />
-                          ) : (
-                            <Sparkles className="w-3.5 h-3.5 text-white/50" />
-                          )}
-                        </div>
-
-                        <div className="flex flex-col min-w-0">
-                          <span className={cn(
-                            "text-xs font-bold text-[#ffffffd6] group-hover:text-white truncate",
-                            isDone && "line-through text-white/40"
-                          )}>
-                            {t.titulo || t.title}
-                          </span>
-                          <span className="text-[10px] text-[#ffffff6b] truncate">
-                            {fmtObj?.nombre || t.formato || "Entregable"} · {formData.clientName}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <span className={cn(
-                          "px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                          rawStatus === "Completado" ? "bg-emerald-500/20 text-emerald-400" :
-                          rawStatus === "En Proceso" ? "bg-amber-500/20 text-amber-400" : "bg-white/10 text-white/70"
-                        )}>
-                          {rawStatus}
-                        </span>
-
-                        <span className="text-[11px] font-mono text-[#ffffff6b]">
-                          {t.esfuerzo || "30 min"}
-                        </span>
-
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            playSound("trash");
-                            try {
-                              await deleteDoc(doc(db, "tasks", String(t.id)));
-                            } catch (e) {
-                              console.error(e);
-                            }
-                          }}
-                          className="p-1 text-[#ffffff40] hover:text-rose-400 transition-colors"
-                          title="Eliminar tarea"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <TaskCardContent
+                        {...taskCardSharedProps}
+                        taskId={t.id}
+                        projectId={t.projectId}
+                        projectName={t.projectName}
+                        taskTitle={t.taskTitle}
+                        completedTasks={completedTasksCount}
+                        totalTasks={tasks.length}
+                        taskIndex={idx}
+                        desc={t.desc || ""}
+                      />
                     </div>
-                  );
-                })}
+                  ))}
+                </div>
+
+                {filteredKanbanTasks.length === 0 && !isCreatingInlineTask && (
+                  <div className="py-20 flex flex-col items-center justify-center text-center opacity-40">
+                    <Layers className="w-12 h-12 mb-3 text-[#ffffff6b]" />
+                    <h4 className="text-lg font-bold text-[#ffffffd6]">Sin entregables encontrados</h4>
+                    <p className="text-xs text-[#ffffff6b] mt-1 max-w-xs">
+                      {taskSearch ? `No hay tareas que coincidan con "${taskSearch}".` : "Comienza agregando la primera tarea a este proyecto."}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
-            {/* ── 4. VISTA 'TIMELINE' (ORGANIZADA POR TIEMPO Y DEADLINE) ── */}
+            {/* 3. VISTA 'TIMELINE' (EL TIMELINE REAL DE WORK) */}
             {activeView === "timeline" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 pb-8 items-start">
-                {[
-                  { id: "hoy", label: "Hoy", filter: (t: any) => getCalendarDaysDiff(t.fecha_limite || t.deadline) <= 0 },
-                  { id: "manana", label: "Mañana", filter: (t: any) => getCalendarDaysDiff(t.fecha_limite || t.deadline) === 1 },
-                  { id: "semana", label: "Esta Semana", filter: (t: any) => {
-                    const d = getCalendarDaysDiff(t.fecha_limite || t.deadline);
-                    return d > 1 && d <= 7;
-                  }},
-                  { id: "mes", label: "Este Mes / Futuras", filter: (t: any) => {
-                    const d = getCalendarDaysDiff(t.fecha_limite || t.deadline);
-                    return d > 7;
-                  }},
-                ].map((col) => {
-                  const colTasks = filteredTasks.filter(col.filter);
-
-                  return (
-                    <div key={col.id} className="flex flex-col gap-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] p-3 min-h-[500px]">
-                      {/* Header de Columna */}
-                      <div className="flex items-center justify-between px-1 pb-1">
-                        <div className="flex items-center gap-2">
-                          <CalendarDays className="w-3.5 h-3.5 text-blue-400" />
-                          <span className="text-xs font-bold text-[#ffffffd6]">{col.label}</span>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-full bg-white/10 text-white text-[11px] font-mono font-bold">
-                          {colTasks.length}
-                        </span>
-                      </div>
-
-                      {/* Lista de Tarjetas */}
-                      <div className="flex flex-col gap-3">
-                        {colTasks.map((t: any, idx: number) => renderOfficialTaskCard(t, idx))}
-                        
-                        {colTasks.length === 0 && (
-                          <div className="py-12 text-center text-[11px] text-[#ffffff40] border border-dashed border-white/10 rounded-xl">
-                            Sin entregables para {col.label.toLowerCase()}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <TimelineView
+                projects={localProjects}
+                onSelectProject={() => {}}
+                onSelectTask={(task, pId, originRect) => handleSelectTask(task, pId, originRect)}
+                onUpdateProjects={handleUpdateProjects}
+                timelineHideCompleted={timelineHideCompleted}
+                onToggleTimelineHideCompleted={() => setTimelineHideCompleted(!timelineHideCompleted)}
+                timelineSortBy={timelineSortBy}
+                onSetTimelineSortBy={setTimelineSortBy}
+                isNightMode={true}
+              />
             )}
 
-            {/* ESTADO VACÍO CUANDO NO HAY TAREAS */}
-            {filteredTasks.length === 0 && !isCreatingInlineTask && (
-              <div className="py-20 flex flex-col items-center justify-center text-center opacity-40">
-                <Layers className="w-12 h-12 mb-3 text-[#ffffff6b]" />
-                <h4 className="text-lg font-bold text-[#ffffffd6]">Sin entregables encontrados</h4>
-                <p className="text-xs text-[#ffffff6b] mt-1 max-w-xs">
-                  {taskSearch ? `No hay tareas que coincidan con "${taskSearch}".` : "Comienza agregando la primera tarea a este proyecto."}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => handleOpenNewTaskModal()}
-                  className="mt-4 px-4 py-2 rounded-xl bg-white text-black text-xs font-bold transition-all hover:bg-[#e4e4e7] cursor-pointer"
-                >
-                  + Añadir Tarea
-                </button>
+            {/* 4. VISTA 'TABLA' / BASE DE DATOS (LA TABLA REAL DE WORK) */}
+            {activeView === "tabla" && (
+              <TaskTableView
+                projects={localProjects}
+                kanbanTasks={kanbanTasks}
+                headerBgStyle="bg-white/[0.03]"
+                cardBgStyle="bg-white/[0.04]"
+                onSelectTab={() => {}}
+                onSelectProject={() => {}}
+                onSelectTask={(task, pId) => handleSelectTask(task, pId)}
+              />
+            )}
+
+            {/* 5. VISTA 'BUSCAR' */}
+            {activeView === "buscar" && (
+              <div className="w-full h-full overflow-y-auto custom-scrollbar flex flex-col gap-3 pr-1 pt-1">
+                <span className="text-[10px] font-bold text-[#ffffff6b] uppercase tracking-wider px-1">
+                  Resultados en este proyecto ({filteredKanbanTasks.length})
+                </span>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3.5 items-start pb-8">
+                  {filteredKanbanTasks.map((t, idx) => (
+                    <div 
+                      key={t.id} 
+                      className="w-full task-card-wrapper relative hover:z-20 transition-[z-index] duration-150"
+                    >
+                      <TaskCardContent
+                        {...taskCardSharedProps}
+                        taskId={t.id}
+                        projectId={t.projectId}
+                        projectName={t.projectName}
+                        taskTitle={t.taskTitle}
+                        completedTasks={completedTasksCount}
+                        totalTasks={tasks.length}
+                        taskIndex={idx}
+                        desc={t.desc || ""}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {filteredKanbanTasks.length === 0 && (
+                  <div className="py-16 flex flex-col items-center justify-center text-center opacity-40">
+                    <Search className="w-10 h-10 mb-2 text-[#ffffff6b]" />
+                    <p className="text-xs text-[#ffffff6b]">No se encontraron tareas con &quot;{taskSearch}&quot;</p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -2068,9 +2571,72 @@ export default function ProjectFullScreenView({
 
         </div>
 
+        {/* ── COLUMNA DERECHA: PANEL LATERAL DE TAREA (TaskSidePanel) ── */}
+        <AnimatePresence mode="wait">
+          {internalSideTask && (
+            <>
+              <div className="shrink-0 h-full flex items-center justify-center -mx-1.5 z-40">
+                <ResizableDivider
+                  side="left"
+                  ariaLabel="Redimensionar panel lateral de tarea"
+                  onResize={(deltaX) => {
+                    setTaskSidePanelWidth((prev) => Math.min(Math.max(prev - deltaX, 315), 600));
+                  }}
+                  onResizeEnd={() => {
+                    if (typeof window !== "undefined") {
+                      localStorage.setItem("taski_task_sidepanel_width", String(taskSidePanelWidth));
+                    }
+                  }}
+                  className="h-full"
+                />
+              </div>
+              <motion.div
+                key="internal-task-sidepanel"
+                initial={{ opacity: 0, x: 40, width: 0 }}
+                animate={{ opacity: 1, x: 0, width: taskSidePanelWidth }}
+                exit={{ opacity: 0, x: 40, width: 0 }}
+                transition={{ type: "spring", damping: 28, stiffness: 280 }}
+                className="shrink-0 h-full flex flex-col overflow-hidden z-40 relative"
+                style={{ width: `${taskSidePanelWidth}px` }}
+              >
+                <TaskSidePanel
+                  task={internalSideTask}
+                  projects={localProjects}
+                  isOpen={!!internalSideTask}
+                  onClose={() => setInternalSideTask(null)}
+                  onUpdateTask={async (taskId, updatedData) => {
+                    playSound("pop");
+                    setInternalSideTask((prev: any) => prev ? { ...prev, ...updatedData } : null);
+                    handleUpdateProjects((prev) =>
+                      prev.map((p) => ({
+                        ...p,
+                        tasks: (p.tasks || []).map((t) =>
+                          String(t.id) === String(taskId) ? { ...t, ...updatedData } : t
+                        ),
+                      }))
+                    );
+                  }}
+                  onDeleteTask={async (taskId) => {
+                    playSound("trash");
+                    setInternalSideTask(null);
+                    const cleanId = String(taskId).startsWith("kt-")
+                      ? extractCleanTaskId(String(taskId), project?.id)
+                      : String(taskId);
+                    await deleteDoc(doc(db, "tasks", cleanId));
+                  }}
+                  onExpandToModal={() => {
+                    handleOpenTaskModal(internalSideTask);
+                  }}
+                  isNightMode={true}
+                />
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
       </div>
 
-      {/* Modal Oficial de Tarea (Detalle Completo, Copys, Subtareas, Archivos y Sesiones) */}
+      {/* Modal Oficial de Tarea (NewTaskModal) */}
       <NewTaskModal
         isOpen={showTaskModal}
         onClose={() => {
@@ -2079,10 +2645,22 @@ export default function ProjectFullScreenView({
         }}
         onCreateTask={handleModalCreateTask}
         onUpdateTask={handleModalUpdateTask}
-        onDeleteTask={handleModalDeleteTask}
+        onDeleteTask={async (taskId) => {
+          playSound("trash");
+          const cleanId = String(taskId).startsWith("kt-")
+            ? extractCleanTaskId(String(taskId), project?.id)
+            : String(taskId);
+          try {
+            await deleteDoc(doc(db, "tasks", cleanId));
+            setShowTaskModal(false);
+            setEditingTaskModal(null);
+          } catch (err) {
+            console.error("Error al eliminar tarea desde modal:", err);
+          }
+        }}
         editingTask={editingTaskModal}
-        projects={[adaptedProject]}
-        defaultProjectId={project.id}
+        projects={localProjects}
+        defaultProjectId={project?.id}
         originRect={taskModalOriginRect}
         isNightMode={true}
       />

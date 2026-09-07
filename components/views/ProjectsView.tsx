@@ -36,10 +36,11 @@ export interface ProjectsViewProps {
   onCreateProject?: (originRect?: { x: number; y: number; width: number; height: number }) => void;
   selectedProjectId?: string | number | null;
   onClearSelectedProject?: () => void;
+  onSelectTask?: (task: any, projectId?: string | number, originRect?: any) => void;
 }
 
 // ── 4. COMPONENTE PRINCIPAL PROJECTS VIEW ────────────────────────────────────
-export function ProjectsView({ onCreateProject, selectedProjectId, onClearSelectedProject }: ProjectsViewProps = {}) {
+export function ProjectsView({ onCreateProject, selectedProjectId, onClearSelectedProject, onSelectTask }: ProjectsViewProps = {}) {
   const { data, isLoading } = useData();
   const { templates, createTemplate } = useTemplates();
   const openModal = useUIStore((s) => s.openModal);
@@ -89,6 +90,7 @@ export function ProjectsView({ onCreateProject, selectedProjectId, onClearSelect
           setActiveProjectId(null);
           onClearSelectedProject?.();
         }} 
+        onSelectTask={onSelectTask}
       />
     );
   }

@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       nombre: string;
       workspaceId: string;
       token: string;
+      email?: string;
     }) => {
       const res = NextResponse.json({ ok: true, ...payload });
       res.cookies.set({
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
           nombre: "Feiko",
           workspaceId: "brandex-master",
           token: `master_google_${uid || "feiko"}`,
+          email,
         });
       }
 
@@ -70,6 +72,7 @@ export async function POST(req: NextRequest) {
             nombre: wsData.ownerName || displayName,
             workspaceId: wsData.workspaceId || `ws_${wsData.pin}`,
             token: `token_google_${uid}`,
+            email: wsData.email || email,
           });
         }
       } catch (e) {
@@ -96,6 +99,7 @@ export async function POST(req: NextRequest) {
           nombre: "Feiko",
           workspaceId: "brandex-master",
           token: "master-auth-token",
+          email: "contacto.milenial@gmail.com",
         });
       }
 
@@ -127,6 +131,7 @@ export async function POST(req: NextRequest) {
             nombre: resolvedName,
             workspaceId: resolvedWsId,
             token: `token_${accessCode}`,
+            email: wsData.email || "",
           });
         }
       } catch (e) {
@@ -160,6 +165,7 @@ export async function POST(req: NextRequest) {
           nombre: "Feiko",
           workspaceId: "brandex-master",
           token: "master-auth-token",
+          email: "contacto.milenial@gmail.com",
         });
       }
 

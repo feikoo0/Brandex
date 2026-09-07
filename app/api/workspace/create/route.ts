@@ -15,15 +15,23 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       name,
+      companyName = "",
+      workspaceName = "",
       brandName = "",
       email = "",
       googleUid = "",
       specialty = "",
       useCases = [],
       teamSize = "1",
+      industry = "",
+      members = [],
+      brandLinks = [],
+      brandFiles = [],
     } = body;
 
-    const trimmedName = (name || "").toString().trim() || "Usuario Taski";
+    const resolvedCompanyName = (companyName || brandName || name || "Mi Empresa").toString().trim();
+    const resolvedWorkspaceName = (workspaceName || resolvedCompanyName || "Mi Workspace").toString().trim();
+    const trimmedName = (name || resolvedCompanyName || "Usuario Taski").toString().trim();
     const trimmedEmail = (email || "").toString().trim().toLowerCase();
 
     // 1. Generar PIN de 6 dígitos único
@@ -60,23 +68,118 @@ export async function POST(req: NextRequest) {
       id: workspaceId,
       workspaceId,
       pin,
-      name: trimmedName,
+      name: resolvedWorkspaceName,
+      workspaceName: resolvedWorkspaceName,
+      companyName: resolvedCompanyName,
+      brandName: resolvedCompanyName,
+      brand: resolvedCompanyName,
       ownerName: trimmedName,
-      brandName: brandName.trim(),
-      brand: brandName.trim(),
       email: trimmedEmail,
       googleUid: googleUid.trim(),
-      specialty,
+      specialty: specialty || "General",
       useCases,
       goals: useCases,
       teamSize,
+      industry: industry || "General",
+      brandLinks: Array.isArray(brandLinks) ? brandLinks : [],
+      brandFiles: Array.isArray(brandFiles) ? brandFiles : [],
       createdAt: serverTimestamp(),
       created_at: now.toISOString(),
+      updatedAt: serverTimestamp(),
+      updated_at: now.toISOString(),
       submittedAt: serverTimestamp(),
       submitted_at: now.toISOString(),
     });
 
-    // 3. Guardar Respuestas de Encuesta en Firestore
+    // 3. Crear Cliente de Marca Propia en Firestore (Single Source of Truth)
+    try {
+      const scopedClientsCol = `${workspaceId}_clients`;
+      const clientId = `client_${Date.now()}`;
+      const hue = Math.floor(Math.random() * 360);
+      const clientDoc = {
+        id: clientId,
+        nombre: resolvedCompanyName,
+        name: resolvedCompanyName,
+        workspaceId,
+        workspace_id: workspaceId,
+        color: `hsl(${hue}, 80%, 60%)`,
+        customColor: { h: hue, s: 80, l: 60 },
+        esMarcaPropia: true,
+        status: "Activo",
+        industria: industry || "General",
+        drive_links: Array.isArray(brandLinks) ? brandLinks : [],
+        createdAt: serverTimestamp(),
+        created_at: now.toISOString(),
+        updatedAt: serverTimestamp(),
+        updated_at: now.toISOString(),
+      };
+      await setDoc(doc(db, scopedClientsCol, clientId), clientDoc);
+    } catch (cErr) {
+      console.error("Error creating initial brand client:", cErr);
+    }
+
+    // 4. Crear Colaboradores (Owner + Miembros Invitados)
+    try {
+      const scopedMembersCol = `${workspaceId}_members`;
+      const ownerMemberId = `member_${pin}_owner`;
+      await setDoc(doc(db, scopedMembersCol, ownerMemberId), {
+        id: ownerMemberId,
+        nombre: trimmedName,
+        name: trimmedName,
+        email: trimmedEmail,
+        rol: "Admin",
+        status: "Activo",
+        workspaceId,
+        workspace_id: workspaceId,
+        createdAt: serverTimestamp(),
+        created_at: now.toISOString(),
+        updatedAt: serverTimestamp(),
+        updated_at: now.toISOString(),
+      });
+
+      if (Array.isArray(members) && members.length > 0) {
+        for (let i = 0; i < members.length; i++) {
+          const mEmail = String(members[i]).trim().toLowerCase();
+          if (!mEmail || mEmail === trimmedEmail) continue;
+          const mId = `member_${pin}_${i + 1}`;
+          await setDoc(doc(db, scopedMembersCol, mId), {
+            id: mId,
+            nombre: mEmail.split("@")[0] || `Miembro ${i + 1}`,
+            email: mEmail,
+            rol: "Colaborador",
+            status: "Invitado",
+            workspaceId,
+            workspace_id: workspaceId,
+            createdAt: serverTimestamp(),
+            created_at: now.toISOString(),
+            updatedAt: serverTimestamp(),
+            updated_at: now.toISOString(),
+          });
+        }
+      }
+    } catch (mErr) {
+      console.error("Error registering initial members:", mErr);
+    }
+
+    // 5. Guardar Contexto de Brand AI en Firestore
+    try {
+      const aiCtxRef = doc(db, "workspace_ai_context", workspaceId);
+      await setDoc(aiCtxRef, {
+        workspaceId,
+        companyName: resolvedCompanyName,
+        workspaceName: resolvedWorkspaceName,
+        industry: industry || "General",
+        brandLinks: Array.isArray(brandLinks) ? brandLinks : [],
+        brandFiles: Array.isArray(brandFiles) ? brandFiles : [],
+        systemPromptNotes: `Marca: ${resolvedCompanyName}. Industria: ${industry || "General"}. Enlaces: ${brandLinks.join(", ")}`,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (aiErr) {
+      console.error("Error creating AI context:", aiErr);
+    }
+
+    // 6. Guardar Respuestas de Encuesta en Firestore (Trazabilidad)
     const surveyId = `survey_${pin}_${Date.now()}`;
     const surveyRef = doc(db, "onboarding_surveys", surveyId);
     await setDoc(surveyRef, {
@@ -85,14 +188,19 @@ export async function POST(req: NextRequest) {
       workspaceId,
       name: trimmedName,
       ownerName: trimmedName,
-      brandName: brandName.trim(),
-      brand: brandName.trim(),
+      companyName: resolvedCompanyName,
+      workspaceName: resolvedWorkspaceName,
+      brandName: resolvedCompanyName,
+      brand: resolvedCompanyName,
       email: trimmedEmail,
       googleUid: googleUid.trim(),
-      specialty,
+      specialty: specialty || "General",
       useCases,
       goals: useCases,
       teamSize,
+      industry: industry || "General",
+      membersCount: Array.isArray(members) ? members.length : 0,
+      linksCount: Array.isArray(brandLinks) ? brandLinks : 0,
       createdAt: serverTimestamp(),
       created_at: now.toISOString(),
       submittedAt: serverTimestamp(),

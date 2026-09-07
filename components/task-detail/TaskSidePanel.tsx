@@ -51,6 +51,17 @@ const formatDateToFullMonth = (date: Date): string => {
   return `${day} de ${month}`;
 };
 
+const formatDateToShortMonth = (date: Date): string => {
+  const day = date.getDate();
+  const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const month = months[date.getMonth()];
+  const currentYear = new Date().getFullYear();
+  if (date.getFullYear() !== currentYear) {
+    return `${day} ${month} ${date.getFullYear()}`;
+  }
+  return `${day} ${month}`;
+};
+
 const formatSessionInterval = (start: any, end: any): string => {
   const dStart = parseAnyDate(start);
   const dEnd = parseAnyDate(end);
@@ -782,9 +793,9 @@ export function TaskSidePanel({
     (task as any)?.created_at ||
     (task as any)?.created;
   const creationDate = parseAnyDate(rawCreation);
-  const formattedCreation = creationDate ? formatDateToFullMonth(creationDate) : "Reciente";
+  const formattedCreation = creationDate ? formatDateToShortMonth(creationDate) : "Reciente";
 
-  const formattedDelivery = limitDate ? formatDateToFullMonth(limitDate) : "Sin fecha";
+  const formattedDelivery = limitDate ? formatDateToShortMonth(limitDate) : "Sin fecha";
 
   const rawProgramada =
     startDate ||
@@ -799,55 +810,17 @@ export function TaskSidePanel({
       className="w-full shrink-0 h-full flex flex-col bg-transparent overflow-hidden relative z-40 select-none font-sans"
     >
       {/* Scrollable Container */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar pt-[1.375rem] pb-[0.625rem] px-1 flex flex-col justify-between min-h-full">
+      <div className="flex-1 overflow-y-auto custom-scrollbar pt-0.5 pb-[0.625rem] px-1 flex flex-col justify-between min-h-full">
         {/* Contenido Superior (Encabezado, Propiedades, Notas, Subtareas) */}
-        <div className="space-y-3 w-full shrink-0">
-          {/* ───────────────────────────────────────────────────────────────── */}
-          {/* 0. FECHAS SUPERIORES: CREADO EL (IZQ) Y ENTREGA (DER) */}
-          {/* ───────────────────────────────────────────────────────────────── */}
-          <div className="w-full flex items-center justify-between px-1.5 min-w-0 shrink-0 select-none text-[12px]">
-            {/* Izquierda: Creado el [Día] de [Mes] */}
-            <div className="flex items-center text-[#ffffff6b] font-normal shrink-0">
-              <span>Creado el {formattedCreation}</span>
-            </div>
-
-            {/* Derecha: Entrega [Día] de [Mes] (Clickeable con hover:underline) */}
-            <div className="relative flex items-center gap-1 text-[#ffffff6b] font-normal shrink-0">
-              <span>Entrega</span>
-              <button
-                type="button"
-                onClick={() => {
-                  playSound("click");
-                  setActivePopover(activePopover === "header_date" ? null : "header_date");
-                }}
-                className="text-white font-medium hover:underline cursor-pointer transition-colors focus:outline-none"
-                title="Cambiar fecha de entrega"
-              >
-                {formattedDelivery}
-              </button>
-              <LinearDatePopover
-                isOpen={activePopover === "header_date"}
-                onClose={() => setActivePopover(null)}
-                align="right"
-                startDate={startDate}
-                deadline={deadline}
-                onSelectDates={(start, end) => {
-                  setStartDate(start);
-                  setDeadline(end);
-                  triggerSave({ fecha_programada: start, fecha_limite: end, deadline: end });
-                }}
-              />
-            </div>
-          </div>
-
+        <div className="space-y-2 w-full shrink-0">
           {/* ───────────────────────────────────────────────────────────────── */}
           {/* 1. ENCABEZADO — ÚNICO RECTÁNGULO CONTENEDOR CON COLOR DEL PROYECTO */}
           {/* ───────────────────────────────────────────────────────────────── */}
           <div
-            className="w-full shrink-0 rounded-[18px] px-4 py-5 relative flex flex-col items-center justify-center text-center overflow-hidden shadow-sm transition-all group gap-1"
+            className="w-full shrink-0 rounded-[18px] px-3.5 py-4 relative flex flex-col items-center justify-center text-center overflow-hidden shadow-sm transition-all group/card gap-1"
             style={{ backgroundColor: projectColor }}
           >
-            {/* Botón Colapsar Panel (Visible en hover en la esquina superior derecha) */}
+            {/* Botón Colapsar Panel: Solo visible al hacer hover en el rectángulo */}
             <button
               type="button"
               onClick={(e) => {
@@ -855,22 +828,23 @@ export function TaskSidePanel({
                 playSound("click");
                 onClose();
               }}
-              className="absolute top-2.5 right-2.5 p-1 text-white/80 hover:text-white flex items-center justify-center transition-all duration-200 opacity-0 group-hover:opacity-100 cursor-pointer"
+              className="absolute top-2 left-2 w-10 h-10 flex items-center justify-center rounded-xl text-white/80 hover:text-white hover:bg-white/20 opacity-0 group-hover/card:opacity-100 pointer-events-none group-hover/card:pointer-events-auto transition-all duration-200 cursor-pointer z-10 group/btn"
               title="Colapsar panel (Esc)"
             >
               <svg
-                width="16"
-                height="16"
+                width="22"
+                height="22"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="1.75"
+                strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="object-contain text-white/80 group-hover/btn:text-white transition-colors duration-200"
               >
-                <rect width="18" height="18" x="3" y="3" rx="4" />
+                <rect width="18" height="18" x="3" y="3" rx="5" />
                 <path d="M15 3v18" />
-                <path d="m8 9 3 3-3 3" />
+                <path d="m10 9 3 3-3 3" />
               </svg>
             </button>
 
@@ -879,12 +853,10 @@ export function TaskSidePanel({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                if (currentProject?.id) {
-                  playSound("click");
-                  onSelectProject?.(currentProject.id);
-                }
+                playSound("click");
+                onSelectProject?.(currentProject.id);
               }}
-              className="text-[14px] font-medium text-white/80 hover:text-white normal-case tracking-normal text-center leading-snug truncate max-w-full hover:underline cursor-pointer transition-colors"
+              className="text-[14px] font-medium text-white/80 hover:text-white normal-case tracking-normal text-center leading-snug truncate max-w-[78%] hover:underline cursor-pointer transition-colors"
               title={`Ir al proyecto: ${currentProject?.title || "Proyecto"}`}
             >
               {currentProject?.title || "Proyecto"}
@@ -895,7 +867,7 @@ export function TaskSidePanel({
               ref={titleTextareaRef}
               value={title}
               unstyled
-              wrapperClassName="w-full max-w-[85%] mx-auto"
+              wrapperClassName="w-full max-w-[78%] mx-auto"
               caretClassName="bg-white shadow-[0_0_10px_rgba(255,255,255,0.9)]"
               onChange={(e) => {
                 setTitle(e.target.value);
@@ -917,68 +889,76 @@ export function TaskSidePanel({
               className="w-full bg-transparent text-[25px] font-bold text-white text-center placeholder-white/60 outline-none border-none ring-0 p-0 leading-tight focus:outline-none focus:ring-0 my-0.5 resize-none overflow-hidden select-text max-h-[68px]"
             />
 
-            {/* Fila integrada: Barra de progreso + Botón blanco (der) */}
-            <div className="w-[90%] mx-auto flex items-center gap-2.5 mt-2 mb-0.5 select-none">
-              {/* Barra de progreso de sesiones minimalista */}
-              <div
-                className="flex-1 h-[5px] rounded-full bg-white/25 border border-white/20 overflow-hidden min-w-[50px]"
-                title={`Tiempo en sesiones: ${formattedAccumulatedTime} de ${formattedEstimatedTime}`}
-              >
-                <div
-                  className="h-full bg-white rounded-full transition-all duration-300 ease-out"
-                  style={{ width: `${Math.min(Math.max(consumptionPercent * 100, 0), 100)}%` }}
-                />
+            {/* Fila integrada: Creado el (izq) y Entrega el (der) dentro del rectángulo de color (sin separador) */}
+            <div className="w-full flex items-center justify-between mt-2.5 select-none text-[12px]">
+              {/* Izquierda: Creado el [Día] [Mes 3 letras] */}
+              <div className="flex items-center text-white/70 font-normal shrink-0">
+                <span>{creationDate ? `Creado el ${formattedCreation}` : "Creado recientemente"}</span>
               </div>
 
-              {/* Botón blanco a la derecha: 12px mínimo */}
-              <button
-                type="button"
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  playSound("click");
-                  if (isThisTaskActive) {
-                    await endSession();
-                  } else if (task?.id) {
-                    await startSession({
-                      taskId: String(task.id),
-                      projectId: String(resolvedProjectId || "1"),
-                      clientId: (currentProject as any)?.cliente_id || null,
-                      origin: "manual",
-                    });
-                    setStatus("En Proceso");
-                    triggerSave({ status: "En Proceso" as any, estado: "En Proceso" as any });
-                  }
-                }}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold shrink-0 transition-all cursor-pointer shadow-sm ${
-                  isThisTaskActive
-                    ? "bg-white text-rose-600 hover:bg-white/90 shadow-rose-500/20"
-                    : "bg-white text-zinc-950 hover:bg-white/90"
-                }`}
-                title={isThisTaskActive ? "Detener cronómetro en esta tarea" : "Iniciar cronómetro en esta tarea"}
-              >
-                {isThisTaskActive ? (
-                  <>
-                    <Square className="w-2.5 h-2.5 fill-rose-600 text-rose-600" />
-                    <span>Detener</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-2.5 h-2.5 fill-current" />
-                    <span>Iniciar</span>
-                  </>
-                )}
-              </button>
+              {/* Derecha: Entrega el [Día] [Mes 3 letras] (Clickeable con hover:underline) */}
+              <div className="relative flex items-center gap-1 text-white/70 font-normal shrink-0">
+                <span>{limitDate ? "Entrega el" : "Entrega"}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound("click");
+                    setActivePopover(activePopover === "header_date" ? null : "header_date");
+                  }}
+                  className="text-white font-medium hover:underline cursor-pointer transition-colors focus:outline-none"
+                  title="Cambiar fecha de entrega"
+                >
+                  {formattedDelivery}
+                </button>
+                <LinearDatePopover
+                  isOpen={activePopover === "header_date"}
+                  onClose={() => setActivePopover(null)}
+                  align="right"
+                  startDate={startDate}
+                  deadline={deadline}
+                  onSelectDates={(start, end) => {
+                    setStartDate(start);
+                    setDeadline(end);
+                    triggerSave({ fecha_programada: start, fecha_limite: end, deadline: end });
+                  }}
+                />
+              </div>
             </div>
           </div>
 
           {/* ───────────────────────────────────────────────────────────────── */}
-          {/* MÉTRICAS DE TAREA: CONTADOR DE TIEMPO (IZQ) Y ENTREGA/ATRASADA (DER) */}
+          {/* MÉTRICAS DE TAREA: ENTREGA/ATRASADA (IZQ) Y CONTADOR DE TIEMPO (DER) */}
           {/* ───────────────────────────────────────────────────────────────── */}
           <div className="w-full flex items-center justify-between px-1.5 py-1 min-w-0 shrink-0 select-none">
-            {/* Izquierda: Contador de tiempo y esfuerzo */}
-            <div
-              className="flex items-center gap-1.5 shrink-0"
-              title={`Consumo: ${Math.round(consumptionPercent * 100)}% (${formattedAccumulatedTime} / ${formattedEstimatedTime})${isExceeded ? ' - ¡Tiempo excedido!' : ''}`}
+            {/* Izquierda: Entrega o atrasada relativa (idéntico a tarjeta de tarea) */}
+            <div className="flex items-center text-[#ffffff6b] font-normal shrink-0 min-w-0">
+              <span className="text-[12px] sm:text-[13px] font-normal leading-none whitespace-nowrap">
+                {deliveryPrefix}
+                <span className={deliveryHighlightColor}>{deliveryHighlight}</span>
+              </span>
+            </div>
+
+            {/* Derecha: Contador de tiempo y esfuerzo (Clickeable para iniciar/detener sesión) */}
+            <button
+              type="button"
+              onClick={async (e) => {
+                e.stopPropagation();
+                playSound("click");
+                if (isThisTaskActive) {
+                  await endSession();
+                } else if (task?.id) {
+                  await startSession({
+                    taskId: String(task.id),
+                    projectId: String(resolvedProjectId || "1"),
+                    clientId: (currentProject as any)?.cliente_id || null,
+                    origin: "manual",
+                  });
+                  setStatus("En Proceso");
+                  triggerSave({ status: "En Proceso" as any, estado: "En Proceso" as any });
+                }
+              }}
+              className="flex items-center gap-1.5 shrink-0 cursor-pointer hover:opacity-85 transition-opacity focus:outline-none"
+              title={isThisTaskActive ? "Detener cronómetro en esta tarea" : `Iniciar cronómetro (${formattedAccumulatedTime} / ${formattedEstimatedTime})`}
             >
               <EffortGaugeRing
                 progress={consumptionPercent}
@@ -999,15 +979,7 @@ export function TaskSidePanel({
               >
                 {formattedAccumulatedTime} / {formattedEstimatedTime}
               </span>
-            </div>
-
-            {/* Derecha: Entrega o atrasada relativa (idéntico a tarjeta de tarea) */}
-            <div className="flex items-center text-[#ffffff6b] font-normal shrink-0 min-w-0">
-              <span className="text-[12px] sm:text-[13px] font-normal leading-none whitespace-nowrap">
-                {deliveryPrefix}
-                <span className={deliveryHighlightColor}>{deliveryHighlight}</span>
-              </span>
-            </div>
+            </button>
           </div>
 
           {/* ───────────────────────────────────────────────────────────────── */}

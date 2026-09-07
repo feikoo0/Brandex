@@ -21,9 +21,9 @@ interface AppLayoutProps {
  * AppLayout — Layout Fijo al Viewport (Native Web App Architecture)
  * 
  * Estructura de capas:
- * - Layer 0 (Fondo Base): #181817 (w-screen h-screen overflow-hidden flex p-2.5 gap-2.5)
+ * - Layer 0 (Fondo Base): #0f0f0f (w-screen h-screen overflow-hidden flex p-2.5 gap-2.5)
  * - Sidebar: Columna de navegación izquierda con ancho fijo/animado y scroll confinado
- * - Layer 1 (Lienzo Principal): #121212 (flex-1 min-w-0 h-full overflow-hidden flex flex-col rounded-[24px] border-white/[0.08])
+ * - Layer 1 (Lienzo Principal): #0d0d0d (flex-1 min-w-0 h-full overflow-hidden flex flex-col rounded-[24px] border-white/[0.08])
  * - SidePanel: Panel lateral derecho hermano en Layer 0 (compacta suavemente el lienzo principal)
  * - Topbar: Header superior fijo de 64px (h-[64px] shrink-0)
  * - Content Area: Área de contenido dinámico (flex-1 min-h-0 min-w-0 overflow-hidden relative)
@@ -71,7 +71,7 @@ export function AppLayout({
     <div
       className={cn(
         "relative w-screen h-screen h-[100dvh] overflow-hidden overflow-x-hidden select-none font-sans flex p-2.5 gap-2.5 transition-colors duration-500",
-        isNightMode ? "bg-[#181817] text-neutral-100" : "bg-[#dce1e8] text-slate-900",
+        isNightMode ? "bg-[#0f0f0f] text-neutral-100" : "bg-[#dce1e8] text-slate-900",
         className
       )}
     >
@@ -85,7 +85,7 @@ export function AppLayout({
         className={cn(
           "flex-1 min-w-0 h-full flex flex-col overflow-hidden rounded-[1.5rem] border transition-all duration-300 relative z-30 shadow-sm",
           isNightMode
-            ? "bg-[#121212] border-white/[0.08]"
+            ? "bg-[#0d0d0d] border-white/[0.08]"
             : "bg-[#fffce2] border-slate-300/70"
         )}
       >

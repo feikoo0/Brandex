@@ -41,8 +41,11 @@ export interface ProjectSummary {
   presupuesto: number;
   presupuestoBase?: number;
   tareasExtrasPrecio?: number;
+  tareasCostoDelegado?: number;
+  costoSesiones?: number;
   costoReal: number;
   margen: number | null;
+  margenDinero?: number;
   sessionsSinTarifa: number;
   isLoading: boolean;
 }
@@ -289,7 +292,7 @@ export function useProjectSummary(projectId: string | number | null | undefined)
 
     // ── ROLLUPS FINANCIEROS Y COSTO REAL EN VIVO ──
     const members = data.miembros || [];
-    let costoReal = 0;
+    let costoSesiones = 0;
     let sessionsSinTarifa = 0;
 
     projectSessions.forEach((s) => {
@@ -299,18 +302,23 @@ export function useProjectSummary(projectId: string | number | null | undefined)
 
       if (tarifa !== undefined && tarifa !== null && typeof tarifa === "number" && tarifa > 0) {
         const durMins = s.durationMins || 0;
-        costoReal += (durMins / 60) * tarifa;
+        costoSesiones += (durMins / 60) * tarifa;
       } else {
         sessionsSinTarifa++;
       }
     });
 
-    costoReal = Math.round(costoReal * 100) / 100;
+    costoSesiones = Math.round(costoSesiones * 100) / 100;
+
+    // Costo de delegación asignado a cada tarea individual
+    const tareasCostoDelegado = tasks.reduce((sum, t) => sum + (Number((t as any).costo) || 0), 0);
+    const costoReal = Math.round((costoSesiones + tareasCostoDelegado) * 100) / 100;
 
     const rawPresupuesto = project.presupuesto ?? (project as any).costo ?? 0;
     const presupuestoBase = typeof rawPresupuesto === "number" && !isNaN(rawPresupuesto) ? rawPresupuesto : 0;
     const tareasExtrasPrecio = tasks.reduce((sum, t) => sum + (Number((t as any).precio) || 0), 0);
     const presupuestoNum = presupuestoBase + tareasExtrasPrecio;
+    const margenDinero = presupuestoNum - costoReal;
     const margen: number | null = presupuestoNum > 0 ? Math.round(((presupuestoNum - costoReal) / presupuestoNum) * 1000) / 10 : null;
 
     // Evaluación dinámica pura del estado del proyecto en base al avance real de sus tareas
@@ -339,8 +347,11 @@ export function useProjectSummary(projectId: string | number | null | undefined)
       presupuesto: presupuestoNum,
       presupuestoBase,
       tareasExtrasPrecio,
+      tareasCostoDelegado,
+      costoSesiones,
       costoReal,
       margen,
+      margenDinero,
       sessionsSinTarifa,
       isLoading,
     };

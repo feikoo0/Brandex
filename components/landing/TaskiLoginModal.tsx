@@ -8,8 +8,9 @@ import { X, Loader2, ShieldCheck, ArrowRight, Lock } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { loginWithCode } from "@/lib/api";
 import { OtpInput, type OtpStatus } from "@/components/ui/OtpInput";
-import { OnboardingModal } from "@/components/onboarding/OnboardingModal";
+import { TaskiStepRegister } from "@/components/onboarding/TaskiStepRegister";
 import { playSound } from "@/app/taski/utils/audio";
+import { TaskiAvatar } from "@/components/ui/TaskiAvatar";
 import type { Role, LoginResponse } from "@/lib/types";
 
 interface TaskiLoginModalProps {
@@ -22,6 +23,11 @@ export function TaskiLoginModal({ isOpen, onClose }: TaskiLoginModalProps) {
   const setAuth = useAuthStore((s) => s.setAuth);
   const token = useAuthStore((s) => s.token);
   const workspaceId = useAuthStore((s) => s.workspaceId);
+  const userName = useAuthStore((s) => s.userName);
+  const userEmail = useAuthStore((s) => s.userEmail);
+  const role = useAuthStore((s) => s.role);
+  const isMaster = role === "admin" || workspaceId === "brandex-master";
+  const displayEmail = userEmail || (isMaster ? "contacto.milenial@gmail.com" : "colaborador@taski.app");
 
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<OtpStatus>("idle");
@@ -57,7 +63,8 @@ export function TaskiLoginModal({ isOpen, onClose }: TaskiLoginModalProps) {
           data.id || "admin",
           data.nombre || "Usuario",
           data.token || "",
-          data.workspaceId || "brandex-master"
+          data.workspaceId || "brandex-master",
+          data.email || (data.role === "admin" ? "contacto.milenial@gmail.com" : undefined)
         );
 
         setTimeout(() => {
@@ -172,17 +179,29 @@ export function TaskiLoginModal({ isOpen, onClose }: TaskiLoginModalProps) {
 
               {/* Si ya hay sesión activa */}
               {token && workspaceId && (
-                <div className="w-full mb-5 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                  <p className="text-xs text-emerald-400 font-medium mb-2">
-                    Tienes una sesión iniciada activa
-                  </p>
+                <div className="w-full mb-5 p-3 rounded-2xl bg-white/[0.03] border border-white/10 flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    <TaskiAvatar
+                      name={userName || "Usuario"}
+                      email={displayEmail}
+                      size={36}
+                    />
+                    <div className="flex flex-col min-w-0 text-left">
+                      <span className="text-xs font-bold text-[#ffffffd6] truncate">
+                        {userName || "Sesión activa"}
+                      </span>
+                      <span className="text-[11px] font-medium text-[#ffffff80] truncate" title={displayEmail}>
+                        {displayEmail}
+                      </span>
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
                       onClose();
                       router.push("/taski");
                     }}
-                    className="w-full py-2 px-3 rounded-lg bg-emerald-500 text-black text-xs font-semibold hover:bg-emerald-400 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    className="w-full py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-[#ffffffd6] text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-white/10"
                   >
                     <span>Entrar directo al Workspace</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -260,12 +279,16 @@ export function TaskiLoginModal({ isOpen, onClose }: TaskiLoginModalProps) {
         )}
       </AnimatePresence>
 
-      {/* Modal de Onboarding & Creación de Espacio */}
-      <OnboardingModal
-        isOpen={isOnboardingOpen}
-        onClose={() => setIsOnboardingOpen(false)}
-        onSuccess={handleOnboardingSuccess}
-      />
+      {/* Modal / Vista de Registro Paso a Paso con MagicRings */}
+      {isOnboardingOpen && (
+        <div className="fixed inset-0 z-[100] overflow-y-auto bg-[#181817]">
+          <TaskiStepRegister
+            stepperPosition="left"
+            onClose={() => setIsOnboardingOpen(false)}
+            onSuccess={handleOnboardingSuccess}
+          />
+        </div>
+      )}
     </>
   );
 }

@@ -25,11 +25,11 @@ export const TimelineGridHeader: React.FC<TimelineGridHeaderProps> = React.memo(
     <div
       style={{ width: `${totalWidth + 280}px` }}
       className={`sticky top-0 z-20 flex h-10 select-none backdrop-blur-md ${
-        isNightMode ? "bg-[#121212]/95" : "bg-white/95"
+        isNightMode ? "bg-[#0d0d0d]/95" : "bg-white/95"
       }`}
     >
       {/* ── Esquina Fija Izquierda (Sticky Left Rail Header) ── */}
-      <div className="sticky left-0 z-30 w-[260px] md:w-[280px] shrink-0 h-full px-3.5 flex items-center justify-between border-r border-white/[0.08] bg-[#121212]">
+      <div className="sticky left-0 z-30 w-[260px] md:w-[280px] shrink-0 h-full px-3.5 flex items-center justify-between border-r border-white/[0.08] bg-[#0d0d0d]">
         <span className="text-xs font-black tracking-wider text-[#ffffff6b]">
           Proyectos Activos
         </span>

@@ -394,12 +394,18 @@ export interface LoginResponse {
 
 export interface OnboardingSurveyData {
   name: string;
+  companyName?: string;
+  workspaceName?: string;
   brandName?: string;
   email?: string;
   googleUid?: string;
   specialty?: string;
   useCases?: string[];
   teamSize?: string;
+  industry?: string;
+  members?: string[];
+  brandLinks?: string[];
+  brandFiles?: { name: string; url?: string; size?: number }[];
 }
 
 // ── UI State ──────────────────────────────────────────────────────────────────

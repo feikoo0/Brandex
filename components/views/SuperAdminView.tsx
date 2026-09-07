@@ -256,7 +256,7 @@ export function SuperAdminView() {
   };
 
   return (
-    <div className="w-full h-full flex flex-col gap-6 overflow-y-auto custom-scrollbar p-6 bg-[#121212] text-[#ffffffd6]">
+    <div className="w-full h-full flex flex-col gap-6 overflow-y-auto custom-scrollbar p-6 bg-[#0d0d0d] text-[#ffffffd6]">
       {/* Top Banner / Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-[#181818] border border-white/10 shadow-xl">
         <div className="flex items-center gap-4">
