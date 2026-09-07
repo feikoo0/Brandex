@@ -22,6 +22,7 @@ import {
   Handshake,
   FileText,
   Sparkles,
+  LayoutDashboard,
 } from "lucide-react";
 import { playSound } from "@/app/taski/utils/audio";
 import { Project } from "@/app/taski/components/ProjectDashboard";
@@ -94,6 +95,7 @@ export function TaskiSidebar({
       title: "Operación",
       items: [
         { id: "proyectos", label: "Proyectos" },
+        { id: "tableros", label: "Tableros" },
         { id: "equipo", label: "Equipo" },
         { id: "recursos", label: "Recursos" },
         { id: "diagramas", label: "Diagramas" },
@@ -142,6 +144,8 @@ export function TaskiSidebar({
         return <Briefcase className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos":
         return <Folder className={className} fill={fill} strokeWidth={strokeWidth} />;
+      case "tableros":
+        return <LayoutDashboard className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "proyectos_v2":
         return <Layers className={className} fill={fill} strokeWidth={strokeWidth} />;
       case "equipo":

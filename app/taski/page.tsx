@@ -16,6 +16,7 @@ import { ClientsDashboard } from "./components/ClientsDashboard";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { InicioDashboard } from "./components/InicioDashboard";
 import { ProjectsView } from "@/components/views/ProjectsView";
+import { BoardsView } from "@/components/boards/BoardsView";
 import { SuperAdminView } from "@/components/views/SuperAdminView";
 import { DiagramsView } from "@/components/views/DiagramsView";
 import { PlaceholderView } from "@/components/views/PlaceholderView";
@@ -577,7 +578,7 @@ export default function BrandexV3Page() {
           : undefined
       }
       contentClassName={
-        activeTab === "inicio"
+        activeTab === "inicio" || activeTab === "tableros"
           ? "!p-0"
           : undefined
       }
@@ -615,13 +616,14 @@ export default function BrandexV3Page() {
         />
       }
       topbar={
-        <TaskiTopbar
-          activeTab={activeTab}
-          greetingTitle={sessionGreetingObj.title}
-          greetingSubtitle={sessionGreetingObj.subtitle}
-          isNightMode={isNightMode}
-          homeView={homeView}
-          setHomeView={setHomeView}
+        activeTab === "tableros" ? undefined : (
+          <TaskiTopbar
+            activeTab={activeTab}
+            greetingTitle={sessionGreetingObj.title}
+            greetingSubtitle={sessionGreetingObj.subtitle}
+            isNightMode={isNightMode}
+            homeView={homeView}
+            setHomeView={setHomeView}
           previousHomeView={previousHomeView}
           setPreviousHomeView={setPreviousHomeView}
           searchQuery={searchQuery}
@@ -633,6 +635,7 @@ export default function BrandexV3Page() {
           timelineSortBy={timelineSortBy}
           onSetTimelineSortBy={handleSetTimelineSortBy}
         />
+        )
       }
       sidePanel={
         activeSideTask ? (
@@ -1060,6 +1063,8 @@ export default function BrandexV3Page() {
             }}
           />
         )}
+
+        {activeTab === "tableros" && <BoardsView />}
 
         {activeTab === "equipo" && (
           <TeamDashboard 

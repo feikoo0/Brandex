@@ -26,7 +26,7 @@ import {
 import { TaskiLoginModal } from "./TaskiLoginModal";
 import { QuoteModal } from "./QuoteModal";
 import GradualBlur from "@/components/GradualBlur";
-import SlicedWaves from "@/components/SlicedWaves";
+import Beams from "./Beams";
 import { useAuthStore } from "@/lib/store";
 import { playSound } from "@/app/taski/utils/audio";
 
@@ -118,36 +118,22 @@ export function BrandexLandingPage({ initialOpenLogin = false }: BrandexLandingP
           }}
         />
 
-        {/* EFECTO SLICED WAVES DE REACT BITS (Fondo superior de pantalla completa) */}
+        {/* EFECTO BEAMS DE REACT BITS (Fondo completo de pantalla de inicio) */}
         <div className="absolute top-0 inset-x-0 h-screen min-h-[100dvh] pointer-events-none flex items-center justify-center overflow-hidden">
           <div className="w-full h-full relative">
-            <SlicedWaves
-              color1="#FF9FFC"
-              color2="#5227FF"
-              color3="#B497CF"
-              columns={14}
-              rows={8}
-              barThickness={0.1}
-              speed={0.35}
-              travel={0.7}
-              waveSpread={0.9}
-              rowOffset={1.0}
-              softness={0.05}
-              glow={0}
-              brightness={1.0}
-              contrast={1.0}
-              opacity={0.5}
-              orientation="horizontal"
-              alternate={false}
-              mouseInteraction={true}
-              mouseStrength={1}
-              mouseRadius={0.3}
-              grain={true}
-              grainIntensity={0.05}
+            <Beams
+              beamWidth={2}
+              beamHeight={15}
+              beamNumber={12}
+              lightColor="#ffffff"
+              speed={2}
+              noiseIntensity={0.85}
+              scale={0.2}
+              rotation={0}
             />
           </div>
-          {/* Desvanecimiento inferior suave hacia el canvas #181817 */}
-          <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-b from-transparent via-[#181817]/60 to-[#181817] pointer-events-none" />
+          {/* Desvanecimiento inferior suave hacia el canvas #181817 al scrollear a las siguientes secciones */}
+          <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-b from-transparent via-[#181817]/60 to-[#181817] pointer-events-none" />
         </div>
 
         {/* Viñeta perimetral suave */}
